@@ -1,4 +1,4 @@
-# Offgrid
+# Offgrid Agent Runtime
 
 **An AI agent runtime that keeps working when the internet doesn't.**
 
