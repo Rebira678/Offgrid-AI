@@ -22,6 +22,7 @@ make build && make test
 # 3. Measure your machine
 ./bin/offgrid models                   # what is installed
 ./bin/offgrid bench                    # tokens/sec for each model
+./bin/offgrid ask "what is a CRDT?"    # ask a local model; works with WiFi off
 ```
 
 Needs Go 1.22 or newer.
