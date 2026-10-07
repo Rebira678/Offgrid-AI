@@ -75,11 +75,18 @@ type GenerateRequest struct {
 	Options   Options `json:"options"`
 }
 
-// generateChunk is one line of the streamed NDJSON response. Every line has a
+// streamChunk is one line of a streamed NDJSON response. Every line has a
 // piece of text; the last line has done=true and all the timing counters.
 // Durations are in nanoseconds.
-type generateChunk struct {
-	Response           string `json:"response"`
+//
+// /api/generate puts the text in "response" and /api/chat puts it in
+// "message.content". Only one of the two is ever filled in, so one struct can
+// decode both and the streaming loop below is shared.
+type streamChunk struct {
+	Response string `json:"response"`
+	Message  struct {
+		Content string `json:"content"`
+	} `json:"message"`
 	Done               bool   `json:"done"`
 	DoneReason         string `json:"done_reason"`
 	Error              string `json:"error"`
@@ -129,15 +136,22 @@ func rate(tokens int, d time.Duration) float64 {
 // the only way to measure time to first token.
 func (c *Client) Generate(ctx context.Context, req GenerateRequest, onToken func(string)) (Result, error) {
 	req.Stream = true
+	return c.stream(ctx, "/api/generate", req, req.Model, onToken)
+}
+
+// stream POSTs body to path and reads the NDJSON reply until the final
+// "done" line. Generate and Chat both use it, so the timing logic and the
+// error handling exist exactly once.
+func (c *Client) stream(ctx context.Context, path string, body any, model string, onToken func(string)) (Result, error) {
 	start := time.Now()
 
-	resp, err := c.do(ctx, http.MethodPost, "/api/generate", req)
+	resp, err := c.do(ctx, http.MethodPost, path, body)
 	if err != nil {
 		return Result{}, err
 	}
 	defer resp.Body.Close()
 
-	res := Result{Model: req.Model}
+	res := Result{Model: model}
 	var text strings.Builder
 	sawFirst := false
 
@@ -146,7 +160,7 @@ func (c *Client) Generate(ctx context.Context, req GenerateRequest, onToken func
 	// for NDJSON.
 	dec := json.NewDecoder(resp.Body)
 	for {
-		var ch generateChunk
+		var ch streamChunk
 		if err := dec.Decode(&ch); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return Result{}, ctxErr
@@ -159,14 +173,14 @@ func (c *Client) Generate(ctx context.Context, req GenerateRequest, onToken func
 		if ch.Error != "" {
 			return Result{}, &APIError{Status: resp.StatusCode, Message: ch.Error}
 		}
-		if ch.Response != "" {
+		if piece := ch.Response + ch.Message.Content; piece != "" {
 			if !sawFirst {
 				sawFirst = true
 				res.TimeToFirstToken = time.Since(start)
 			}
-			text.WriteString(ch.Response)
+			text.WriteString(piece)
 			if onToken != nil {
-				onToken(ch.Response)
+				onToken(piece)
 			}
 		}
 		if ch.Done {
