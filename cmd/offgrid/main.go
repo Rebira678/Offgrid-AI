@@ -1,9 +1,10 @@
 // Command offgrid is the Offgrid command-line tool.
 //
-// Day 1 commands:
+// Commands:
 //
 //	offgrid models   list the models installed in Ollama
 //	offgrid bench    measure tokens/sec on this machine
+//	offgrid ask      ask a local model a question, streaming the answer
 package main
 
 import (
@@ -24,7 +25,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.1.0-day1"
+const version = "0.2.0-day2"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -34,6 +35,12 @@ func main() {
 // directly. os.Exit lives only in main(): calling it deeper would skip
 // deferred cleanup and make the code impossible to test.
 func run(args []string, stdout, stderr io.Writer) int {
+	return runIn(args, os.Stdin, stdout, stderr)
+}
+
+// runIn is run with standard input passed in as well, for the commands that
+// can read a prompt from a pipe (offgrid ask). Tests give it a strings.Reader.
+func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return 2
@@ -43,6 +50,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return cmdModels(args[1:], stdout, stderr)
 	case "bench":
 		return cmdBench(args[1:], stdout, stderr)
+	case "ask":
+		return cmdAsk(args[1:], stdin, stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -62,9 +71,13 @@ func usage(w io.Writer) {
 Usage:
   offgrid models [-host URL]
   offgrid bench  [-host URL] [-models a,b] [-runs N] [-quick] [-md FILE] [-json FILE]
+  offgrid ask    [-model NAME] [-system TEXT] [-stats] PROMPT...
   offgrid version
 
-Run "offgrid bench -h" for the benchmark options.
+Flags go before the prompt. With no PROMPT, ask reads it from standard input:
+  echo "what is a CRDT?" | offgrid ask
+
+Run "offgrid bench -h" or "offgrid ask -h" for all options.
 `)
 }
 
