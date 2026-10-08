@@ -58,6 +58,7 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onToken func(string)) (R
 		Messages:  msgs,
 		KeepAlive: o.KeepAlive,
 		Options:   ollama.Options{NumPredict: numPredict, Temperature: req.Temperature, Seed: seed},
+		Format:    req.ResponseSchema,
 	}, onToken)
 	if err != nil {
 		return Response{}, translateError(err, req.Model)
