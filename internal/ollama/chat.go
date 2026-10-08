@@ -1,6 +1,9 @@
 package ollama
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // ChatMessage is one turn of a conversation. Role is "system", "user" or
 // "assistant".
@@ -16,6 +19,11 @@ type ChatRequest struct {
 	Stream    bool          `json:"stream"`
 	KeepAlive string        `json:"keep_alive,omitempty"`
 	Options   Options       `json:"options"`
+
+	// Format is a JSON Schema. When set, Ollama constrains generation so the
+	// reply must match it (the sampler is not allowed to pick a token that
+	// would break the schema). Left empty, the field is omitted entirely.
+	Format json.RawMessage `json:"format,omitempty"`
 }
 
 // Chat streams a reply to a conversation. It behaves exactly like Generate
