@@ -5,6 +5,8 @@
 //	offgrid models   list the models installed in Ollama
 //	offgrid bench    measure tokens/sec on this machine
 //	offgrid ask      ask a local model a question, streaming the answer
+//	offgrid parse    turn a worker message into a validated command
+//	offgrid eval     measure how reliably models produce valid commands
 package main
 
 import (
@@ -25,7 +27,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.2.0-day2"
+const version = "0.3.0-day3"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -52,6 +54,10 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdBench(args[1:], stdout, stderr)
 	case "ask":
 		return cmdAsk(args[1:], stdin, stdout, stderr)
+	case "parse":
+		return cmdParse(args[1:], stdin, stdout, stderr)
+	case "eval":
+		return cmdEval(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -72,6 +78,8 @@ Usage:
   offgrid models [-host URL]
   offgrid bench  [-host URL] [-models a,b] [-runs N] [-quick] [-md FILE] [-json FILE]
   offgrid ask    [-model NAME] [-system TEXT] [-stats] PROMPT...
+  offgrid parse  [-model NAME] [-v] MESSAGE...      turn a worker message into a validated JSON command
+  offgrid eval   [-models a,b] [-ablation] [-limit N] [-md FILE] [-json FILE]
   offgrid version
 
 Flags go before the prompt. With no PROMPT, ask reads it from standard input:

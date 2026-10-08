@@ -46,14 +46,10 @@ func cmdAsk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	prompt := strings.TrimSpace(strings.Join(fs.Args(), " "))
-	if prompt == "" && !isTerminal(stdin) {
-		b, err := io.ReadAll(io.LimitReader(stdin, 1<<20))
-		if err != nil {
-			fmt.Fprintf(stderr, "error: reading standard input: %v\n", err)
-			return 1
-		}
-		prompt = strings.TrimSpace(string(b))
+	prompt, err := readPrompt(fs.Args(), stdin)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: reading standard input: %v\n", err)
+		return 1
 	}
 	if prompt == "" {
 		fmt.Fprintln(stderr, `error: no prompt given. Try: offgrid ask "what is a CRDT?"`)
@@ -69,7 +65,7 @@ func cmdAsk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// all it takes to point the whole program at a different model server.
 	var client llm.Client = llm.NewOllama(ollama.NewClient(normalizeHost(*host)))
 
-	err := runAsk(ctx, client, askOptions{
+	err = runAsk(ctx, client, askOptions{
 		Model:       *model,
 		System:      *system,
 		Prompt:      prompt,
@@ -167,6 +163,21 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// readPrompt returns the words given on the command line, or, if there are
+// none and input is being piped in, whatever is on standard input. It returns
+// "" when there is nothing to use.
+func readPrompt(args []string, stdin io.Reader) (string, error) {
+	prompt := strings.TrimSpace(strings.Join(args, " "))
+	if prompt != "" || isTerminal(stdin) {
+		return prompt, nil
+	}
+	b, err := io.ReadAll(io.LimitReader(stdin, 1<<20))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 // isTerminal reports whether r is an interactive keyboard. When it is, we must
