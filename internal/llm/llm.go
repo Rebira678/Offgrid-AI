@@ -13,6 +13,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,6 +52,15 @@ type Request struct {
 	MaxTokens   int
 	Temperature float64
 	Seed        int
+
+	// ResponseSchema, when non-empty, is a JSON Schema the reply must match.
+	// A backend that supports it constrains generation, so the reply is
+	// well-formed JSON of that shape. It guarantees SHAPE, never TRUTH: a
+	// reply can match the schema and still be wrong, so callers must always
+	// validate the content too (see internal/structured). A backend that
+	// cannot constrain output ignores it, which is why callers must not rely
+	// on it alone.
+	ResponseSchema json.RawMessage
 }
 
 // Validate reports whether the request is well formed. Implementations call
@@ -68,6 +78,9 @@ func (r Request) Validate() error {
 	}
 	if r.Temperature < 0 {
 		return fmt.Errorf("%w: temperature must not be negative", ErrInvalidRequest)
+	}
+	if len(r.ResponseSchema) > 0 && !json.Valid(r.ResponseSchema) {
+		return fmt.Errorf("%w: response schema is not valid JSON", ErrInvalidRequest)
 	}
 	for i, m := range r.Messages {
 		switch m.Role {
