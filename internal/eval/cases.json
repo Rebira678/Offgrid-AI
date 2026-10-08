@@ -1,0 +1,37 @@
+[
+  {"id": "c01", "text": "log a leaking pump at site 4, high priority", "intent": "create_task", "site": "4", "priority": "high"},
+  {"id": "c02", "text": "new task: replace the gasket on pump P-12", "intent": "create_task"},
+  {"id": "c03", "text": "add a task to inspect the generator fuel line at site 2", "intent": "create_task", "site": "2"},
+  {"id": "c04", "text": "flooded access road near gate 3, low priority, please log it", "intent": "create_task", "priority": "low"},
+  {"id": "c05", "text": "creat taks check the fire extinguishers, medium priority", "intent": "create_task", "priority": "medium"},
+  {"id": "c06", "text": "we need to order more gloves, put it on the list", "intent": "create_task"},
+
+  {"id": "c07", "text": "mark the pump task at site 4 as done", "intent": "update_task", "status": "done"},
+  {"id": "c08", "text": "T-12 is now in progress", "intent": "update_task", "status": "in_progress"},
+  {"id": "c09", "text": "bump the generator task to high priority", "intent": "update_task", "priority": "high"},
+  {"id": "c10", "text": "I finished replacing the gasket", "intent": "update_task", "status": "done"},
+  {"id": "c11", "text": "set the priority of T-7 to low", "intent": "update_task", "priority": "low"},
+  {"id": "c12", "text": "close the flooded road ticket", "intent": "update_task", "status": "done"},
+
+  {"id": "c13", "text": "what's still open?", "intent": "list_tasks", "status": "open"},
+  {"id": "c14", "text": "show me everything for site 7", "intent": "list_tasks", "site": "7"},
+  {"id": "c15", "text": "list all the high priority tasks", "intent": "list_tasks", "priority": "high"},
+  {"id": "c16", "text": "what did I log yesterday?", "intent": "list_tasks", "when": "yesterday"},
+  {"id": "c17", "text": "which tasks got done this week", "intent": "list_tasks", "status": "done", "when": "this_week"},
+  {"id": "c18", "text": "what's still open from yesterday?", "intent": "list_tasks", "status": "open", "when": "yesterday"},
+  {"id": "c19", "text": "lst my in progres taks at site 2", "intent": "list_tasks", "status": "in_progress", "site": "2"},
+
+  {"id": "c20", "text": "add a note to T-12: the gasket is the wrong size", "intent": "add_note"},
+  {"id": "c21", "text": "note on the pump task: waiting for the supplier, back Thursday", "intent": "add_note"},
+  {"id": "c22", "text": "remember that the gate 3 key is with the foreman, add it to the road task", "intent": "add_note"},
+  {"id": "c23", "text": "write down on the generator task that it was making a strange noise", "intent": "add_note"},
+
+  {"id": "c24", "text": "summarize today", "intent": "daily_summary", "when": "today"},
+  {"id": "c25", "text": "give me the end of day report", "intent": "daily_summary", "when": "today"},
+  {"id": "c26", "text": "summary of this week please", "intent": "daily_summary", "when": "this_week"},
+  {"id": "c27", "text": "what happened yesterday?", "intent": "daily_summary", "when": "yesterday"},
+
+  {"id": "c28", "text": "what's the weather tomorrow?", "intent": "unknown"},
+  {"id": "c29", "text": "tell me a joke", "intent": "unknown"},
+  {"id": "c30", "text": "delete everything", "intent": "unknown"}
+]
