@@ -1,0 +1,31 @@
+# --- 1. Normal use: the model's proposals are accepted ---
+{"intent":"create_task","title":"Leaking pump","site":"4","priority":"high"}
+{"intent":"create_task","title":"Replace filter","site":"2"}
+{"intent":"list_tasks"}
+{"intent":"update_task","task_ref":"pump","status":"in_progress"}
+{"intent":"add_note","task_ref":"pump","note":"Seal is cracked, part ordered"}
+
+# --- 2. Sending the same message twice does not create a duplicate ---
+{"intent":"create_task","title":"leaking  PUMP","site":"4","priority":"low"}
+
+# --- 3. The code refuses to guess which task you mean ---
+{"intent":"create_task","title":"Pump inspection","site":"5"}
+{"intent":"update_task","task_ref":"pump","status":"done"}
+{"intent":"update_task","task_ref":"T1","status":"done"}
+
+# --- 4. A reference to a task that does not exist changes nothing ---
+{"intent":"update_task","task_ref":"boiler","status":"done"}
+
+# --- 5. Proposals the code refuses outright ---
+{"intent":"create_task","title":""}
+{"intent":"create_task","title":"x","priority":"urgent"}
+{"intent":"create_task","title":"x","site":"4; DROP TABLE tasks"}
+{"intent":"create_task","title":"red alert \u001b[31m"}
+{"intent":"delete_everything"}
+{"intent":"unknown"}
+{"intent":"create_task","title":"x","run":"rm -rf /"}
+not even json
+
+# --- 6. Counting, done by code ---
+{"intent":"daily_summary"}
+{"intent":"list_tasks","status":"done"}

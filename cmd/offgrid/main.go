@@ -7,6 +7,8 @@
 //	offgrid ask      ask a local model a question, streaming the answer
 //	offgrid parse    turn a worker message into a validated command
 //	offgrid eval     measure how reliably models produce valid commands
+//	offgrid exec     run commands through the tool registry, no model involved
+//	offgrid tools    list the tools a model can ask for
 package main
 
 import (
@@ -27,7 +29,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.3.0-day3"
+const version = "0.4.0-day4"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -58,6 +60,10 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdParse(args[1:], stdin, stdout, stderr)
 	case "eval":
 		return cmdEval(args[1:], stdout, stderr)
+	case "exec":
+		return cmdExec(args[1:], stdin, stdout, stderr)
+	case "tools":
+		return cmdTools(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -80,6 +86,8 @@ Usage:
   offgrid ask    [-model NAME] [-system TEXT] [-stats] PROMPT...
   offgrid parse  [-model NAME] [-v] MESSAGE...      turn a worker message into a validated JSON command
   offgrid eval   [-models a,b] [-ablation] [-limit N] [-md FILE] [-json FILE]
+  offgrid exec   [-script FILE] [-seed] [-now TIME] [-json] [-strict] [COMMAND-JSON...]   run commands, no model
+  offgrid tools                                     list the tools a model can ask for
   offgrid version
 
 Flags go before the prompt. With no PROMPT, ask reads it from standard input:
