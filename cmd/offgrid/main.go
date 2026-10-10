@@ -91,6 +91,7 @@ Usage:
   offgrid eval   [-models a,b] [-ablation] [-limit N] [-md FILE] [-json FILE]
   offgrid exec   [-script FILE] [-seed] [-now TIME] [-json] [-strict] [COMMAND-JSON...]   run commands, no model
   offgrid tools                                     list the tools a model can ask for
+  offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
   offgrid version
 
 Flags go before the prompt. With no PROMPT, ask reads it from standard input:
