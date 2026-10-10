@@ -49,6 +49,13 @@ func (c Case) matches(got intent.Command) bool {
 		same(c.Status, got.Status) && same(c.When, got.When)
 }
 
+// Correct reports whether got is what the case expects: the right intent, and
+// every argument the case lists. It is the single definition of "correct" shared
+// by the model evaluation and the tiered-agent evaluation.
+func (c Case) Correct(got intent.Command) bool {
+	return got.Intent == c.Intent && c.matches(got)
+}
+
 // LoadCases returns the built-in evaluation set.
 func LoadCases() ([]Case, error) {
 	var cases []Case
