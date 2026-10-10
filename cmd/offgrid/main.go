@@ -9,6 +9,7 @@
 //	offgrid eval     measure how reliably models produce valid commands
 //	offgrid exec     run commands through the tool registry, no model involved
 //	offgrid tools    list the tools a model can ask for
+//	offgrid agent    run messages through the tiered loop: rules first, model second
 package main
 
 import (
