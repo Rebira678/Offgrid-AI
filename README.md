@@ -6,8 +6,7 @@ A small local model makes instant decisions, a durable queue holds the hard
 thinking until a connection returns, and CRDT sync merges offline and online
 work without conflicts. Everything runs on one laptop with no GPU and costs $0.
 
-> Status: **Day 1.** Measuring what a CPU-only laptop can really do, before
-> designing anything around it. The agent, queue and sync come next.
+> Status: **Day 5.** Tiered agent loop: fast regex rules first, local LLM fallback second.
 
 ## Quickstart
 
