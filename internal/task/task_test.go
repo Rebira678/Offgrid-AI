@@ -162,6 +162,7 @@ func TestResolve(t *testing.T) {
 		want string // task ID, "" for not found, "ambiguous"
 	}{
 		{"T1", "T1"}, {"t1", "T1"}, {"#1", "T1"}, {"#T3", "T3"}, {"3", "T3"}, {" T10 ", "T10"},
+		{"T-3", "T3"}, {"t 3", "T3"}, {"T_10", "T10"}, {"T-99", ""}, {"-3", ""},
 		{"T99", ""}, {"99", ""}, {"#99", ""},
 		{"leaking pump", "T1"},
 		{"LEAKING   PUMP", "T1"},
