@@ -10,7 +10,7 @@ import (
 // The model writes a task_ref like "the pump", "T3" or "#3". Resolve is the
 // code's answer to "which task is that?", and its main rule is: never guess.
 //
-//  1. An ID ("T3", "t3", "3", "#3") must match an ID exactly. An ID-shaped
+//  1. An ID ("T3", "t3", "T-3", "3", "#3") must match an ID exactly. An ID-shaped
 //     reference never falls back to a title search.
 //  2. Otherwise titles are searched, ignoring case and extra spaces. An exact
 //     title match beats a "contains" match, and unfinished tasks are searched
@@ -71,6 +71,10 @@ func Resolve(tasks []Task, ref string) (Task, error) {
 func idShaped(ref string) (string, bool) {
 	s := strings.TrimPrefix(ref, "#")
 	s = strings.TrimPrefix(strings.TrimPrefix(s, "T"), "t")
+	if len(s) < len(strings.TrimPrefix(ref, "#")) {
+		// Written with a T, people add a separator: "T-12", "T 12", "T_12".
+		s = strings.TrimLeft(s, "-_ ")
+	}
 	if s == "" {
 		return "", false
 	}
