@@ -65,6 +65,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdExec(args[1:], stdin, stdout, stderr)
 	case "tools":
 		return cmdTools(args[1:], stdout, stderr)
+	case "agent":
+		return cmdAgent(args[1:], stdin, stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
