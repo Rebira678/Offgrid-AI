@@ -1,0 +1,18 @@
+# Messages for: ./bin/offgrid agent -seed -no-model < examples/day5-messages.txt
+# (or without -no-model to let the language model read what the rules cannot)
+
+# --- Tier 0 reads these in microseconds ---
+what's still open?
+new task: check the fuel line, site 2, high priority
+note on the pump task: seal is cracked, part ordered
+T-3 is now in progress
+summary
+
+# --- the rules refuse to guess ---
+new task: pump motor service, site 5
+close the pump ticket
+
+# --- the rules stay silent; these need the model (or fail politely without it) ---
+I finished replacing the gasket
+show tasks not done
+what's the weather tomorrow?
