@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -161,10 +162,11 @@ func TestToolsCommandListsAllFiveAndNothingElse(t *testing.T) {
 	}
 }
 
-func TestVersionAndUsageMentionDay4(t *testing.T) {
+func TestVersionHasTheExpectedShapeAndUsageListsTheDay4Commands(t *testing.T) {
 	var o, e strings.Builder
 	run([]string{"version"}, &o, &e)
-	if !strings.Contains(o.String(), "day4") {
+	// A pattern, not a number, so this test does not break every day.
+	if !regexp.MustCompile(`^offgrid \d+\.\d+\.\d+-day\d+\n$`).MatchString(o.String()) {
 		t.Errorf("version = %q", o.String())
 	}
 	o.Reset()
