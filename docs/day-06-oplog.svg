@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1090" viewBox="0 0 1600 1090">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="1090" fill="#fbfaf7"/>
+<text x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">The op log is the truth. The tasks table is a cache.</text>
+<text x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 6: every change is an immutable fact; state is recomputed from the facts.</text>
+<rect x="60" y="160" width="380" height="380" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="90" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f5fa8" font-weight="bold" text-anchor="start">1  A change arrives</text>
+<text x="90" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">worker says:</text>
+<text x="90" y="284" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">“close the pump ticket”</text>
+<text x="90" y="336" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">tools validate it (Day 4),</text>
+<text x="90" y="364" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">then the store DECIDES, once:</text>
+<text x="110" y="410" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#0f766e" font-weight="normal" text-anchor="start">id      T1</text>
+<text x="110" y="444" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#0f766e" font-weight="normal" text-anchor="start">seq     3 (node-a)</text>
+<text x="110" y="478" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#0f766e" font-weight="normal" text-anchor="start">time    09:42:07</text>
+<text x="90" y="522" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">decisions are written INTO the op</text>
+<line x1="440" y1="350" x2="520" y2="350" stroke="#1f5fa8" stroke-width="4" marker-end="url(#ah)"/>
+<text x="480" y="320" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="middle">append</text>
+<rect x="520" y="160" width="600" height="380" rx="14" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+<text x="550" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">2  ops: append-only log</text>
+<rect x="550" y="226" width="540" height="34" rx="6" fill="#e8f3f1" stroke="#e8f3f1" stroke-width="2"/>
+<text x="564" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="start">pos</text>
+<text x="624" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="start">node</text>
+<text x="726" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="start">seq</text>
+<text x="790" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="start">kind</text>
+<text x="564" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">1</text>
+<text x="624" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">node-a</text>
+<text x="726" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">1</text>
+<text x="790" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">task.created   T1</text>
+<text x="564" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">2</text>
+<text x="624" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">node-a</text>
+<text x="726" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">2</text>
+<text x="790" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">task.note_added T1</text>
+<rect x="550" y="356" width="540" height="40" rx="6" fill="#fff4e5" stroke="#f0c98a" stroke-width="2"/>
+<text x="564" y="384" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">3</text>
+<text x="624" y="384" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">node-a</text>
+<text x="726" y="384" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">3</text>
+<text x="790" y="384" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">task.updated    T1 → done</text>
+<text x="564" y="430" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">4</text>
+<text x="624" y="430" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">node-b</text>
+<text x="726" y="430" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">1</text>
+<text x="790" y="430" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">task.created   B1</text>
+<text x="550" y="502" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#c2410c" font-weight="bold" text-anchor="start">no UPDATE · no DELETE</text>
+<text x="550" y="528" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">enforced by database triggers; (node, seq) is each op's identity</text>
+<line x1="1120" y1="350" x2="1200" y2="350" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="1160" y="320" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="middle">apply</text>
+<rect x="1200" y="160" width="340" height="380" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="1226" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f5fa8" font-weight="bold" text-anchor="start">3  tasks (a view)</text>
+<rect x="1226" y="226" width="288" height="34" rx="6" fill="#e8f0fa" stroke="#e8f0fa" stroke-width="2"/>
+<text x="1238" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f5fa8" font-weight="bold" text-anchor="start">id</text>
+<text x="1292" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f5fa8" font-weight="bold" text-anchor="start">status</text>
+<text x="1384" y="250" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f5fa8" font-weight="bold" text-anchor="start">title</text>
+<text x="1238" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">T1</text>
+<text x="1292" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">done</text>
+<text x="1384" y="292" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">Leaking pump</text>
+<text x="1238" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">B1</text>
+<text x="1292" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">open</text>
+<text x="1384" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">Replace filter</text>
+<text x="1226" y="410" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">fast to read,</text>
+<text x="1226" y="438" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">safe to throw away.</text>
+<text x="1226" y="490" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">one apply(op) function</text>
+<text x="1226" y="514" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">serves live writes AND rebuild</text>
+<path d="M 1370.0 540 C 1370.0 610, 820.0 610, 820.0 540" fill="none" stroke="#c2410c" stroke-width="3.5" stroke-dasharray="10 7" marker-end="url(#ah)"/>
+<text x="1095.0" y="658" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#c2410c" font-weight="bold" text-anchor="middle">DROP TABLE tasks  →  replay the log  →  identical state hash</text>
+<rect x="60" y="720" width="1480" height="320" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="90" y="766" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Why sync needs it: two replicas compare logs, not states</text>
+<text x="90" y="826" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">Replica A has</text>
+<rect x="280" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="323" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·1</text>
+<rect x="376" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="419" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·2</text>
+<rect x="472" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="515" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·3</text>
+<rect x="568" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="611" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·4</text>
+<rect x="664" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="707" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·5</text>
+<rect x="760" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="803" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·1</text>
+<rect x="856" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="899" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·2</text>
+<rect x="952" y="804" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="995" y="829" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·3</text>
+<text x="90" y="880" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">Replica B has</text>
+<rect x="280" y="858" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="323" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·1</text>
+<rect x="376" y="858" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="419" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">a·2</text>
+<rect x="472" y="858" width="86" height="36" rx="8" fill="#fff4e5" stroke="#c2410c" stroke-width="2.5"/>
+<text x="515" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#c2410c" font-weight="bold" text-anchor="middle">a·3</text>
+<rect x="568" y="858" width="86" height="36" rx="8" fill="#fff4e5" stroke="#c2410c" stroke-width="2.5"/>
+<text x="611" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#c2410c" font-weight="bold" text-anchor="middle">a·4</text>
+<rect x="664" y="858" width="86" height="36" rx="8" fill="#fff4e5" stroke="#c2410c" stroke-width="2.5"/>
+<text x="707" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#c2410c" font-weight="bold" text-anchor="middle">a·5</text>
+<rect x="760" y="858" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="803" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·1</text>
+<rect x="856" y="858" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="899" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·2</text>
+<rect x="952" y="858" width="86" height="36" rx="8" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text x="995" y="883" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="middle">b·3</text>
+<text x="1130" y="828" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">B reports: “a up to 2,</text>
+<text x="1130" y="854" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">b up to 3”. A sends only</text>
+<text x="1130" y="880" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#c2410c" font-weight="bold" text-anchor="start">the three missing ops.</text>
+<text x="90" y="956" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">State sync sends whole tables and cannot tell “I edited it” from “you deleted it”.</text>
+<text x="90" y="988" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Op sync sends what is missing, and applying an op twice is detectable by its (node, seq).</text>
+<text x="90" y="1020" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">That is the foundation for the hybrid clock (Day 15), merge rules (16–18) and the sync protocol (19).</text>
+</svg>
