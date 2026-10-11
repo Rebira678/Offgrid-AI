@@ -10,6 +10,7 @@
 //	offgrid exec     run commands through the tool registry, no model involved
 //	offgrid tools    list the tools a model can ask for
 //	offgrid agent    run messages through the tiered loop: rules first, model second
+//	offgrid store    inspect, verify and rebuild the SQLite task store
 package main
 
 import (
@@ -30,7 +31,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.5.0-day5"
+const version = "0.6.0-day6"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -67,6 +68,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdTools(args[1:], stdout, stderr)
 	case "agent":
 		return cmdAgent(args[1:], stdin, stdout, stderr)
+	case "store":
+		return cmdStore(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -92,6 +95,8 @@ Usage:
   offgrid exec   [-script FILE] [-seed] [-now TIME] [-json] [-strict] [COMMAND-JSON...]   run commands, no model
   offgrid tools                                     list the tools a model can ask for
   offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
+  offgrid store  -db FILE info|verify|rebuild|ops   inspect the SQLite task store
+  (exec and agent take -db FILE, or $OFFGRID_DB, to keep tasks between runs)
   offgrid version
 
 Flags go before the prompt. With no PROMPT, ask reads it from standard input:
