@@ -6,7 +6,7 @@ A small local model makes instant decisions, a durable queue holds the hard
 thinking until a connection returns, and CRDT sync merges offline and online
 work without conflicts. Everything runs on one laptop with no GPU and costs $0.
 
-> Status: **Day 5.** Tiered agent loop: fast regex rules first, local LLM fallback second.
+> Status: **Day 6.** Event-sourced SQLite storage: immutable append-only op log, disposable materialized view, zero-drift verification, and rebuild.
 
 ## Quickstart
 
@@ -18,7 +18,13 @@ scripts/pull-models.sh
 # 2. Build and test
 make build && make test
 
-# 3. Measure your machine
+# 3. Persistent event-sourced storage
+./bin/offgrid exec -db offgrid.db -seed "what's still open?"
+./bin/offgrid store -db offgrid.db info
+./bin/offgrid store -db offgrid.db verify
+./bin/offgrid store -db offgrid.db rebuild
+
+# 4. Measure your machine
 ./bin/offgrid models                   # what is installed
 ./bin/offgrid bench                    # tokens/sec for each model
 ./bin/offgrid ask "what is a CRDT?"    # ask a local model; works with WiFi off
@@ -42,11 +48,16 @@ Replace this section with the table from `docs/benchmarks.md` after you run
 ## Layout
 
 ```
-cmd/offgrid/        the CLI (models, bench)
-internal/ollama/    small HTTP client for Ollama: streaming, typed errors
-internal/bench/     benchmark method and report writers
-internal/sysinfo/   reads CPU and RAM so every result names its hardware
-docs/day-01.md      the concepts behind today's code, explained
+cmd/offgrid/              the CLI (models, bench, ask, exec, tools, agent, store)
+internal/agent/           tiered agent loop (Tier 0 regex rules, Tier 1 LLM fallback)
+internal/store/sqlstore/  event-sourced SQLite storage (append-only log, rebuilt views)
+internal/tools/           closed tool registry & parameter parsing
+internal/task/            task domain models and storage interfaces
+internal/intent/          intent classification schema and validation
+internal/structured/      constrained JSON decoding & bounded retry loops
+internal/llm/             LLM client interfaces and anti-corruption adapters
+internal/ollama/          streaming HTTP client for local Ollama
+docs/day-06.md            event-sourced storage architecture & operational requirements
 ```
 
 ## Roadmap
