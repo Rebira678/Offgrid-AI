@@ -31,7 +31,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.6.0-day6"
+const version = "0.7.0-day7"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
