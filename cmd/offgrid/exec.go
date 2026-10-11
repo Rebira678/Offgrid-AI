@@ -22,14 +22,16 @@ import (
 // cmdExec runs commands through the tool registry with NO model involved.
 //
 // It is the Day 4 proof that the rules stand on their own: you write the JSON a
-// model would have proposed, and the code accepts or refuses it. Each run uses
-// a fresh in-memory store (the SQLite store arrives on Day 6), so a script is
-// the unit of work: every line sees the effects of the lines before it.
+// model would have proposed, and the code accepts or refuses it. Without -db each
+// run uses a fresh in-memory store, so a script is the unit of work: every line
+// sees the effects of the lines before it. With -db (Day 6) the tasks are kept in
+// a SQLite file and later runs see them.
 func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	script := fs.String("script", "", `file of commands, one JSON object per line; "-" reads standard input. Blank lines and lines starting with # are skipped`)
-	seed := fs.Bool("seed", false, "start with three tasks created yesterday, so \"yesterday\" and \"still open\" have something to find")
+	seed := fs.Bool("seed", false, "start with three tasks created yesterday, so \"yesterday\" and \"still open\" have something to find (with -db: only adds the ones not already there)")
+	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
 	nowFlag := fs.String("now", "", `pretend it is this moment, e.g. 2026-10-08T09:00 (default: the real time); makes demos repeatable`)
 	asJSON := fs.Bool("json", false, "print each result as a JSON line instead of text")
 	strict := fs.Bool("strict", false, "exit with status 1 if any command was refused (for scripts and CI)")
@@ -38,13 +40,14 @@ func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	now := time.Now()
+	var fixed *time.Time
 	if *nowFlag != "" {
 		t, err := parseNow(*nowFlag)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: -now: %v\n", err)
 			return 2
 		}
-		now = t
+		now, fixed = t, &t
 	}
 
 	// Gather the command lines: the script first, then any given as arguments.
@@ -76,19 +79,24 @@ func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	// A clock we control, so seeding "yesterday" is exact.
-	current := now
-	store := task.NewMemStore(func() time.Time { return current })
-	reg := tools.NewRegistry(store, func() time.Time { return current })
 	ctx := context.Background()
+	clk := newSessionClock(fixed)
+	store, closeStore, err := openTaskStore(ctx, *dbPath, clk)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	defer closeStore()
+	reg := tools.NewRegistry(store, clk.Now)
 
 	if *seed {
-		current = now.AddDate(0, 0, -1)
-		if err := seedTasks(ctx, reg); err != nil {
+		clk.override = now.AddDate(0, 0, -1)
+		err := seedTasks(ctx, reg)
+		clk.override = time.Time{}
+		if err != nil {
 			fmt.Fprintf(stderr, "error: seeding: %v\n", err)
 			return 1
 		}
-		current = now
 	}
 
 	ok, refused := 0, 0
