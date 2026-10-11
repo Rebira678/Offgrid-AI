@@ -167,7 +167,6 @@ internal/intent/          Intent schema definitions and validation logic
 internal/structured/      Constrained JSON extraction with bounded retry loops
 internal/llm/             LLM client interfaces and anti-corruption adapters
 internal/ollama/          Streaming HTTP client for local Ollama daemon
-docs/                     Architectural specifications and senior-level deep dives
 ```
 
 ---
@@ -180,14 +179,3 @@ The codebase adheres to rigorous reliability engineering standards:
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 
----
-
-## Roadmap
-
-Offgrid is being built following a structured 30-day systems roadmap:
-- [x] **Week 1 (Days 1–7): Foundations & Event Sourcing** (Local SLM benchmarks, closed tool registry, tiered agent loop, persistent event-sourced SQLite log).
-- [ ] **Week 2 (Days 8–14): Connectivity & Durable Queuing** (Hysteresis network monitor, crash-resilient SQLite job queue, drain workers).
-- [ ] **Week 3 (Days 15–21): CRDT Multi-Replica Sync** (Hybrid logical clocks, LWW-Map, OR-Set, delta-based peer synchronization).
-- [ ] **Week 4 (Days 22–30): Deliberate Tiers & Verification** (Tier 2 8B reasoning, deterministic multi-replica simulation testing, web dashboard).
-
-Full technical roadmap available in [`offgrid-30-day-roadmap.md`](offgrid-30-day-roadmap.md).

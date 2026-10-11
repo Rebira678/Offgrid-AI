@@ -3,3 +3,4 @@ bin/
 *.out
 docs/
 ollama-local/
+*roadmap*.md
