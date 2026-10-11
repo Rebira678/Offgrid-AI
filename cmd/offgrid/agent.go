@@ -18,7 +18,6 @@ import (
 	"offgrid/internal/llm"
 	"offgrid/internal/ollama"
 	"offgrid/internal/structured"
-	"offgrid/internal/task"
 	"offgrid/internal/tools"
 )
 
@@ -26,8 +25,9 @@ import (
 // only for what the rules cannot read. Each message is printed with the tier
 // that handled it and how long it took.
 //
-// Tasks live in memory for the length of one run (SQLite arrives on Day 6), so
-// a run is a session: later messages see the effects of earlier ones.
+// Without -db, tasks live in memory for the length of one run, so a run is a
+// session: later messages see the effects of earlier ones. With -db they are
+// kept in a SQLite file and survive between runs.
 func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -37,6 +37,7 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	attempts := fs.Int("attempts", structured.DefaultMaxAttempts, "most times the model may try per message")
 	timeout := fs.Duration("timeout", 2*time.Minute, "give up on one message after this long")
 	seed := fs.Bool("seed", false, "start with three tasks created yesterday")
+	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
 	nowFlag := fs.String("now", "", "pretend it is this moment, e.g. 2026-10-08T09:00 (default: the real time)")
 	logPath := fs.String("log", "", "append one JSON line per message (tier, latency, outcome) to this file")
 	runEval := fs.Bool("eval", false, "run the 30 labelled evaluation messages through the loop (implies -seed)")
@@ -49,29 +50,35 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	now := time.Now()
+	var fixed *time.Time
 	if *nowFlag != "" {
 		t, err := parseNow(*nowFlag)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: -now: %v\n", err)
 			return 2
 		}
-		now = t
+		now, fixed = t, &t
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Domain clock under our control, so seeding "yesterday" is exact.
-	current := now
-	store := task.NewMemStore(func() time.Time { return current })
-	reg := tools.NewRegistry(store, func() time.Time { return current })
+	clk := newSessionClock(fixed)
+	store, closeStore, err := openTaskStore(ctx, *dbPath, clk)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	defer closeStore()
+	reg := tools.NewRegistry(store, clk.Now)
 	if *seed || *runEval {
-		current = now.AddDate(0, 0, -1)
-		if err := seedTasks(ctx, reg); err != nil {
+		clk.override = now.AddDate(0, 0, -1)
+		err := seedTasks(ctx, reg)
+		clk.override = time.Time{}
+		if err != nil {
 			fmt.Fprintf(stderr, "error: seeding: %v\n", err)
 			return 1
 		}
-		current = now
 	}
 
 	a := &agent.Agent{Rules: agent.DefaultRules(), Registry: reg}
