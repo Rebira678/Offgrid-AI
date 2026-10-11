@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt models bench
+.PHONY: build test test-race vet fmt check models bench bench-store demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -22,3 +22,16 @@ models: build
 # Full benchmark: writes docs/benchmarks.md and docs/benchmarks.json
 bench: build
 	./bin/offgrid bench -md docs/benchmarks.md -json docs/benchmarks.json
+
+# Everything a contributor should run before pushing.
+check: vet
+	@test -z "$$(gofmt -l .)" || (echo "gofmt needed on:"; gofmt -l .; exit 1)
+	go test ./...
+
+# Append and rebuild speed of the SQLite store on this machine.
+bench-store:
+	go test -run '^$$' -bench 'Append|Rebuild/(1000|10000)' -benchtime 1x ./internal/store/sqlstore
+
+# The no-network, no-model demo (pass PAUSE=2 for screen recording).
+demo: build
+	scripts/demo-offline.sh $(PAUSE)
