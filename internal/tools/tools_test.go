@@ -384,6 +384,89 @@ func TestArgumentErrorListsEveryProblem(t *testing.T) {
 	}
 }
 
+// TestNearMissesAreRejectedNotGuessed answers Max Petrusenko's follow-up:
+// "How do you handle near misses, like a number the model writes as a word?"
+//
+// The parse layer has two behaviors:
+//
+//  1. REJECT: Values that are clearly wrong (word-numbers, digits, abbreviations)
+//     are refused with a clear ArgumentError before the store is touched.
+//
+//  2. NORMALIZE: A narrow set of near-misses are intentionally accepted by
+//     enumKey() in Normalize() — specifically hyphens and spaces are converted
+//     to underscores ("in-progress" → "in_progress"). This is deliberate: it
+//     recovers the one canonical form from a predictable model formatting quirk,
+//     without ever guessing at meaning.
+//
+// This two-tier approach answers Max's question: we do not coerce "one" to "low"
+// (that would hide model drift), but we do accept "in-progress" as "in_progress"
+// (that is format normalization, not semantic guessing).
+func TestNearMissesAreRejectedNotGuessed(t *testing.T) {
+	// These are refused: the parse layer cannot infer meaning from them.
+	rejected := map[string]intent.Command{
+		// Priority written as an English word-number
+		"priority as word 'one'":   create("Fix valve", "", "one"),
+		"priority as word 'two'":   create("Fix valve", "", "two"),
+		"priority as word 'three'": create("Fix valve", "", "three"),
+
+		// Priority written as a digit string (model forgets it's an enum)
+		"priority as digit '1'": create("Fix valve", "", "1"),
+		"priority as digit '2'": create("Fix valve", "", "2"),
+		"priority as digit '3'": create("Fix valve", "", "3"),
+
+		// Common abbreviations the model might hallucinate
+		"priority 'hi'":  create("Fix valve", "", "hi"),
+		"priority 'med'": create("Fix valve", "", "med"),
+		"priority 'lo'":  create("Fix valve", "", "lo"),
+		"priority 'h'":   create("Fix valve", "", "h"),
+
+		// Status aliases that are semantically wrong, not just formatted wrong
+		"status 'complete'": {Intent: intent.UpdateTask, TaskRef: "a", Status: "complete"},
+		"status 'finished'": {Intent: intent.UpdateTask, TaskRef: "a", Status: "finished"},
+		"status 'pending'":  {Intent: intent.UpdateTask, TaskRef: "a", Status: "pending"},
+		"status 'wip'":      {Intent: intent.UpdateTask, TaskRef: "a", Status: "wip"},
+	}
+
+	for name, cmd := range rejected {
+		t.Run(name, func(t *testing.T) {
+			r := newRig(t)
+			_, err := r.run(cmd)
+			if err == nil {
+				t.Fatalf("near-miss command %+v was silently accepted — the parse layer guessed", cmd)
+			}
+			var argErr *tools.ArgumentError
+			if !errors.As(err, &argErr) {
+				t.Errorf("error %v is not an ArgumentError; want a clear parse rejection", err)
+			}
+			if r.store.reads != 0 || r.store.writes != 0 {
+				t.Errorf("store was touched (%d reads, %d writes) before the near-miss was rejected",
+					r.store.reads, r.store.writes)
+			}
+		})
+	}
+}
+
+// TestHyphenStatusIsNormalizedNotRejected documents the intentional behavior
+// of enumKey(): hyphens become underscores, so "in-progress" is accepted as
+// "in_progress". This is format normalization (not semantic guessing) — the
+// canonical value is unambiguous and the conversion is lossless.
+func TestHyphenStatusIsNormalizedNotRejected(t *testing.T) {
+	r := newRig(t)
+	r.mustRun(create("Fix valve", "", "high"))
+
+	// "in-progress" with a hyphen: Normalize() converts it to "in_progress".
+	// This is the correct behavior — it's not a guess, it's a known format variant.
+	res, err := r.run(intent.Command{Intent: intent.UpdateTask, TaskRef: "valve", Status: "in-progress"})
+	if err != nil {
+		t.Fatalf("'in-progress' should be normalized to 'in_progress', got error: %v", err)
+	}
+	if res.Task == nil || res.Task.Status != task.StatusInProgress {
+		t.Errorf("status = %q, want in_progress (hyphen normalized to underscore)", res.Task.Status)
+	}
+}
+
+
+
 func TestRegistryValidatesEvenWhenTheCallerClaimsToHave(t *testing.T) {
 	// A command that "looks" valid but was never passed through intent.Validate:
 	// wrong-case enum values. The registry must normalize and accept it, and a
