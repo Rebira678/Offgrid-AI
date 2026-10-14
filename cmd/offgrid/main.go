@@ -12,6 +12,7 @@
 //	offgrid agent    run messages through the tiered loop: rules first, model second
 //	offgrid store    inspect, verify and rebuild the SQLite task store
 //	offgrid net      watch connectivity: ONLINE, DEGRADED or OFFLINE
+//	offgrid queue    the durable job queue: enqueue, list, claim, done, fail, retry
 package main
 
 import (
@@ -32,7 +33,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.8.0-day8"
+const version = "0.9.0-day9"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -73,6 +74,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdStore(args[1:], stdout, stderr)
 	case "net":
 		return cmdNet(args[1:], stdout, stderr)
+	case "queue":
+		return cmdQueue(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -100,6 +103,7 @@ Usage:
   offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
   offgrid store  -db FILE info|verify|rebuild|ops   inspect the SQLite task store
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
+  offgrid queue  [-q FILE] enqueue|list|stats|claim|done|fail|retry|jitter   the durable job queue
   (exec and agent take -db FILE, or $OFFGRID_DB, to keep tasks between runs)
   offgrid version
 
