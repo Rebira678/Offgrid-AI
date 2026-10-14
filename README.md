@@ -5,11 +5,11 @@
 Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.8.0--day8-success)](https://github.com/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(246%2B%20cases)-brightgreen)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.9.0--day9-success)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(280%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 8.** A field worker can log, update and review tasks entirely offline, the data survives restarts, and the program now knows whether it is ONLINE, DEGRADED or OFFLINE. The durable job queue and sync come next.
+> Status: **Day 9.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue with backoff, jitter, leases and dead-letter. The router (Day 10) and sync come next.
 
 ---
 
@@ -25,6 +25,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **6** | Event-sourced SQLite log & zero-drift view rebuilds | `offgrid store -db FILE verify` |
 | **7** | Automated offline demo & developer test harness | `make demo` / `make check` |
 | **8** | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
+| **9** | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
 
 ---
 
@@ -176,9 +177,10 @@ make bench-store
 ## Repository Layout
 
 ```
-cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net)
+cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue)
 internal/agent/           Tiered orchestrator (Tier 0 rules -> Tier 1 local model fallback)
 internal/connectivity/    Connectivity state machine, probers, and monitor goroutine
+internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
