@@ -33,7 +33,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.9.0-day9"
+const version = "0.10.0-day10"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -101,6 +101,7 @@ Usage:
   offgrid exec   [-script FILE] [-seed] [-now TIME] [-json] [-strict] [COMMAND-JSON...]   run commands, no model
   offgrid tools                                     list the tools a model can ask for
   offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
+  offgrid agent  -route [-queue FILE] [-net auto|online|offline] ...      hard messages wait in the durable queue
   offgrid store  -db FILE info|verify|rebuild|ops   inspect the SQLite task store
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
   offgrid queue  [-q FILE] enqueue|list|stats|claim|done|fail|retry|jitter   the durable job queue
