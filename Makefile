@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -35,3 +35,8 @@ bench-store:
 # The no-network, no-model demo (pass PAUSE=2 for screen recording).
 demo: build
 	scripts/demo-offline.sh $(PAUSE)
+
+# Checkpoint 1 demo: WiFi off, the agent keeps working, the queue fills.
+demo-checkpoint1: build
+	scripts/checkpoint1-demo.sh $(PAUSE)
+
