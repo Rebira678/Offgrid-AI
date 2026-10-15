@@ -237,21 +237,30 @@ func (q *Queue) Enqueue(ctx context.Context, key, kind string, payload json.RawM
 		if runAt.IsZero() {
 			runAt = now
 		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO jobs (key, kind, payload, status, max_attempts, run_at, created_at, updated_at)
-			VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)
-			ON CONFLICT(key) DO NOTHING`, key, kind, string(payload), max, nanos(runAt), nanos(now), nanos(now))
-		if err != nil {
+		// Look first, insert only if the key is new. (INSERT ... ON CONFLICT DO
+		// NOTHING would also be correct, but SQLite still burns an id number
+		// on the attempt, leaving visible gaps: job #2, then #4.) The write
+		// lock is already held, so nobody can add the key in between.
+		existing, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobCols+` FROM jobs WHERE key = ?`, key))
+		switch {
+		case err == nil:
+			if existing.Kind != kind || !sameJSON(existing.Payload, payload) {
+				return ErrKeyConflict
+			}
+			job, created = existing, false
+			return nil
+		case !errors.Is(err, sql.ErrNoRows):
 			return err
 		}
-		n, _ := res.RowsAffected()
-		created = n == 1
+		if _, err := tx.ExecContext(ctx, `INSERT INTO jobs (key, kind, payload, status, max_attempts, run_at, created_at, updated_at)
+			VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)`, key, kind, string(payload), max, nanos(runAt), nanos(now), nanos(now)); err != nil {
+			return err
+		}
 		job, err = scanJob(tx.QueryRowContext(ctx, `SELECT `+jobCols+` FROM jobs WHERE key = ?`, key))
 		if err != nil {
 			return err
 		}
-		if !created && (job.Kind != kind || !sameJSON(job.Payload, payload)) {
-			return ErrKeyConflict
-		}
+		created = true
 		return nil
 	})
 	if err != nil {
