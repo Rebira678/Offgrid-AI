@@ -465,8 +465,6 @@ func TestHyphenStatusIsNormalizedNotRejected(t *testing.T) {
 	}
 }
 
-
-
 func TestRegistryValidatesEvenWhenTheCallerClaimsToHave(t *testing.T) {
 	// A command that "looks" valid but was never passed through intent.Validate:
 	// wrong-case enum values. The registry must normalize and accept it, and a
