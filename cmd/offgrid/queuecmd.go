@@ -189,13 +189,17 @@ func queueRun(ctx context.Context, q *jobqueue.Queue, sub string, args []string,
 			return 0, nil
 		}
 		tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "ID\tSTATUS\tTRIES\tKIND\tKEY\tRUN AT\tLAST ERROR")
+		fmt.Fprintln(tw, "ID\tSTATUS\tTRIES\tKIND\tPAYLOAD\tRUN AT\tLAST ERROR")
 		for _, j := range jobs {
 			msg := j.LastError
 			if len(msg) > 40 {
 				msg = msg[:37] + "..."
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%d/%d\t%s\t%s\t%s\t%s\n", j.ID, j.Status, j.Attempts, j.MaxAttempts, j.Kind, j.Key, j.RunAt.Local().Format("15:04:05"), msg)
+			payload := string(j.Payload)
+			if len(payload) > 80 {
+				payload = payload[:77] + "..."
+			}
+			fmt.Fprintf(tw, "%d\t%s\t%d/%d\t%s\t%s\t%s\t%s\n", j.ID, j.Status, j.Attempts, j.MaxAttempts, j.Kind, payload, j.RunAt.Local().Format("15:04:05"), msg)
 		}
 		tw.Flush()
 	case "stats":
