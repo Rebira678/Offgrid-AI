@@ -711,3 +711,22 @@ func TestCancelledContext(t *testing.T) {
 }
 
 var _ = sql.ErrNoRows
+
+// Repeats must not burn job numbers: a person reading "job #2, job #4" would
+// think a job vanished.
+func TestRepeatedEnqueueLeavesNoGapsInIDs(t *testing.T) {
+	q, _, _ := newQueue(t, nil)
+	a := enqueue(t, q, "a")
+	for i := 0; i < 5; i++ {
+		if _, created, err := q.Enqueue(ctx, "a", "summarize", json.RawMessage(`{"week":41}`), EnqueueOptions{}); err != nil || created {
+			t.Fatalf("repeat %d: created=%v err=%v", i, created, err)
+		}
+	}
+	if _, _, err := q.Enqueue(ctx, "a", "summarize", json.RawMessage(`{"week":99}`), EnqueueOptions{}); !errors.Is(err, ErrKeyConflict) {
+		t.Fatalf("conflict: %v", err)
+	}
+	b := enqueue(t, q, "b")
+	if b.ID != a.ID+1 {
+		t.Errorf("ids %d then %d: repeats and conflicts must not consume ids", a.ID, b.ID)
+	}
+}
