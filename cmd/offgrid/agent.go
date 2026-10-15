@@ -17,6 +17,7 @@ import (
 	"offgrid/internal/intent"
 	"offgrid/internal/llm"
 	"offgrid/internal/ollama"
+	"offgrid/internal/router"
 	"offgrid/internal/structured"
 	"offgrid/internal/tools"
 )
@@ -42,12 +43,21 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	logPath := fs.String("log", "", "append one JSON line per message (tier, latency, outcome) to this file")
 	runEval := fs.Bool("eval", false, "run the 30 labelled evaluation messages through the loop (implies -seed)")
 	limit := fs.Int("limit", 0, "with -eval: run only the first N cases")
+	route := fs.Bool("route", false, "decide per message: answer now, or save hard ones in the durable queue (needs a queue file)")
+	queueFlag := fs.String("queue", "", "with -route: the queue file (default: $OFFGRID_QUEUE, or queue.db next to $OFFGRID_DB)")
+	netMode := fs.String("net", "auto", "with -route: connectivity: auto (probe the network), online or offline (force it)")
+	probeURLs := fs.String("url", defaultProbeURLs, "with -route -net auto: comma-separated probe URLs that answer 204")
+	routeEval := fs.Bool("route-eval", false, "measure the complexity gate on labelled messages (no model, queue or network needed) and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if *attempts < 1 {
 		fmt.Fprintln(stderr, "error: -attempts must be at least 1")
 		return 2
+	}
+	if *routeEval {
+		router.WriteGateReport(stdout)
+		return 0
 	}
 	now := time.Now()
 	var fixed *time.Time
@@ -138,6 +148,19 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	var rt *router.Router
+	if *route {
+		var closeRoute func()
+		var netLabel string
+		rt, closeRoute, netLabel, err = openRouting(ctx, a, *queueFlag, *netMode, *probeURLs, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 2
+		}
+		defer closeRoute()
+		fmt.Fprintf(stdout, "routing on. connectivity: %s\n\n", netLabel)
+	}
+
 	// Messages: the arguments, or one per line from standard input.
 	var messages []string
 	if rest := strings.TrimSpace(strings.Join(fs.Args(), " ")); rest != "" {
@@ -161,9 +184,25 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	var outs []agent.Outcome
+	routes := map[router.Route]int{}
 	for _, m := range messages {
 		if ctx.Err() != nil {
 			break
+		}
+		if rt != nil {
+			res := rt.Handle(ctx, m)
+			routes[res.Route]++
+			if res.Outcome.Text != "" {
+				record(res.Outcome)
+			}
+			// The tier table counts only what the local agent really
+			// answered; a message it could not read and the queue took over
+			// is not a "failed" answer.
+			if res.Route == router.RouteLocal {
+				outs = append(outs, res.Outcome)
+			}
+			printRouted(stdout, res)
+			continue
 		}
 		o := handle(m)
 		outs = append(outs, o)
@@ -172,6 +211,14 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(outs) > 1 {
 		fmt.Fprintln(stdout)
 		agent.WriteStats(stdout, outs)
+	}
+	if rt != nil && len(messages) > 1 {
+		fmt.Fprintf(stdout, "\nROUTES  answered now: %d   deferred to the queue: %d   queue questions: %d\n",
+			routes[router.RouteLocal]+routes[router.RouteCloud], routes[router.RouteDeferred], routes[router.RouteStatus])
+		if n := routes[router.RouteFailed]; n > 0 {
+			fmt.Fprintf(stdout, "        could not be saved: %d\n", n)
+		}
+		fmt.Fprintln(stdout, rt.Handle(ctx, "queue").Message)
 	}
 	if ctx.Err() != nil {
 		return 130
@@ -204,5 +251,22 @@ func printOutcome(w io.Writer, o agent.Outcome) {
 	fmt.Fprintf(w, "  [%s, %s] %s: %s\n", label, agent.FormatDuration(o.Total), o.Status, strings.ReplaceAll(o.Message(), "\n", "\n  "))
 	if o.Fallback != "" {
 		fmt.Fprintf(w, "  (note: %s)\n", o.Fallback)
+	}
+}
+
+// printRouted shows one routed message: where it went, how long the decision
+// took, and the status a person needs to read.
+func printRouted(w io.Writer, r router.Result) {
+	switch r.Route {
+	case router.RouteLocal:
+		printOutcome(w, r.Outcome) // the same line as without routing: tier, latency, outcome
+	case router.RouteDeferred:
+		fmt.Fprintf(w, "> %s\n  [deferred to queue, %s] %s\n", r.Text, agent.FormatDuration(r.Total), r.Message)
+	case router.RouteCloud:
+		fmt.Fprintf(w, "> %s\n  [cloud model, %s] %s\n", r.Text, agent.FormatDuration(r.Total), r.Message)
+	case router.RouteStatus:
+		fmt.Fprintf(w, "> %s\n  [queue status, %s] %s\n", r.Text, agent.FormatDuration(r.Total), strings.ReplaceAll(r.Message, "\n", "\n  "))
+	default:
+		fmt.Fprintf(w, "> %s\n  [%s, %s] %s\n", r.Text, r.Route, agent.FormatDuration(r.Total), r.Message)
 	}
 }
