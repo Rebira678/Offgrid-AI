@@ -5,11 +5,11 @@
 Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.9.0--day9-success)](https://github.com/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(280%2B%20cases)-brightgreen)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.10.0--day10-success)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(366%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 9.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue with backoff, jitter, leases and dead-letter. The router (Day 10) and sync come next.
+> Status: **Day 10 (Checkpoint 1).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. Draining the queue (Day 12) and sync come next.
 
 ---
 
@@ -26,6 +26,8 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **7** | Automated offline demo & developer test harness | `make demo` / `make check` |
 | **8** | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
 | **9** | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
+| **10** | Router: answer now or defer to durable queue with visible status (Checkpoint 1) | `offgrid agent -route -net offline` |
+
 
 ---
 
@@ -135,6 +137,11 @@ The offline demo runs end-to-end: it creates tasks with Tier 0 rules, restarts i
 # 7. The "Kill-the-View" Test: Drop tables and rebuild from the immutable log
 sqlite3 offgrid.db 'DROP TABLE tasks; DROP TABLE task_notes;'
 ./bin/offgrid store -db offgrid.db rebuild
+
+# 8. Checkpoint 1: Routing with complexity gate & durable queue deferral
+./bin/offgrid agent -route -net offline "summarize this week's incidents and suggest priorities"
+./bin/offgrid agent -route -net offline "queue"
+./bin/offgrid agent -route-eval
 ```
 
 ---
@@ -181,6 +188,7 @@ cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store
 internal/agent/           Tiered orchestrator (Tier 0 rules -> Tier 1 local model fallback)
 internal/connectivity/    Connectivity state machine, probers, and monitor goroutine
 internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter
+internal/router/          Answer now or defer: complexity gate, output validity, connectivity
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -188,7 +196,7 @@ internal/intent/          Intent schema definitions and validation logic
 internal/structured/      Constrained JSON extraction with bounded retry loops
 internal/llm/             LLM client interfaces and anti-corruption adapters
 internal/ollama/          Streaming HTTP client for local Ollama daemon
-scripts/                  Automated test and offline demonstration runners (demo-offline.sh)
+scripts/                  Automated test and offline demonstration runners (demo-offline.sh, checkpoint1-demo.sh)
 ```
 
 ---
@@ -196,10 +204,11 @@ scripts/                  Automated test and offline demonstration runners (demo
 ## Developer Targets
 
 ```bash
-make check        # Runs go vet, gofmt verification, and full test suite
-make test-race    # Executes test suite under Go race detector
-make bench-store  # Executes storage append & view rebuild benchmarks
-make demo         # Runs end-to-end offline demo (pass PAUSE=2 for recordings)
+make check            # Runs go vet, gofmt verification, and full test suite
+make test-race        # Executes test suite under Go race detector
+make bench-store      # Executes storage append & view rebuild benchmarks
+make demo             # Runs end-to-end offline demo (pass PAUSE=2 for recordings)
+make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, queue fills
 ```
 
 ---
