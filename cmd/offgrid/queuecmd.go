@@ -29,6 +29,7 @@ const queueHelp = `usage: offgrid queue [-q FILE] SUBCOMMAND
   done    ID ATTEMPT                                  report success
   fail    [-error MSG] [-permanent] ID ATTEMPT        report failure: retry later, or dead-letter
   retry   ID                                          put a dead job back in the queue
+  result  ID                                          print the answer a finished job produced
   jitter  [-clients N] [-attempt A] [-seed S]         print retry delays as CSV (no queue file needed)
 
 The queue file is -q FILE, or $OFFGRID_QUEUE, or queue.db next to $OFFGRID_DB.`
@@ -68,7 +69,7 @@ func cmdQueue(args []string, stdout, stderr io.Writer) int {
 		return queueJitter(rest, stdout, stderr)
 	}
 	switch sub {
-	case "enqueue", "list", "stats", "claim", "done", "fail", "retry":
+	case "enqueue", "list", "stats", "claim", "done", "fail", "retry", "result":
 	default:
 		fmt.Fprintf(stderr, "error: unknown queue command %q\n\n%s\n", sub, queueHelp)
 		return 2
@@ -248,6 +249,28 @@ func queueRun(ctx context.Context, q *jobqueue.Queue, sub string, args []string,
 		} else {
 			fmt.Fprintf(stdout, "job %d will retry in %s (at %s)\n", id, res.Delay.Round(time.Millisecond), res.RunAt.Local().Format("15:04:05"))
 		}
+	case "result":
+		id, _, ok := ids(1)
+		if !ok {
+			return usage("usage: offgrid queue result ID")
+		}
+		r, found, err := q.Result(ctx, id)
+		if err != nil {
+			return 0, err
+		}
+		if !found {
+			j, err := q.Get(ctx, id)
+			if err != nil {
+				return 0, err
+			}
+			fmt.Fprintf(stderr, "job %d has no result yet (it is %s", id, j.Status)
+			if j.LastError != "" {
+				fmt.Fprintf(stderr, "; last error: %s", j.LastError)
+			}
+			fmt.Fprintln(stderr, ")")
+			return 1, nil
+		}
+		fmt.Fprintln(stdout, r.Text)
 	case "retry":
 		id, _, ok := ids(1)
 		if !ok {
