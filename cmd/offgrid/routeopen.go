@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -23,7 +24,7 @@ import (
 //	-net offline   pretend there is no network (reproducible demos and tests)
 //	-net online    pretend there is
 //	-net auto      probe for real, using the same probes as `offgrid net`
-func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeURLs string, stderr io.Writer) (*router.Router, func(), string, error) {
+func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeURLs string, client *http.Client, stderr io.Writer) (*router.Router, func(), string, error) {
 	path := queuePath(queueFlag)
 	if path == "" {
 		return nil, nil, "", fmt.Errorf("-route needs a queue file: use -queue FILE, or set OFFGRID_QUEUE (or OFFGRID_DB)")
@@ -41,22 +42,39 @@ func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeU
 		return nil, nil, "", err
 	}
 
-	var state func() connectivity.State
-	var stopNet func()
-	var label string
+	state, stopNet, label, err := startConnectivity(ctx, netMode, probeURLs, client, 0)
+	if err != nil {
+		db.Close()
+		return nil, nil, "", err
+	}
+
+	rt := &router.Router{Agent: a, Queue: q, Net: state}
+	closeAll := func() {
+		stopNet()
+		db.Close()
+	}
+	return rt, closeAll, label, nil
+}
+
+// startConnectivity decides where the connectivity state comes from. It is
+// shared by `agent -route` and `drain`. The returned stop func is never nil.
+//
+//	offline   pretend there is no network (reproducible demos and tests)
+//	online    pretend there is
+//	auto      probe for real, using the same probes as `offgrid net`
+func startConnectivity(ctx context.Context, netMode, probeURLs string, client *http.Client, interval time.Duration) (state func() connectivity.State, stop func(), label string, err error) {
 	switch netMode {
 	case "offline":
-		state, label = func() connectivity.State { return connectivity.Offline }, "OFFLINE (forced with -net offline)"
+		return func() connectivity.State { return connectivity.Offline }, func() {}, "OFFLINE (forced with -net offline)", nil
 	case "online":
-		state, label = func() connectivity.State { return connectivity.Online }, "ONLINE (forced with -net online)"
+		return func() connectivity.State { return connectivity.Online }, func() {}, "ONLINE (forced with -net online)", nil
 	case "auto":
 		var probers []connectivity.Prober
 		for _, u := range splitList(probeURLs) {
-			probers = append(probers, connectivity.HTTPProber{URL: u})
+			probers = append(probers, connectivity.HTTPProber{URL: u, Client: client})
 		}
-		mon, err := connectivity.New(connectivity.Config{Prober: connectivity.Any(probers...)})
+		mon, err := connectivity.New(connectivity.Config{Prober: connectivity.Any(probers...), Interval: interval})
 		if err != nil {
-			db.Close()
 			return nil, nil, "", err
 		}
 		mctx, cancel := context.WithCancel(ctx)
@@ -66,25 +84,14 @@ func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeU
 			for range mon.Events() {
 			}
 		}()
-		stopNet = func() { cancel(); <-done }
+		stop := func() { cancel(); <-done }
 		// The first probe decides the state at once; wait briefly for it so
-		// the first message is not routed on "unknown".
+		// the first decision is not made on "unknown".
 		deadline := time.Now().Add(4 * time.Second)
 		for mon.State() == connectivity.Unknown && time.Now().Before(deadline) && ctx.Err() == nil {
 			time.Sleep(20 * time.Millisecond)
 		}
-		state, label = mon.State, "probing the network (state shown per message)"
-	default:
-		db.Close()
-		return nil, nil, "", fmt.Errorf("-net must be auto, online or offline (got %q)", netMode)
+		return mon.State, stop, "probing the network (state shown per message)", nil
 	}
-
-	rt := &router.Router{Agent: a, Queue: q, Net: state}
-	closeAll := func() {
-		if stopNet != nil {
-			stopNet()
-		}
-		db.Close()
-	}
-	return rt, closeAll, label, nil
+	return nil, nil, "", fmt.Errorf("-net must be auto, online or offline (got %q)", netMode)
 }

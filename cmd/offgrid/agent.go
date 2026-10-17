@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -47,6 +48,7 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	queueFlag := fs.String("queue", "", "with -route: the queue file (default: $OFFGRID_QUEUE, or queue.db next to $OFFGRID_DB)")
 	netMode := fs.String("net", "auto", "with -route: connectivity: auto (probe the network), online or offline (force it)")
 	probeURLs := fs.String("url", defaultProbeURLs, "with -route -net auto: comma-separated probe URLs that answer 204")
+	faults := addFaultFlags(fs)
 	routeEval := fs.Bool("route-eval", false, "measure the complexity gate on labelled messages (no model, queue or network needed) and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -148,11 +150,27 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	var faultClient *http.Client
+	if faults.active() {
+		if !*route || *netMode != "auto" {
+			fmt.Fprintln(stderr, "error: -fault-* flags break the network probes, so they need -route with -net auto (forced -net offline/online never touches the network)")
+			return 2
+		}
+		ftr, fdesc, ferr := faults.build()
+		if ferr != nil {
+			fmt.Fprintf(stderr, "error: %v\n", ferr)
+			return 2
+		}
+		faultClient = probeClient(ftr)
+		fmt.Fprintf(stdout, "FAULT INJECTION ON (simulated, not your real network): %s\n", fdesc)
+		defer printFaultStats(stdout, ftr)
+	}
+
 	var rt *router.Router
 	if *route {
 		var closeRoute func()
 		var netLabel string
-		rt, closeRoute, netLabel, err = openRouting(ctx, a, *queueFlag, *netMode, *probeURLs, stderr)
+		rt, closeRoute, netLabel, err = openRouting(ctx, a, *queueFlag, *netMode, *probeURLs, faultClient, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
