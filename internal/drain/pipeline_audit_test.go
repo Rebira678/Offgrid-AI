@@ -24,12 +24,12 @@ import (
 
 // TestFullE2EPipelineDay1ToDay12Audit executes an exhaustive lifecycle integration test
 // uniting the entire Offgrid runtime architecture across all 12 days:
-// 1. Storage & Event-Sourcing (Day 6): op-log append, projection view, verify & rebuild.
-// 2. Rules & Agent Tiering (Day 5): Tier 0 deterministic sub-millisecond execution.
-// 3. Router Complexity Gating (Day 10): Instant answer vs durable queue deferral.
-// 4. Fault Injection & Connectivity (Day 8, 11): Probers, hysteresis, and partition flipping.
-// 5. Worker Draining, Checkpointing & Crash-Recovery (Day 12): Partial execution, checkpoint save,
-//    lease expiration takeover, and exactly-once result persistence.
+//  1. Storage & Event-Sourcing (Day 6): op-log append, projection view, verify & rebuild.
+//  2. Rules & Agent Tiering (Day 5): Tier 0 deterministic sub-millisecond execution.
+//  3. Router Complexity Gating (Day 10): Instant answer vs durable queue deferral.
+//  4. Fault Injection & Connectivity (Day 8, 11): Probers, hysteresis, and partition flipping.
+//  5. Worker Draining, Checkpointing & Crash-Recovery (Day 12): Partial execution, checkpoint save,
+//     lease expiration takeover, and exactly-once result persistence.
 func TestFullE2EPipelineDay1ToDay12Audit(t *testing.T) {
 	dir := t.TempDir()
 	taskDBPath := filepath.Join(dir, "tasks.db")
