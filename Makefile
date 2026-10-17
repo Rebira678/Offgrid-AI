@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -39,4 +39,13 @@ demo: build
 # Checkpoint 1 demo: WiFi off, the agent keeps working, the queue fills.
 demo-checkpoint1: build
 	scripts/checkpoint1-demo.sh $(PAUSE)
+
+# Day 11: flip a simulated partition on a timer and watch offgrid notice (local, safe to record).
+partition-demo: build
+	scripts/partition-demo.sh $(UP) $(DOWN)
+
+# Day 12: kill -9 a running drain, restart, check nothing was lost or repeated.
+drain-demo: build
+	scripts/drain-demo.sh $(PAUSE)
+
 
