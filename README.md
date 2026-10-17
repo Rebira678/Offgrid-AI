@@ -5,15 +5,15 @@
 Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.10.0--day10-success)](https://github.com/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(366%2B%20cases)-brightgreen)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.12.0--day12-success)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(480%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 10 (Checkpoint 1).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. Draining the queue (Day 12) and sync come next.
+> Status: **Day 12.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. Sync comes next.
 
 ---
 
-## What Works Today (Week 1)
+## What Works Today
 
 | Day | Capability | Verification & CLI Command |
 |---|---|---|
@@ -27,6 +27,8 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **8** | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
 | **9** | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
 | **10** | Router: answer now or defer to durable queue with visible status (Checkpoint 1) | `offgrid agent -route -net offline` |
+| **11** | Switch to break network: injected latency, packet loss, partitions | `scripts/partition-demo.sh` |
+| **12** | Drain on reconnect, survive crash: concurrency, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
 
 
 ---
@@ -142,6 +144,17 @@ sqlite3 offgrid.db 'DROP TABLE tasks; DROP TABLE task_notes;'
 ./bin/offgrid agent -route -net offline "summarize this week's incidents and suggest priorities"
 ./bin/offgrid agent -route -net offline "queue"
 ./bin/offgrid agent -route-eval
+
+# 9. Day 11: Network Fault Injection (reproducible latency, drops, partitions)
+./bin/offgrid fault serve                  # local 204 server simulating internet
+./bin/offgrid fault set partition          # break the network via atomic control file
+./bin/offgrid fault set ok                 # heal the network
+make partition-demo                        # run automated partition & recovery test
+
+# 10. Day 12: Drain on reconnect & crash resilience (survives kill -9)
+./bin/offgrid drain -db tasks.db -once      # drains queued jobs when network allows
+./bin/offgrid queue result 1                # reads stored execution result
+make drain-demo                             # runs kill -9 mid-drain resilience test
 ```
 
 ---
@@ -184,11 +197,13 @@ make bench-store
 ## Repository Layout
 
 ```
-cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue)
+cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue, fault, drain)
 internal/agent/           Tiered orchestrator (Tier 0 rules -> Tier 1 local model fallback)
 internal/connectivity/    Connectivity state machine, probers, and monitor goroutine
-internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter
+internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter, checkpoints, results
 internal/router/          Answer now or defer: complexity gate, output validity, connectivity
+internal/netfault/        Fault-injecting RoundTripper: latency, drop %, partitions (file/schedule/flag)
+internal/drain/           Queue worker: concurrency limit, network gate, leases, release, checkpoints, handlers
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -196,7 +211,7 @@ internal/intent/          Intent schema definitions and validation logic
 internal/structured/      Constrained JSON extraction with bounded retry loops
 internal/llm/             LLM client interfaces and anti-corruption adapters
 internal/ollama/          Streaming HTTP client for local Ollama daemon
-scripts/                  Automated test and offline demonstration runners (demo-offline.sh, checkpoint1-demo.sh)
+scripts/                  Automated test and offline runners (demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh)
 ```
 
 ---
@@ -209,6 +224,8 @@ make test-race        # Executes test suite under Go race detector
 make bench-store      # Executes storage append & view rebuild benchmarks
 make demo             # Runs end-to-end offline demo (pass PAUSE=2 for recordings)
 make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, queue fills
+make partition-demo   # Runs Day 11 automated network partition & recovery test
+make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
 ```
 
 ---
@@ -220,3 +237,5 @@ The codebase adheres to rigorous reliability engineering standards:
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
+- **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
+
