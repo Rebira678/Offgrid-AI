@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -38,6 +39,7 @@ func cmdNet(args []string, stdout, stderr io.Writer) int {
 	up := fs.Int("up", 3, "consecutive good probes before coming back")
 	once := fs.Bool("once", false, "probe once and exit: 0 if the network answered, 1 if not")
 	forDur := fs.Duration("for", 0, "stop after this long (default: run until Ctrl-C)")
+	faults := addFaultFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -46,9 +48,21 @@ func cmdNet(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	ftr, fdesc, err := faults.build()
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 2
+	}
+	var client *http.Client
+	if ftr != nil {
+		client = probeClient(ftr)
+		fmt.Fprintf(stdout, "FAULT INJECTION ON (simulated, not your real network): %s\n", fdesc)
+		defer printFaultStats(stdout, ftr)
+	}
+
 	var probers []connectivity.Prober
 	for _, u := range splitList(*urls) {
-		probers = append(probers, connectivity.HTTPProber{URL: u})
+		probers = append(probers, connectivity.HTTPProber{URL: u, Client: client})
 	}
 	if *dns != "" {
 		probers = append(probers, connectivity.DNSProber{Host: *dns})
