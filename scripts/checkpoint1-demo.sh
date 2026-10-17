@@ -55,4 +55,4 @@ printf '\033[2m$ offgrid queue list\033[0m\n'; $BIN queue list
 say "5. Back to simple work: still instant"
 ask "summary"
 
-printf '\nThe three hard requests are on disk. They run when the connection is back (Day 12).\n'
+printf '\nThe three hard requests are on disk. They run when the connection is back: offgrid drain (Day 12).\n'
