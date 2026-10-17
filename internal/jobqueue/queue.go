@@ -47,6 +47,7 @@ type Job struct {
 	RunAt       time.Time // earliest time it may run (backoff pushes this forward)
 	LeaseUntil  time.Time // while running: when the claim expires
 	LastError   string
+	Progress    string // the worker's last checkpoint; survives retries and crashes
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -135,6 +136,17 @@ var migrations = []string{
 		updated_at   INTEGER NOT NULL
 	);
 	CREATE INDEX jobs_ready ON jobs (status, run_at, id);`,
+
+	// 2 (Day 12): a checkpoint per job, and the stored result of finished jobs.
+	// The result lives in its own table so that recording it and marking the
+	// job done can happen in ONE transaction (CompleteWith).
+	`ALTER TABLE jobs ADD COLUMN progress TEXT NOT NULL DEFAULT '';
+	CREATE TABLE results (
+		job_id     INTEGER PRIMARY KEY REFERENCES jobs(id),
+		attempt    INTEGER NOT NULL,   -- the claim that produced it (the fencing token)
+		text       TEXT    NOT NULL,
+		created_at INTEGER NOT NULL
+	);`,
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {
@@ -183,7 +195,7 @@ func fromNanos(n int64) time.Time {
 	return time.Unix(0, n).UTC()
 }
 
-const jobCols = `id, key, kind, payload, status, attempts, max_attempts, run_at, lease_until, last_error, created_at, updated_at`
+const jobCols = `id, key, kind, payload, status, attempts, max_attempts, run_at, lease_until, last_error, progress, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -191,7 +203,7 @@ func scanJob(s scanner) (Job, error) {
 	var j Job
 	var payload, status string
 	var runAt, lease, created, updated int64
-	if err := s.Scan(&j.ID, &j.Key, &j.Kind, &payload, &status, &j.Attempts, &j.MaxAttempts, &runAt, &lease, &j.LastError, &created, &updated); err != nil {
+	if err := s.Scan(&j.ID, &j.Key, &j.Kind, &payload, &status, &j.Attempts, &j.MaxAttempts, &runAt, &lease, &j.LastError, &j.Progress, &created, &updated); err != nil {
 		return Job{}, err
 	}
 	j.Payload = json.RawMessage(payload)
@@ -313,8 +325,36 @@ func sameJSON(a, b json.RawMessage) bool {
 // worker claimed the job, the token no longer matches and the stale worker's
 // report is rejected with ErrStaleClaim instead of overwriting the new one.
 func (q *Queue) Claim(ctx context.Context, lease time.Duration) (job Job, ok bool, err error) {
+	return q.claim(ctx, lease, nil)
+}
+
+// ClaimKinds is Claim, limited to jobs of the given kinds. A worker that is
+// offline uses it to take only the kinds that do not need the network: a job
+// it merely looked at and put back would still have been counted as an
+// attempt, so the filter has to happen inside the claim, not after it.
+// An empty list claims nothing.
+func (q *Queue) ClaimKinds(ctx context.Context, lease time.Duration, kinds []string) (Job, bool, error) {
+	if len(kinds) == 0 {
+		return Job{}, false, nil
+	}
+	return q.claim(ctx, lease, kinds)
+}
+
+// claim is Claim and ClaimKinds. nil kinds means every kind.
+func (q *Queue) claim(ctx context.Context, lease time.Duration, kinds []string) (job Job, ok bool, err error) {
 	if lease <= 0 {
 		return Job{}, false, errors.New("jobqueue: lease must be positive")
+	}
+	// kindFilter is built from "?" placeholders only; the kinds themselves are
+	// passed as arguments, never pasted into the SQL.
+	kindFilter, kindArgs := "", []any(nil)
+	if kinds != nil {
+		marks := make([]string, len(kinds))
+		for i, k := range kinds {
+			marks[i] = "?"
+			kindArgs = append(kindArgs, k)
+		}
+		kindFilter = " AND kind IN (" + strings.Join(marks, ",") + ")"
 	}
 	err = q.tx(ctx, func(tx *sql.Tx) error {
 		now := nanos(q.cfg.Now())
@@ -332,9 +372,9 @@ func (q *Queue) Claim(ctx context.Context, lease time.Duration) (job Job, ok boo
 				status='running', attempts=attempts+1, lease_until=?, updated_at=?
 			WHERE id = (
 				SELECT id FROM jobs
-				WHERE (status='queued' AND run_at <= ?) OR (status='running' AND lease_until <= ?)
+				WHERE ((status='queued' AND run_at <= ?) OR (status='running' AND lease_until <= ?))`+kindFilter+`
 				ORDER BY run_at, id LIMIT 1)
-			RETURNING `+jobCols, now+int64(lease), now, now, now)
+			RETURNING `+jobCols, append([]any{now + int64(lease), now, now, now}, kindArgs...)...)
 		j, err := scanJob(row)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -357,6 +397,90 @@ func (q *Queue) Complete(ctx context.Context, id int64, attempt int) error {
 		now := nanos(q.cfg.Now())
 		res, err := tx.ExecContext(ctx, `UPDATE jobs SET status='done', lease_until=0, updated_at=?
 			WHERE id=? AND status='running' AND attempts=?`, now, id, attempt)
+		if err != nil {
+			return err
+		}
+		return q.mustHit(ctx, tx, res, id)
+	})
+}
+
+// Result is what a finished job produced.
+type Result struct {
+	Text    string
+	Attempt int       // which claim produced it
+	At      time.Time // when it was recorded
+}
+
+// CompleteWith marks a claimed job done AND records its result, in one
+// transaction. This is what makes "no duplicates" hold even when a job runs
+// twice (a worker crashed after finishing the work but before reporting): the
+// second run's report is fenced out by the attempt number, so exactly one
+// result is ever stored. Recording the result and marking the job done
+// separately would leave a window in which a crash loses one of the two.
+func (q *Queue) CompleteWith(ctx context.Context, id int64, attempt int, text string) error {
+	if len(text) > maxPayload {
+		return fmt.Errorf("jobqueue: result is %d bytes; the limit is %d", len(text), maxPayload)
+	}
+	return q.tx(ctx, func(tx *sql.Tx) error {
+		now := nanos(q.cfg.Now())
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET status='done', lease_until=0, updated_at=?
+			WHERE id=? AND status='running' AND attempts=?`, now, id, attempt)
+		if err != nil {
+			return err
+		}
+		if err := q.mustHit(ctx, tx, res, id); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO results (job_id, attempt, text, created_at) VALUES (?,?,?,?)
+			ON CONFLICT(job_id) DO UPDATE SET attempt=excluded.attempt, text=excluded.text, created_at=excluded.created_at`,
+			id, attempt, text, now)
+		return err
+	})
+}
+
+// Result returns the stored result of a finished job. found is false for a
+// job that has none (not finished yet, or finished with Complete).
+func (q *Queue) Result(ctx context.Context, id int64) (r Result, found bool, err error) {
+	var at int64
+	err = q.db.QueryRowContext(ctx, `SELECT text, attempt, created_at FROM results WHERE job_id=?`, id).Scan(&r.Text, &r.Attempt, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Result{}, false, nil
+	}
+	if err != nil {
+		return Result{}, false, fmt.Errorf("jobqueue: %w", err)
+	}
+	r.At = fromNanos(at)
+	return r, true, nil
+}
+
+// Checkpoint saves how far a running job got. If the worker dies, the next
+// claim sees the same text in Job.Progress and can pick up from there instead
+// of starting over. It is fenced like Complete: a worker that lost its claim
+// cannot overwrite the new owner's progress.
+func (q *Queue) Checkpoint(ctx context.Context, id int64, attempt int, progress string) error {
+	if len(progress) > maxPayload {
+		return fmt.Errorf("jobqueue: checkpoint is %d bytes; the limit is %d", len(progress), maxPayload)
+	}
+	return q.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET progress=?, updated_at=?
+			WHERE id=? AND status='running' AND attempts=?`, progress, nanos(q.cfg.Now()), id, attempt)
+		if err != nil {
+			return err
+		}
+		return q.mustHit(ctx, tx, res, id)
+	})
+}
+
+// Release gives a claimed job back, untouched: it returns to the queue with
+// the attempt it used handed back, and keeps its place in line. It is for a
+// worker that stops through no fault of the job (shutdown, the network went
+// away). Reporting that as a failure would burn an attempt and apply a
+// backoff delay, and enough restarts would send a perfectly good job to the
+// dead-letter state.
+func (q *Queue) Release(ctx context.Context, id int64, attempt int) error {
+	return q.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET status='queued', attempts=attempts-1, lease_until=0, updated_at=?
+			WHERE id=? AND status='running' AND attempts=? AND attempts>=1`, nanos(q.cfg.Now()), id, attempt)
 		if err != nil {
 			return err
 		}
@@ -434,7 +558,7 @@ func (q *Queue) Fail(ctx context.Context, id int64, attempt int, cause error, pe
 func (q *Queue) Retry(ctx context.Context, id int64) error {
 	return q.tx(ctx, func(tx *sql.Tx) error {
 		now := nanos(q.cfg.Now())
-		res, err := tx.ExecContext(ctx, `UPDATE jobs SET status='queued', attempts=0, run_at=?, lease_until=0, updated_at=?
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET status='queued', attempts=0, progress='', run_at=?, lease_until=0, updated_at=?
 			WHERE id=? AND status='dead'`, now, now, id)
 		if err != nil {
 			return err
