@@ -68,6 +68,7 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 	once := fs.Bool("once", false, "stop when nothing more can run now (default: keep waiting for work and for the network)")
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
 	faults := addFaultFlags(fs)
+	oo := addObsFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -112,6 +113,13 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "FAULT INJECTION ON (simulated, not your real network): %s\n", fdesc)
 		defer printFaultStats(stdout, ftr)
 	}
+
+	ob, closeLog, err := oo.observer(stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 2
+	}
+	defer closeLog()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -166,12 +174,15 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 		}),
 	}
 
-	state, stopNet, label, err := startConnectivity(ctx, *netMode, *probeURLs, faultClient, *probeEvery)
+	state, stopNet, label, err := startConnectivity(ctx, *netMode, *probeURLs, faultClient, *probeEvery, ob)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
 	defer stopNet()
+
+	stopPub := oo.publish(ctx, ob, "drain", qpath, q.Stats, stderr)
+	defer stopPub()
 
 	say := func(format string, a ...any) { fmt.Fprintf(stdout, format, a...) }
 	say("draining %s\n", qpath)
@@ -189,7 +200,7 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 		Queue: q, Specs: specs, Concurrency: *concurrency, Lease: *lease, Poll: *poll, JobTimeout: *jobTimeout,
 		Online:       func() bool { return state() == connectivity.Online },
 		ExitWhenIdle: *once,
-		OnEvent:      func(e qd.Event) { printDrainEvent(stdout, e) },
+		OnEvent:      func(e qd.Event) { printDrainEvent(stdout, e); ob.Drain(e) },
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
