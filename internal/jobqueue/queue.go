@@ -115,6 +115,24 @@ func New(ctx context.Context, db *sql.DB, cfg Config) (*Queue, error) {
 	return &Queue{db: db, cfg: cfg}, nil
 }
 
+// NewReadOnly wraps a database opened read-only, for viewers. It does not
+// migrate anything, so it works on a file another process owns; only the
+// read methods (Stats, List, Get) are meant to be used. A file that holds no
+// queue yet is an error.
+func NewReadOnly(ctx context.Context, db *sql.DB) (*Queue, error) {
+	var have int
+	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&have); err != nil {
+		return nil, fmt.Errorf("jobqueue: read schema version: %w", err)
+	}
+	if have == 0 {
+		return nil, errors.New("jobqueue: this file holds no queue yet")
+	}
+	if have > len(migrations) {
+		return nil, fmt.Errorf("%w (file is version %d, this build knows %d)", ErrNewerSchema, have, len(migrations))
+	}
+	return &Queue{db: db, cfg: Config{Now: time.Now, Rand: rand.Float64, Backoff: DefaultBackoff(), DefaultMaxAttempts: 5}}, nil
+}
+
 // ---- schema -----------------------------------------------------------
 
 // migrations are applied in order; the number applied is kept in SQLite's
