@@ -12,6 +12,7 @@ import (
 	"offgrid/internal/agent"
 	"offgrid/internal/connectivity"
 	"offgrid/internal/jobqueue"
+	"offgrid/internal/obs"
 	"offgrid/internal/router"
 	"offgrid/internal/store/sqlstore"
 )
@@ -24,7 +25,7 @@ import (
 //	-net offline   pretend there is no network (reproducible demos and tests)
 //	-net online    pretend there is
 //	-net auto      probe for real, using the same probes as `offgrid net`
-func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeURLs string, client *http.Client, stderr io.Writer) (*router.Router, func(), string, error) {
+func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeURLs string, client *http.Client, ob *obs.Observer, stderr io.Writer) (*router.Router, func(), string, error) {
 	path := queuePath(queueFlag)
 	if path == "" {
 		return nil, nil, "", fmt.Errorf("-route needs a queue file: use -queue FILE, or set OFFGRID_QUEUE (or OFFGRID_DB)")
@@ -42,7 +43,7 @@ func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeU
 		return nil, nil, "", err
 	}
 
-	state, stopNet, label, err := startConnectivity(ctx, netMode, probeURLs, client, 0)
+	state, stopNet, label, err := startConnectivity(ctx, netMode, probeURLs, client, 0, ob)
 	if err != nil {
 		db.Close()
 		return nil, nil, "", err
@@ -62,18 +63,20 @@ func openRouting(ctx context.Context, a *agent.Agent, queueFlag, netMode, probeU
 //	offline   pretend there is no network (reproducible demos and tests)
 //	online    pretend there is
 //	auto      probe for real, using the same probes as `offgrid net`
-func startConnectivity(ctx context.Context, netMode, probeURLs string, client *http.Client, interval time.Duration) (state func() connectivity.State, stop func(), label string, err error) {
+func startConnectivity(ctx context.Context, netMode, probeURLs string, client *http.Client, interval time.Duration, ob *obs.Observer) (state func() connectivity.State, stop func(), label string, err error) {
 	switch netMode {
 	case "offline":
+		ob.Forced(connectivity.Offline, "-net offline")
 		return func() connectivity.State { return connectivity.Offline }, func() {}, "OFFLINE (forced with -net offline)", nil
 	case "online":
+		ob.Forced(connectivity.Online, "-net online")
 		return func() connectivity.State { return connectivity.Online }, func() {}, "ONLINE (forced with -net online)", nil
 	case "auto":
 		var probers []connectivity.Prober
 		for _, u := range splitList(probeURLs) {
 			probers = append(probers, connectivity.HTTPProber{URL: u, Client: client})
 		}
-		mon, err := connectivity.New(connectivity.Config{Prober: connectivity.Any(probers...), Interval: interval})
+		mon, err := connectivity.New(connectivity.Config{Prober: connectivity.Any(probers...), Interval: interval, OnProbe: ob.Probe})
 		if err != nil {
 			return nil, nil, "", err
 		}
@@ -81,7 +84,8 @@ func startConnectivity(ctx context.Context, netMode, probeURLs string, client *h
 		done := make(chan struct{})
 		go func() { defer close(done); mon.Run(mctx) }()
 		go func() { // keep the events channel drained so nothing waits on us
-			for range mon.Events() {
+			for e := range mon.Events() {
+				ob.Transition(e)
 			}
 		}()
 		stop := func() { cancel(); <-done }
