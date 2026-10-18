@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -47,5 +47,10 @@ partition-demo: build
 # Day 12: kill -9 a running drain, restart, check nothing was lost or repeated.
 drain-demo: build
 	scripts/drain-demo.sh $(PAUSE)
+
+# Day 13: the live one-screen view while a simulated outage comes and goes.
+# Run in a terminal to see it live (record this); piped, it checks the screen tells the truth.
+top-demo: build
+	scripts/top-demo.sh $(SECS)
 
 
