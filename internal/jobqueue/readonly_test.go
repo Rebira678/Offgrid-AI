@@ -126,3 +126,60 @@ func TestOpenReadOnlyNeverCreatesAFile(t *testing.T) {
 		t.Error("empty path")
 	}
 }
+
+
+func TestReadOnlyConcurrentWithWriters(t *testing.T) {
+	q, _, path := newQueue(t, nil)
+	db, err := sqlstore.OpenReadOnly(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ro, err := NewReadOnly(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Reader continuously polls Stats
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _ = ro.Stats(ctx)
+				time.Sleep(time.Millisecond)
+			}
+		}
+	}()
+
+	// Writers concurrently enqueue and claim
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < 25; j++ {
+				key := fmt.Sprintf("concurrent-%d-%d", workerID, j)
+				_, _, _ = q.Enqueue(ctx, key, "compute", []byte(`{}`), EnqueueOptions{})
+				_, _, _ = q.Claim(ctx, time.Second)
+			}
+		}(i)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+
+	finalStats, err := ro.Stats(ctx)
+	if err != nil {
+		t.Fatalf("final Stats failed: %v", err)
+	}
+	if finalStats.Total() == 0 {
+		t.Errorf("expected jobs to have been enqueued, got total=0")
+	}
+}
