@@ -5,11 +5,11 @@
 Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.12.0--day12-success)](https://github.com/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(480%2B%20cases)-brightgreen)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.13.0--day13-success)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(550%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 12.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. Sync comes next.
+> Status: **Day 13.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. **Day 13:** structured logs (`log/slog`), counters, and a one-screen live view (`offgrid top`) showing connection state, queue depth, and tier decisions together.
 
 ---
 
@@ -29,6 +29,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **10** | Router: answer now or defer to durable queue with visible status (Checkpoint 1) | `offgrid agent -route -net offline` |
 | **11** | Switch to break network: injected latency, packet loss, partitions | `scripts/partition-demo.sh` |
 | **12** | Drain on reconnect, survive crash: concurrency, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
+| **13** | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
 
 
 ---
@@ -155,6 +156,11 @@ make partition-demo                        # run automated partition & recovery 
 ./bin/offgrid drain -db tasks.db -once      # drains queued jobs when network allows
 ./bin/offgrid queue result 1                # reads stored execution result
 make drain-demo                             # runs kill -9 mid-drain resilience test
+
+# 11. Day 13: Live observability (offgrid top) & structured logging
+./bin/offgrid top -queue queue.db -once      # capture single plain-text frame of system state
+./bin/offgrid drain -db tasks.db -slog drain.log -slog-level debug # structured logging to file
+make top-demo                               # automated live screen & truth verification runner
 ```
 
 ---
@@ -197,13 +203,15 @@ make bench-store
 ## Repository Layout
 
 ```
-cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue, fault, drain)
+cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue, fault, drain, top)
 internal/agent/           Tiered orchestrator (Tier 0 rules -> Tier 1 local model fallback)
 internal/connectivity/    Connectivity state machine, probers, and monitor goroutine
 internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter, checkpoints, results
 internal/router/          Answer now or defer: complexity gate, output validity, connectivity
 internal/netfault/        Fault-injecting RoundTripper: latency, drop %, partitions (file/schedule/flag)
 internal/drain/           Queue worker: concurrency limit, network gate, leases, release, checkpoints, handlers
+internal/obs/             Structured logs (slog), counters, atomic JSON snapshot files
+internal/dash/            One-screen live view: pure ANSI render function & terminal repaint loop
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -211,7 +219,7 @@ internal/intent/          Intent schema definitions and validation logic
 internal/structured/      Constrained JSON extraction with bounded retry loops
 internal/llm/             LLM client interfaces and anti-corruption adapters
 internal/ollama/          Streaming HTTP client for local Ollama daemon
-scripts/                  Automated test and offline runners (demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh)
+scripts/                  Automated test and offline runners (demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh)
 ```
 
 ---
@@ -226,6 +234,7 @@ make demo             # Runs end-to-end offline demo (pass PAUSE=2 for recording
 make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, queue fills
 make partition-demo   # Runs Day 11 automated network partition & recovery test
 make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
+make top-demo         # Runs Day 13 automated live dashboard & telemetry verification
 ```
 
 ---
