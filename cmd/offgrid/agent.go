@@ -49,6 +49,7 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	netMode := fs.String("net", "auto", "with -route: connectivity: auto (probe the network), online or offline (force it)")
 	probeURLs := fs.String("url", defaultProbeURLs, "with -route -net auto: comma-separated probe URLs that answer 204")
 	faults := addFaultFlags(fs)
+	oo := addObsFlags(fs)
 	routeEval := fs.Bool("route-eval", false, "measure the complexity gate on labelled messages (no model, queue or network needed) and exit")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -166,16 +167,24 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		defer printFaultStats(stdout, ftr)
 	}
 
+	ob, closeLog, oerr := oo.observer(stderr)
+	if oerr != nil {
+		fmt.Fprintf(stderr, "error: %v\n", oerr)
+		return 2
+	}
+	defer closeLog()
 	var rt *router.Router
 	if *route {
 		var closeRoute func()
 		var netLabel string
-		rt, closeRoute, netLabel, err = openRouting(ctx, a, *queueFlag, *netMode, *probeURLs, faultClient, stderr)
+		rt, closeRoute, netLabel, err = openRouting(ctx, a, *queueFlag, *netMode, *probeURLs, faultClient, ob, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)
 			return 2
 		}
 		defer closeRoute()
+		stopPub := oo.publish(ctx, ob, "agent", queuePath(*queueFlag), rt.Queue.Stats, stderr)
+		defer stopPub()
 		fmt.Fprintf(stdout, "routing on. connectivity: %s\n\n", netLabel)
 	}
 
@@ -209,6 +218,7 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		if rt != nil {
 			res := rt.Handle(ctx, m)
+			ob.Route(res)
 			routes[res.Route]++
 			if res.Outcome.Text != "" {
 				record(res.Outcome)
