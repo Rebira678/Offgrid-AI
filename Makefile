@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -53,4 +53,6 @@ drain-demo: build
 top-demo: build
 	scripts/top-demo.sh $(SECS)
 
-
+# Day 14: check everything, then tag v0.1 locally (pass PUSH=--push to publish)
+release: build
+	scripts/release-v0.1.sh $(PUSH)
