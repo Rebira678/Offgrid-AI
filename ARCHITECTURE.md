@@ -47,3 +47,25 @@ There is one binary, `offgrid`, and **no daemon**. What looks like a system is s
 
 They share **no memory**. The files are the interface, which is what makes `kill -9` on any of them a normal event instead of a special case.
 
+## 3. Components
+
+Dependencies point downward; nothing lower knows about anything above it.
+
+| Layer | Package | Responsibility | Knows nothing about |
+|---|---|---|---|
+| Edge | `cmd/offgrid` | flags, wiring, printing; the only place that assembles the parts | |
+| Orchestration | `internal/router` | answer-now-or-defer decision, with a reason a person can read | how jobs run |
+| | `internal/drain` | the worker: claim, gate, run, report; job handlers | how decisions are made |
+| Understanding | `internal/agent` | Tier 0 rules, then Tier 1 model; outcome with tier and timings | the queue, the network |
+| | `internal/intent`, `internal/structured` | the `Command` type; valid JSON out of a model, with retries | which model |
+| | `internal/llm` | the interface models sit behind (real Ollama client, fake for tests) | |
+| Acting | `internal/tools` | a **closed menu** of five typed tools (`create_task`, `update_task`, `list_tasks`, `add_note`, `daily_summary`) | models |
+| State | `internal/task` | the `Task` type and the `Store` contract, plus shared contract tests | SQLite |
+| | `internal/store/sqlstore` | the SQLite store: append-only ops, migrations, rebuild, verify | |
+| | `internal/jobqueue` | durable queue on any `*sql.DB`: idempotency, backoff, leases, fencing, results | the SQLite driver, the task store (a test enforces this) |
+| Environment | `internal/connectivity` | probes, hysteresis state machine, monitor goroutine | what the state is used for |
+| | `internal/netfault` | an `http.RoundTripper` that injects latency, loss and partitions | |
+| Visibility | `internal/obs`, `internal/dash` | logs, counters, snapshot files; a pure render function | |
+| Measurement | `internal/bench`, `internal/eval`, `internal/sysinfo` | benchmarks and model reliability, always naming the hardware | |
+
+
