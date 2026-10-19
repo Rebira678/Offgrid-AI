@@ -11,3 +11,5 @@ ollama-local/
 metrics/
 *.zip
 my_perispective_not_tracked_by_git/
+*.xlsx
+scratch/
