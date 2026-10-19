@@ -84,6 +84,25 @@ Dependencies point downward; nothing lower knows about anything above it.
 
 **`metrics/*.json`: snapshots.** One small file per publishing process, rewritten once a second by rename. They are a view, not a source of truth, and may be stale or absent.
 
+## 6. Guarantees, and what enforces them
+
+| Guarantee | How | Test |
+|---|---|---|
+| Nothing a model says is trusted until validated | typed `Command`, closed tool menu, validation before execution | `internal/intent`, `internal/tools`, `internal/eval` |
+| The op log cannot be rewritten | triggers on `ops` | `internal/store/sqlstore` migration and store tests |
+| Rebuilding the cache from the log gives the same state | replay is the only way state is derived | `rebuild` and `verify` tests |
+| A repeated request creates one job and one task | idempotency key; `Create` is atomic and returns the existing task | `internal/jobqueue`, `internal/task/storetest` |
+| **Delivery is at-least-once; the recorded outcome is exactly-once** | the attempt number is a fencing token on Complete, Fail, Extend, Checkpoint and Release (`ErrStaleClaim`); result and "done" in one transaction | `internal/jobqueue` fencing tests; the kill test |
+| A killed worker loses nothing and duplicates nothing | leases expire and another worker claims the job (try 2) | `TestKill9MidDrainLosesNothingAndDuplicatesNothing` (3 SIGKILLs, 60 jobs) |
+| Going offline never burns a job's attempts | filter by kind inside the claim; a stop or network loss is `Release`, not failure | worker tests (a job with 2 attempts restarted 6 times is still intact) |
+| A job that changes data is not repeated after a crash | `interpret` saves an `executing` marker; a rerun that finds it goes to a human | handler tests |
+| The state machine does not flap | hysteresis, asymmetric thresholds (down faster than up) | `internal/connectivity` |
+| The viewer cannot change the queue | read-only connection, no migrations | `TestReadOnlyViewSeesTheQueueAndCannotChangeIt` |
+| The screen never presents old data as live | snapshot age against the publisher's own interval | `internal/dash`, `internal/obs` |
+
+**Not promised:** exactly-once *execution* (impossible after a crash: the worker cannot know whether it died before or after the effect), protection against power loss beyond what SQLite's WAL and `synchronous=FULL` give (not tested by pulling a plug), or any cross-replica behaviour (no sync yet).
+
+
 
 
 
