@@ -102,6 +102,18 @@ Dependencies point downward; nothing lower knows about anything above it.
 
 **Not promised:** exactly-once *execution* (impossible after a crash: the worker cannot know whether it died before or after the effect), protection against power loss beyond what SQLite's WAL and `synchronous=FULL` give (not tested by pulling a plug), or any cross-replica behaviour (no sync yet).
 
+## 7. Decisions worth defending
+
+- **Precision over coverage.** When the agent is unsure it asks or refuses; a wrong task created silently is worse than a question.
+- **Rules before a model.** Most field messages are formulaic. Tier 0 answers in microseconds and cannot hallucinate; the model is only for what the rules cannot read.
+- **A queue in SQLite, not a broker.** One file, no daemon, survives power loss, inspectable with `offgrid queue`. The cost: one writer at a time, which is fine at this scale and would not be at another.
+- **Files as the interface between processes.** No sockets or RPC means nothing to keep alive and a crash never leaves a connection in a bad state.
+- **Boundaries enforced by tests, not by convention.** The queue may not import the SQLite driver or the task store, and a test fails the build if it does.
+- **Injected clocks and a fault-injecting transport.** Time and the network are the two things that make distributed code untestable; both are replaceable, so outages and crashes are reproducible test cases.
+- **Plain ANSI instead of a UI framework** for `offgrid top`: a pure `Render(view)` and a few lines that repaint. A framework can wrap it later without changes elsewhere.
+- **Honest numbers only.** Every benchmark names the hardware; demos label what is simulated.
+
+
 
 
 
