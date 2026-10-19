@@ -15,5 +15,6 @@ my_perispective_not_tracked_by_git/
 *.xlsx#
 .~lock.*#
 *.csv
+*.bak
 scratch/
 *.jpg
