@@ -200,6 +200,12 @@ make bench-store
 
 ---
 
+## Architecture
+
+How the parts fit, what is guaranteed and what tests enforce it, and what is not built yet: [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
 ## Repository Layout
 
 ```
@@ -219,7 +225,7 @@ internal/intent/          Intent schema definitions and validation logic
 internal/structured/      Constrained JSON extraction with bounded retry loops
 internal/llm/             LLM client interfaces and anti-corruption adapters
 internal/ollama/          Streaming HTTP client for local Ollama daemon
-scripts/                  Automated test and offline runners (demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh)
+scripts/                  Automated test, offline runners, and release scripts (release-v0.1.sh)
 ```
 
 ---
@@ -235,6 +241,7 @@ make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, q
 make partition-demo   # Runs Day 11 automated network partition & recovery test
 make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
 make top-demo         # Runs Day 13 automated live dashboard & telemetry verification
+make release          # Runs Day 14 pre-flight checks and creates local v0.1 annotated tag
 ```
 
 ---
