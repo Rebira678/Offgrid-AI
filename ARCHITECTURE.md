@@ -113,6 +113,24 @@ Dependencies point downward; nothing lower knows about anything above it.
 - **Plain ANSI instead of a UI framework** for `offgrid top`: a pure `Render(view)` and a few lines that repaint. A framework can wrap it later without changes elsewhere.
 - **Honest numbers only.** Every benchmark names the hardware; demos label what is simulated.
 
+## 8. Known limits (v0.1)
+
+- Real Ollama and real network loss are **untested here**: the test and demo model is a stand-in server with canned answers, and the network is simulated.
+- No sync, no HLC yet. Two replicas cannot merge. Op timestamps are placeholders.
+- Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
+- One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
+- The complexity gate is a closed vocabulary: it is explainable and measured on held-out cases, but it will miss phrasings it has not seen.
+- Tier 2 as drawn in the roadmap (a bigger local or cloud model) exists as the `deep_think` job and an unused `Cloud` hook in the router; no cloud client is written.
+
+## 9. Where to start reading
+
+1. `internal/router/router.go`: the decision, in one function.
+2. `internal/jobqueue/queue.go`: claim, fence, complete, release.
+3. `internal/drain/worker.go`: the loop that uses them.
+4. `internal/drain/kill_test.go`: the test that makes the claims above believable.
+5. `docs/day-NN.md`: the concept behind each day's code.
+
+
 
 
 
