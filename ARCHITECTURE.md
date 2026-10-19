@@ -33,3 +33,17 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
 ```
 
 Not in the picture because it does not exist yet: the hybrid logical clock (Day 15), the CRDT state (LWW-Map and OR-Set), and sync between two replicas. The `ts` column of the op log is a placeholder until then.
+
+## 2. Process model
+
+There is one binary, `offgrid`, and **no daemon**. What looks like a system is separate processes over two SQLite files:
+
+| Process | Role | Reads / writes |
+|---|---|---|
+| `offgrid agent -route` | decides per message: answer now, or defer | `tasks.db` (answers), `queue.db` (enqueue), `metrics/agent.json` |
+| `offgrid drain` | empties the queue when it can | `queue.db`, `tasks.db`, `metrics/drain.json` |
+| `offgrid top` | shows the whole system | `metrics/*.json`, `queue.db` (**read-only**) |
+| `offgrid queue`, `store`, `net`, `fault` | inspect and operate | the files above |
+
+They share **no memory**. The files are the interface, which is what makes `kill -9` on any of them a normal event instead of a special case.
+
