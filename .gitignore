@@ -12,5 +12,8 @@ metrics/
 *.zip
 my_perispective_not_tracked_by_git/
 *.xlsx
+*.xlsx#
+.~lock.*#
+*.csv
 scratch/
 *.jpg
