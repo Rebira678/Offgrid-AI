@@ -127,7 +127,6 @@ func TestOpenReadOnlyNeverCreatesAFile(t *testing.T) {
 	}
 }
 
-
 func TestReadOnlyConcurrentWithWriters(t *testing.T) {
 	q, _, path := newQueue(t, nil)
 	db, err := sqlstore.OpenReadOnly(path)
