@@ -76,5 +76,14 @@ Dependencies point downward; nothing lower knows about anything above it.
 
 **Drained.** The worker asks the connectivity monitor whether the network is up, then claims only the job kinds it can run right now (a claim is an attempt, so it filters first rather than claim-and-put-back). `interpret` needs only this laptop, so it runs offline; `deep_think` runs offline too unless `-deep-host` points at another machine, in which case it waits for the network.
 
+## 5. Data
+
+**`tasks.db`: the op log is the truth.** `ops` is append-only (SQL triggers reject UPDATE and DELETE) with a per-replica gap-free `seq`, so an op's identity is `(node_id, seq)`. `tasks` and `task_notes` are a **disposable cache**: `offgrid store rebuild` throws them away and replays the log; `verify` compares the two. WAL and `synchronous=FULL`: an op is on disk before it is acknowledged.
+
+**`queue.db`: jobs and results.** `jobs` holds status (`queued`, `running`, `done`, `dead`), attempts, lease expiry, progress (a checkpoint), last error; `results` holds an answer, written in the **same transaction** that marks the job done. Schema versions live in SQLite's `PRAGMA user_version`; a file from a newer program is refused, not modified.
+
+**`metrics/*.json`: snapshots.** One small file per publishing process, rewritten once a second by rename. They are a view, not a source of truth, and may be stale or absent.
+
+
 
 
