@@ -68,4 +68,13 @@ Dependencies point downward; nothing lower knows about anything above it.
 | Visibility | `internal/obs`, `internal/dash` | logs, counters, snapshot files; a pure render function | |
 | Measurement | `internal/bench`, `internal/eval`, `internal/sysinfo` | benchmarks and model reliability, always naming the hardware | |
 
+## 4. How a message travels
+
+**Answered now.** The router scores the text against a closed vocabulary (judgement words, a time span, a second request). Below the threshold the local agent handles it: Tier 0 rules read the common phrasings in microseconds; only what the rules cannot read goes to the small local model. The model's output is a *proposal*: it is parsed, validated against the typed command, and only then executed by a tool.
+
+**Deferred.** Hard requests, and messages the local model could not turn into a valid command, become jobs in `queue.db` with a deterministic idempotency key (the same sentence twice on the same day is one job). The person gets an immediate, readable status ("saved, 3 ahead of it, waiting for the network"). Connectivity never changes *whether* something is deferred; it only changes the wording and whether an optional cloud model may answer.
+
+**Drained.** The worker asks the connectivity monitor whether the network is up, then claims only the job kinds it can run right now (a claim is an attempt, so it filters first rather than claim-and-put-back). `interpret` needs only this laptop, so it runs offline; `deep_think` runs offline too unless `-deep-host` points at another machine, in which case it waits for the network.
+
+
 
