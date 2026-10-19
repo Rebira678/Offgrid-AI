@@ -5,11 +5,11 @@
 Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.13.0--day13-success)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/)
 [![Tests](https://img.shields.io/badge/Tests-Passing%20(550%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 13.** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. **Day 13:** structured logs (`log/slog`), counters, and a one-screen live view (`offgrid top`) showing connection state, queue depth, and tier decisions together.
+> Status: **v0.1 (Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. Structured logs (`log/slog`), counters, and a one-screen live view (`offgrid top`). **Day 14:** `ARCHITECTURE.md` v1, target list of 40 organizations, release `v0.1` tagged.
 
 ---
 
@@ -30,6 +30,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **11** | Switch to break network: injected latency, packet loss, partitions | `scripts/partition-demo.sh` |
 | **12** | Drain on reconnect, survive crash: concurrency, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
 | **13** | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
+| **14** | Recap: architecture specification, guarantees, tests, release v0.1 | [ARCHITECTURE.md](ARCHITECTURE.md), `scripts/release-v0.1.sh` |
 
 
 ---
