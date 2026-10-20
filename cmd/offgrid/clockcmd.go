@@ -13,7 +13,7 @@ const clockHelp = `offgrid clock explains the hybrid logical clock with a small 
 
   offgrid clock demo [-skew 10m]
 
-Two people edit the same task. Bob's phone clock is -skew behind real time.
+Two people edit the same task. Biruk's phone clock is -skew behind real time.
 The demo uses fake clocks (nothing here reads your real clock or network), but
 the timestamps come from the real internal/hlc package.`
 
@@ -31,7 +31,7 @@ func cmdClock(args []string, stdout, stderr io.Writer) int {
 	}
 	fs := flag.NewFlagSet("clock demo", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	skew := fs.Duration("skew", 10*time.Minute, "how far BEHIND real time Bob's clock is (negative: ahead)")
+	skew := fs.Duration("skew", 10*time.Minute, "how far BEHIND real time Biruk's clock is (negative: ahead)")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -56,7 +56,7 @@ func runClockDemo(w io.Writer, skew time.Duration) {
 	start := time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)
 	hm := func(t time.Time) string { return t.Format("15:04:05") }
 
-	fmt.Fprintf(w, "SIMULATION: fake clocks, no real time or network. Bob's phone is %s behind.\n\n", skew)
+	fmt.Fprintf(w, "SIMULATION: fake clocks, no real time or network. Biruk's phone is %s behind.\n\n", skew)
 
 	// ---- 1. a slow clock, and an edit that happens later in reality
 	a := &manual{t: start}
@@ -64,33 +64,33 @@ func runClockDemo(w io.Writer, skew time.Duration) {
 	ca := hlc.New(hlc.Config{Now: a.now})
 	cb := hlc.New(hlc.Config{Now: b.now})
 
-	fmt.Fprintln(w, "1. Alice edits, it syncs to Bob, then Bob edits later")
-	aliceWall, aliceHLC := a.t, ca.Now()
-	fmt.Fprintf(w, "   real %s  Alice sets priority=low     wall clock %s   HLC %s\n", hm(start), hm(aliceWall), aliceHLC)
+	fmt.Fprintln(w, "1. Mercy edits, it syncs to Biruk, then Biruk edits later")
+	mercyWall, mercyHLC := a.t, ca.Now()
+	fmt.Fprintf(w, "   real %s  Mercy sets priority=low     wall clock %s   HLC %s\n", hm(start), hm(mercyWall), mercyHLC)
 
 	a.t, b.t = a.t.Add(30*time.Second), b.t.Add(30*time.Second)
-	recv, err := cb.Update(aliceHLC)
+	recv, err := cb.Update(mercyHLC)
 	if err != nil {
-		fmt.Fprintf(w, "   Bob refuses Alice's timestamp: %v\n", err)
+		fmt.Fprintf(w, "   Biruk refuses Mercy's timestamp: %v\n", err)
 		return
 	}
-	fmt.Fprintf(w, "   real %s  Alice's edit reaches Bob    (Bob folds her timestamp in: HLC %s)\n", hm(a.t), recv)
+	fmt.Fprintf(w, "   real %s  Mercy's edit reaches Biruk  (Biruk folds her timestamp in: HLC %s)\n", hm(a.t), recv)
 
 	a.t, b.t = a.t.Add(30*time.Second), b.t.Add(30*time.Second)
-	bobWall, bobHLC := b.t, cb.Now()
-	fmt.Fprintf(w, "   real %s  Bob sets priority=high      wall clock %s   HLC %s\n\n", hm(a.t), hm(bobWall), bobHLC)
+	birukWall, birukHLC := b.t, cb.Now()
+	fmt.Fprintf(w, "   real %s  Biruk sets priority=high    wall clock %s   HLC %s\n\n", hm(a.t), hm(birukWall), birukHLC)
 
-	wallBobWins := bobWall.After(aliceWall)
-	hlcBobWins := bobHLC.After(aliceHLC)
-	fmt.Fprintf(w, "   Last writer wins, ordering by the wall clock:  %s\n", verdict(wallBobWins))
-	fmt.Fprintf(w, "   Last writer wins, ordering by the HLC:         %s\n", verdict(hlcBobWins))
+	wallBirukWins := birukWall.After(mercyWall)
+	hlcBirukWins := birukHLC.After(mercyHLC)
+	fmt.Fprintf(w, "   Last writer wins, ordering by the wall clock:  %s\n", verdict(wallBirukWins))
+	fmt.Fprintf(w, "   Last writer wins, ordering by the HLC:         %s\n", verdict(hlcBirukWins))
 	switch {
-	case hlcBobWins && !wallBobWins:
-		fmt.Fprintln(w, "   -> Bob really edited last. The wall clock throws his edit away; the HLC keeps it.")
-	case hlcBobWins && wallBobWins:
-		fmt.Fprintln(w, "   -> Both agree this time: Bob's clock is not behind enough to matter. Try -skew 10m.")
+	case hlcBirukWins && !wallBirukWins:
+		fmt.Fprintln(w, "   -> Biruk really edited last. The wall clock throws his edit away; the HLC keeps it.")
+	case hlcBirukWins && wallBirukWins:
+		fmt.Fprintln(w, "   -> Both agree this time: Biruk's clock is not behind enough to matter. Try -skew 10m.")
 	default:
-		fmt.Fprintln(w, "   -> unexpected: the HLC ordered Bob's later edit first")
+		fmt.Fprintln(w, "   -> unexpected: the HLC ordered Biruk's later edit first")
 	}
 
 	// ---- 2. the clock goes backwards
@@ -129,9 +129,9 @@ func runClockDemo(w io.Writer, skew time.Duration) {
 	}
 }
 
-func verdict(bobWins bool) string {
-	if bobWins {
-		return "Bob's edit wins (correct)"
+func verdict(birukWins bool) string {
+	if birukWins {
+		return "Biruk's edit wins (correct)"
 	}
-	return "Alice's older edit wins (WRONG: Bob's later edit is lost)"
+	return "Mercy's older edit wins (WRONG: Biruk's later edit is lost)"
 }

@@ -13,8 +13,8 @@ func TestClockDemoShowsTheWallClockLosingAndTheHLCWinning(t *testing.T) {
 	}
 	for _, want := range []string{
 		"SIMULATION",
-		"by the wall clock:  Alice's older edit wins (WRONG",
-		"by the HLC:         Bob's edit wins (correct)",
+		"by the wall clock:  Mercy's older edit wins (WRONG",
+		"by the HLC:         Biruk's edit wins (correct)",
 		"refused: hlc: remote timestamp",
 	} {
 		if !strings.Contains(out, want) {
