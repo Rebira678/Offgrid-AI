@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"offgrid/internal/store/sqlstore"
 )
@@ -69,6 +70,12 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "ops in the log     %d (last position %d, view applied through %d)\n", info.Ops, info.LastPos, info.AppliedPos)
 		fmt.Fprintf(stdout, "tasks in the view  %d\n", info.Tasks)
 		fmt.Fprintf(stdout, "state hash         %s\n", info.StateHash)
+		if !info.NewestStamp.IsZero() {
+			fmt.Fprintf(stdout, "newest timestamp   %s\n", info.NewestStamp)
+		}
+		if info.ClockAhead > time.Minute {
+			fmt.Fprintf(stdout, "WARNING            the log's newest timestamp is %s ahead of this computer's clock.\n                   An op was once stamped by a clock that was ahead (or this clock is now behind).\n                   New ops still sort after it; set the clock right so times make sense to people.\n", info.ClockAhead.Round(time.Second))
+		}
 
 	case "verify":
 		rep, err := st.Verify(ctx)
@@ -108,7 +115,11 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 		enc := json.NewEncoder(stdout)
 		for _, op := range ops {
-			if err := enc.Encode(op); err != nil {
+			// the same op, plus its timestamp in one readable piece
+			if err := enc.Encode(struct {
+				sqlstore.Op
+				HLC string `json:"hlc"`
+			}{op, op.Stamp().String()}); err != nil {
 				return storeError(stderr, err)
 			}
 		}

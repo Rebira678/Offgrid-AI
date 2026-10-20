@@ -97,7 +97,7 @@ func TestStoreInfoVerifyOpsOnAHealthyDatabase(t *testing.T) {
 		`{"intent":"create_task","title":"Leaking pump"}`, `{"intent":"add_note","task_ref":"pump","note":"cracked"}`)
 
 	code, out, _ := runCLI(t, "", "store", "-db", db, "info")
-	for _, want := range []string{"node id", "schema version     2", "ops in the log     2", "tasks in the view  1", "state hash"} {
+	for _, want := range []string{"node id", "schema version     3", "ops in the log     2", "tasks in the view  1", "state hash"} {
 		if code != 0 || !strings.Contains(out, want) {
 			t.Errorf("info lacks %q (exit %d):\n%s", want, code, out)
 		}

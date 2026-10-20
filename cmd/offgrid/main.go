@@ -33,7 +33,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.1.0"
+const version = "0.15.0-day15"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -76,6 +76,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdNet(args[1:], stdout, stderr)
 	case "drain":
 		return cmdDrain(args[1:], stdout, stderr)
+	case "clock":
+		return cmdClock(args[1:], stdout, stderr)
 	case "top":
 		return cmdTop(args[1:], stdout, stderr)
 	case "fault":
@@ -110,6 +112,7 @@ Usage:
   offgrid agent  -route [-queue FILE] [-net auto|online|offline] ...      hard messages wait in the durable queue
   offgrid store  -db FILE info|verify|rebuild|ops   inspect the SQLite task store
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
+  offgrid clock  demo [-skew 10m]                                     why wall clocks cannot order edits, and the hybrid clock that can
   offgrid top    -queue FILE                                          one screen: connection, queue, tiers (live)
   offgrid drain  -db FILE [-once] [-concurrency N] [-deep-host URL]   empty the queue: runs saved jobs, waits for the network
   offgrid fault  serve|set|show   break the network on purpose: -fault-latency/-drop/-partition/-file/-schedule on net and agent -route
