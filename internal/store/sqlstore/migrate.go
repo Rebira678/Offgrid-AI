@@ -28,7 +28,7 @@ CREATE TABLE ops (
 	pos     INTEGER PRIMARY KEY AUTOINCREMENT, -- local log position: the order ops were recorded here
 	node_id TEXT    NOT NULL,                  -- which replica created the op
 	seq     INTEGER NOT NULL CHECK (seq >= 1), -- that replica's own counter: 1, 2, 3... with no gaps
-	ts      INTEGER NOT NULL,                  -- unix nanoseconds; a PLACEHOLDER until the hybrid logical clock (Day 15)
+	ts      INTEGER NOT NULL,                  -- unix nanoseconds. Wall part of the hybrid logical clock since migration 3 (a plain wall reading before it)
 	kind    TEXT    NOT NULL,
 	payload TEXT    NOT NULL CHECK (json_valid(payload)),
 	UNIQUE (node_id, seq)                      -- an op's identity; makes applying the same op twice detectable
@@ -43,6 +43,16 @@ CREATE TABLE meta (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 ) WITHOUT ROWID;
+`},
+	{3, "hybrid logical clock: a counter beside ts, and an index to find the newest", `
+-- From this migration on, ts is the wall part of a hybrid logical clock timestamp
+-- (nanoseconds) and counter is its logical part, so (ts, counter) is the op's
+-- timestamp. Ops written before it have counter 0, which is a valid
+-- timestamp: ts was already a wall reading. Nothing is rewritten, so the log
+-- stays append-only; the DEFAULT only fills the new column for old rows.
+ALTER TABLE ops ADD COLUMN counter INTEGER NOT NULL DEFAULT 0 CHECK (counter >= 0 AND counter <= 4294967295);
+-- On start-up the store restores its clock from the newest timestamp.
+CREATE INDEX ops_hlc ON ops (ts, counter);
 `},
 }
 

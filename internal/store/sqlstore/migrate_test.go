@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -61,11 +62,11 @@ func TestAMigrationAddedLaterIsAppliedWithoutTouchingEarlierData(t *testing.T) {
 	}
 	db.Exec(`INSERT INTO ops (node_id, seq, ts, kind, payload) VALUES ('a', 1, 0, 'task.created', '{}')`)
 
-	next := append(append([]migration(nil), migrations...), migration{3, "add a column", `ALTER TABLE ops ADD COLUMN note TEXT`})
+	next := append(append([]migration(nil), migrations...), migration{len(migrations) + 1, "add a column", `ALTER TABLE ops ADD COLUMN note TEXT`})
 	if err := migrate(ctx, db, next); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := schemaVersion(ctx, db); v != 3 {
+	if v, _ := schemaVersion(ctx, db); v != len(migrations)+1 {
 		t.Errorf("version = %d", v)
 	}
 	var n int
@@ -78,22 +79,22 @@ func TestAMigrationAddedLaterIsAppliedWithoutTouchingEarlierData(t *testing.T) {
 func TestAFailingMigrationIsRolledBackCompletely(t *testing.T) {
 	ctx := context.Background()
 	db := rawDB(t)
-	bad := append(append([]migration(nil), migrations...), migration{3, "half done", `
+	bad := append(append([]migration(nil), migrations...), migration{len(migrations) + 1, "half done", `
 		CREATE TABLE should_not_exist (x INTEGER);
 		THIS IS NOT SQL;
 	`})
 	err := migrate(ctx, db, bad)
-	if err == nil || !strings.Contains(err.Error(), "migration 3") {
-		t.Fatalf("err = %v, want it to name migration 3", err)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("migration %d", len(migrations)+1)) {
+		t.Fatalf("err = %v, want it to name the new migration", err)
 	}
 	if tableExists(t, db, "should_not_exist") {
 		t.Error("the half-applied migration left a table behind")
 	}
-	if v, _ := schemaVersion(ctx, db); v != 2 {
-		t.Errorf("version = %d; migrations 1 and 2 were fine and must stay applied", v)
+	if v, _ := schemaVersion(ctx, db); v != len(migrations) {
+		t.Errorf("version = %d; the shipped migrations were fine and must stay applied", v)
 	}
 	// Fixing the migration and running again works.
-	good := append(append([]migration(nil), migrations...), migration{3, "fixed", `CREATE TABLE fine (x INTEGER)`})
+	good := append(append([]migration(nil), migrations...), migration{len(migrations) + 1, "fixed", `CREATE TABLE fine (x INTEGER)`})
 	if err := migrate(ctx, db, good); err != nil {
 		t.Fatal(err)
 	}

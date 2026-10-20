@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"offgrid/internal/hlc"
 	"offgrid/internal/task"
 )
 
@@ -32,10 +33,11 @@ const (
 
 // Op is one immutable entry in the log.
 type Op struct {
-	Pos     int64           `json:"pos"`  // position in THIS replica's log
-	NodeID  string          `json:"node"` // the replica that created it
-	Seq     int64           `json:"seq"`  // that replica's counter, gapless
-	TS      time.Time       `json:"ts"`   // placeholder wall-clock time until Day 15
+	Pos     int64           `json:"pos"`         // position in THIS replica's log
+	NodeID  string          `json:"node"`        // the replica that created it
+	Seq     int64           `json:"seq"`         // that replica's counter, gapless
+	TS      time.Time       `json:"ts"`          // the wall part of the op's hybrid logical clock timestamp (UTC)
+	Counter uint32          `json:"hlc_counter"` // its logical part; (TS, Counter) is the timestamp
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"` // everything apply needs; see below
 }
@@ -102,6 +104,9 @@ func decodeStrict(raw []byte, v any) error {
 	return nil
 }
 
+// Stamp is the op's hybrid logical clock timestamp.
+func (o Op) Stamp() hlc.Timestamp { return hlc.Timestamp{Wall: nanos(o.TS), Counter: o.Counter} }
+
 func nanos(t time.Time) int64 { return t.UTC().UnixNano() }
 
 // fromNanos converts back. Zero means "never": the zero time.Time.
@@ -115,7 +120,7 @@ func fromNanos(n int64) time.Time {
 // loadOps reads up to limit ops with pos > after, in log order.
 func loadOps(ctx context.Context, x execer, after int64, limit int) ([]Op, error) {
 	rows, err := x.QueryContext(ctx,
-		`SELECT pos, node_id, seq, ts, kind, payload FROM ops WHERE pos > ? ORDER BY pos LIMIT ?`, after, limit)
+		`SELECT pos, node_id, seq, ts, counter, kind, payload FROM ops WHERE pos > ? ORDER BY pos LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,7 @@ func loadOps(ctx context.Context, x execer, after int64, limit int) ([]Op, error
 		var op Op
 		var ts int64
 		var payload string
-		if err := rows.Scan(&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Kind, &payload); err != nil {
+		if err := rows.Scan(&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload); err != nil {
 			return nil, err
 		}
 		op.TS = fromNanos(ts)

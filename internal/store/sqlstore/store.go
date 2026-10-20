@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"offgrid/internal/hlc"
 	"offgrid/internal/task"
 )
 
@@ -35,6 +36,10 @@ type Store struct {
 	db   *sql.DB
 	node string
 	now  func() time.Time
+
+	// clock stamps every op this replica records. It is restored from the
+	// newest stored timestamp on open, so a restart can never go backwards.
+	clock *hlc.Clock
 }
 
 var _ task.Store = (*Store)(nil)
@@ -46,8 +51,13 @@ type Options struct {
 	// node ID, a different one is refused: the ID is the replica's identity and
 	// the sequence numbers only make sense under it.
 	NodeID string
-	// Now supplies the time recorded in ops. nil means time.Now.
+	// Now is the physical clock the hybrid logical clock reads. nil means
+	// time.Now. Ops are stamped from the HLC, not from Now directly: if Now
+	// stalls or goes backwards, op timestamps still increase.
 	Now func() time.Time
+	// MaxDrift bounds how far ahead of Now a timestamp received from another
+	// replica may be (see hlc.Config). Zero is hlc.DefaultMaxDrift.
+	MaxDrift time.Duration
 }
 
 // ErrNodeMismatch means the database belongs to a different replica.
@@ -77,6 +87,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	s.clock = hlc.New(hlc.Config{Now: s.now, MaxDrift: opt.MaxDrift})
 	if err := s.init(ctx, opt); err != nil {
 		db.Close()
 		return nil, err
@@ -96,8 +107,42 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 		return err
 	}
 	s.node = node
+	if err := s.restoreClock(ctx); err != nil {
+		return err
+	}
 	return s.ensureProjection(ctx)
 }
+
+// restoreClock raises the clock to the newest timestamp in the log. Without it
+// a restart after the physical clock was reset (a dead battery, a step back by
+// NTP) would issue timestamps older than ones already stored, and a later edit
+// would sort before an earlier one.
+func (s *Store) restoreClock(ctx context.Context) error {
+	last, err := s.newestStamp(ctx, s.db)
+	if err != nil {
+		return err
+	}
+	s.clock.Restore(last)
+	return nil
+}
+
+func (s *Store) newestStamp(ctx context.Context, x execer) (hlc.Timestamp, error) {
+	var wall int64
+	var counter uint32
+	err := x.QueryRowContext(ctx, `SELECT ts, counter FROM ops ORDER BY ts DESC, counter DESC LIMIT 1`).Scan(&wall, &counter)
+	if errors.Is(err, sql.ErrNoRows) {
+		return hlc.Timestamp{}, nil
+	}
+	if err != nil {
+		return hlc.Timestamp{}, err
+	}
+	return hlc.Timestamp{Wall: wall, Counter: counter}, nil
+}
+
+// Clock is this replica's hybrid logical clock. The sync layer calls Update on
+// it with the timestamps of the ops it receives, so that whatever this replica
+// does next is stamped after everything it has seen.
+func (s *Store) Clock() *hlc.Clock { return s.clock }
 
 // settleNodeID returns this database's node ID, creating it if this is a new
 // database, and refusing a conflicting request.
@@ -230,7 +275,8 @@ func (s *Store) write(ctx context.Context, fn func(tx *sql.Tx) error) (err error
 // ahead of, or behind, the log after a commit.
 //
 // This is where write-time decisions are frozen into the op: the sequence
-// number and the timestamp are chosen here, once, and stored.
+// number and the hybrid logical clock timestamp are chosen here, once, and
+// stored.
 func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -240,9 +286,9 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) + 1 FROM ops WHERE node_id = ?`, s.node).Scan(&seq); err != nil {
 		return err
 	}
-	ts := s.now()
-	res, err := tx.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, kind, payload) VALUES (?, ?, ?, ?, ?)`,
-		s.node, seq, nanos(ts), kind, string(raw))
+	stamp := s.clock.Now()
+	res, err := tx.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, counter, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+		s.node, seq, stamp.Wall, stamp.Counter, kind, string(raw))
 	if err != nil {
 		return fmt.Errorf("sqlstore: append %s: %w", kind, err)
 	}
@@ -250,7 +296,7 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 	if err != nil {
 		return err
 	}
-	op := Op{Pos: pos, NodeID: s.node, Seq: seq, TS: ts.UTC(), Kind: kind, Payload: raw}
+	op := Op{Pos: pos, NodeID: s.node, Seq: seq, TS: stamp.Time(), Counter: stamp.Counter, Kind: kind, Payload: raw}
 	if err := applyOp(ctx, tx, op); err != nil {
 		return err
 	}

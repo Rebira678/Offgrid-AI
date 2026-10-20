@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
+	"offgrid/internal/hlc"
 	"offgrid/internal/task"
 )
 
@@ -216,6 +218,12 @@ type Info struct {
 	AppliedPos        int64
 	Tasks             int
 	StateHash         string
+	// NewestStamp is the newest op timestamp in the log (zero if empty), and
+	// ClockAhead how far it is beyond the physical clock now. A large
+	// ClockAhead means an op was once stamped from a clock that was far ahead
+	// (or the physical clock is now far behind).
+	NewestStamp hlc.Timestamp
+	ClockAhead  time.Duration
 }
 
 func (s *Store) Info(ctx context.Context) (Info, error) {
@@ -237,6 +245,10 @@ func (s *Store) Info(ctx context.Context) (Info, error) {
 	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&info.Tasks); err != nil {
 		return info, err
 	}
+	if info.NewestStamp, err = s.newestStamp(ctx, s.db); err != nil {
+		return info, err
+	}
+	info.ClockAhead = s.clock.Ahead()
 	info.StateHash, err = stateHash(ctx, s.db)
 	return info, err
 }
