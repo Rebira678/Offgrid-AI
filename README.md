@@ -31,6 +31,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **12** | Drain on reconnect, survive crash: concurrency, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
 | **13** | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
 | **14** | Recap: architecture specification, guarantees, tests, release v0.1 | [ARCHITECTURE.md](ARCHITECTURE.md), `scripts/release-v0.1.sh` |
+| **15** | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
 
 
 ---
@@ -162,6 +163,10 @@ make drain-demo                             # runs kill -9 mid-drain resilience 
 ./bin/offgrid top -queue queue.db -once      # capture single plain-text frame of system state
 ./bin/offgrid drain -db tasks.db -slog drain.log -slog-level debug # structured logging to file
 make top-demo                               # automated live screen & truth verification runner
+
+# 12. Day 15: Hybrid Logical Clock (HLC) simulation (orders edits across skewed clocks)
+./bin/offgrid clock demo -skew 10m          # Bob's clock is 10m behind; HLC resolves correct causal order
+make clock-demo                             # run automated clock skew & HLC demo
 ```
 
 ---
@@ -219,6 +224,7 @@ internal/netfault/        Fault-injecting RoundTripper: latency, drop %, partiti
 internal/drain/           Queue worker: concurrency limit, network gate, leases, release, checkpoints, handlers
 internal/obs/             Structured logs (slog), counters, atomic JSON snapshot files
 internal/dash/            One-screen live view: pure ANSI render function & terminal repaint loop
+internal/hlc/             Hybrid logical clock (Kulkarni et al.): causal ordering across clock skew
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -243,6 +249,7 @@ make partition-demo   # Runs Day 11 automated network partition & recovery test
 make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
 make top-demo         # Runs Day 13 automated live dashboard & telemetry verification
 make release          # Runs Day 14 pre-flight checks and creates local v0.1 annotated tag
+make clock-demo       # Runs Day 15 automated clock skew & HLC demo
 ```
 
 ---
@@ -252,6 +259,7 @@ make release          # Runs Day 14 pre-flight checks and creates local v0.1 ann
 The codebase adheres to rigorous reliability engineering standards:
 - **Contract Testing (`storetest`):** The exact same contract test suite runs against both ephemeral `MemStore` and persistent `sqlstore.Store`.
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
+- **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.

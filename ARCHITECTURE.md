@@ -32,7 +32,7 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
    obs + dash (internal/obs, internal/dash): structured logs, counters, and the one-screen `offgrid top`
 ```
 
-Not in the picture because it does not exist yet: the hybrid logical clock (Day 15), the CRDT state (LWW-Map and OR-Set), and sync between two replicas. The `ts` column of the op log is a placeholder until then.
+Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Not built yet: the CRDT state (LWW-Map and OR-Set) and sync between two replicas.
 
 ## 2. Process model
 
@@ -116,7 +116,8 @@ Dependencies point downward; nothing lower knows about anything above it.
 ## 8. Known limits (v0.1)
 
 - Real Ollama and real network loss are **untested here**: the test and demo model is a stand-in server with canned answers, and the network is simulated.
-- No sync, no HLC yet. Two replicas cannot merge. Op timestamps are placeholders.
+- No sync yet. Two replicas cannot merge. The HLC exists and is tested (including a multi-node simulation with skewed clocks), but only a simulation has exercised it across nodes, not real devices.
+- A clock once far ahead drags the HLC with it (`offgrid store info` warns). A remote stamp more than 1 h ahead is refused by `Clock.Update`; a last-writer-wins merge will then prefer that remote value.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
 - The complexity gate is a closed vocabulary: it is explainable and measured on held-out cases, but it will miss phrasings it has not seen.

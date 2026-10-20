@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -56,3 +56,7 @@ top-demo: build
 # Day 14: check everything, then tag v0.1 locally (pass PUSH=--push to publish)
 release: build
 	scripts/release-v0.1.sh $(PUSH)
+
+# Day 15: why wall clocks cannot order edits, and the hybrid logical clock (a simulation).
+clock-demo: build
+	bin/offgrid clock demo
