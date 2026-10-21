@@ -16,10 +16,10 @@ func TestLWWDemoShowsBothEditsKeptTheLaterWinningAndTheNodeIDTieBreak(t *testing
 	}
 	for _, want := range []string{
 		"SIMULATION",
-		"Alice after merging:   priority=high   status=in_progress",
-		"Bob after merging:     priority=high   status=in_progress",
-		"Alice after merging:   priority=high   status=open",
-		"Bob after merging:     priority=high   status=open",
+		"Lidia after merging:   priority=high   status=in_progress",
+		"Beka after merging:    priority=high   status=in_progress",
+		"Lidia after merging:   priority=high   status=open",
+		"Beka after merging:    priority=high   status=open",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)

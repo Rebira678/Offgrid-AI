@@ -13,7 +13,7 @@ const lwwHelp = `offgrid lww demo explains the last-writer-wins map with a small
 
   offgrid lww demo
 
-Alice and Bob edit the same task while apart, then meet. The demo uses fake
+Lidia and Beka edit the same task while apart, then meet. The demo uses fake
 clocks and no files or network; the timestamps come from internal/hlc and the
 merge is the real internal/crdt.Merge.`
 
@@ -64,14 +64,14 @@ func runLWWDemo(w io.Writer) {
 		Put(crdt.TaskKey("T1", "priority"), crdt.Entry{Value: "medium", Stamp: hlc.Timestamp{Wall: start.Add(-time.Hour).UnixNano()}, Node: "office"}).
 		Put(crdt.TaskKey("T1", "status"), crdt.Entry{Value: "open", Stamp: hlc.Timestamp{Wall: start.Add(-time.Hour).UnixNano()}, Node: "office"})
 	fresh := func() (*person, *person) {
-		a, b := newPerson("alice"), newPerson("bob")
+		a, b := newPerson("lidia"), newPerson("beka")
 		a.data, b.data = shared, shared
 		return a, b
 	}
 	meet := func(a, b *person) {
 		ab, ba := crdt.Merge(a.data, b.data), crdt.Merge(b.data, a.data)
-		show("Alice after merging:", ab)
-		show("Bob after merging:", ba)
+		show("Lidia after merging:", ab)
+		show("Beka after merging:", ba)
 		if crdt.Equal(ab, ba) {
 			fmt.Fprintln(w, "   -> both ended with the same data, and nobody had to decide.")
 		} else {
@@ -93,12 +93,12 @@ func runLWWDemo(w io.Writer) {
 	set(a, 2*time.Minute, "T1", "priority", "low")
 	set(b, 5*time.Minute, "T1", "priority", "high")
 	meet(a, b)
-	fmt.Fprintln(w, "   Alice's edit was not 'wrong'. It was just overwritten, as if Bob had typed after her.")
+	fmt.Fprintln(w, "   Lidia's edit was not 'wrong'. It was just overwritten, as if Beka had typed after her.")
 
 	fmt.Fprintln(w, "\n3. Exactly the same moment: the node name breaks the tie")
 	a, b = fresh()
-	set(a, 3*time.Minute, "T1", "priority", "low")
-	set(b, 3*time.Minute, "T1", "priority", "high")
+	set(b, 3*time.Minute, "T1", "priority", "low")
+	set(a, 3*time.Minute, "T1", "priority", "high")
 	meet(a, b)
-	fmt.Fprintln(w, "   Arbitrary (\"bob\" sorts after \"alice\"), but identical on every replica, which is all that matters.")
+	fmt.Fprintln(w, "   Arbitrary (\"lidia\" sorts after \"beka\"), but identical on every replica, which is all that matters.")
 }
