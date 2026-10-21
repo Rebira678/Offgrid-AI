@@ -31,13 +31,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	}
 	sub := fs.Arg(0)
 	if sub == "" || fs.NArg() > 1 {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify|rebuild|ops [-n N]")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify|rebuild|ops|fields [-n N]")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "rebuild", "ops":
+	case "info", "verify", "rebuild", "ops", "fields":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, rebuild or ops)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, rebuild, ops or fields)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -106,6 +106,26 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, "identical: the view was already exactly what the log says")
 		} else {
 			fmt.Fprintln(stdout, "CHANGED: the view had drifted from the log and has been repaired")
+		}
+
+	case "fields":
+		m, err := st.Fields(ctx)
+		if err != nil {
+			return storeError(stderr, err)
+		}
+		// one line per register, with the stamp and node that won it
+		enc := json.NewEncoder(stdout)
+		for _, k := range m.Keys() {
+			e := m[k]
+			if err := enc.Encode(struct {
+				Key     string `json:"key"`
+				Value   string `json:"value"`
+				Deleted bool   `json:"deleted,omitempty"`
+				HLC     string `json:"hlc"`
+				Node    string `json:"node"`
+			}{k, e.Value, e.Deleted, e.Stamp.String(), e.Node}); err != nil {
+				return storeError(stderr, err)
+			}
 		}
 
 	case "ops":
