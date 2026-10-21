@@ -32,7 +32,7 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
    obs + dash (internal/obs, internal/dash): structured logs, counters, and the one-screen `offgrid top`
 ```
 
-Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Not built yet: the CRDT state (LWW-Map and OR-Set) and sync between two replicas.
+Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Not built yet: the OR-Set (notes) and sync between two replicas.
 
 ## 2. Process model
 
@@ -116,7 +116,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 ## 8. Known limits (v0.1)
 
 - Real Ollama and real network loss are **untested here**: the test and demo model is a stand-in server with canned answers, and the network is simulated.
-- No sync yet. Two replicas cannot merge. The HLC exists and is tested (including a multi-node simulation with skewed clocks), but only a simulation has exercised it across nodes, not real devices.
+- No sync yet. `crdt.Merge` can merge two field maps, but nothing yet moves ops between replicas, and task IDs (`T1`, `T2`...) are per-replica counters that would collide. The HLC exists and is tested (including a multi-node simulation with skewed clocks), but only a simulation has exercised it across nodes, not real devices.
 - A clock once far ahead drags the HLC with it (`offgrid store info` warns). A remote stamp more than 1 h ahead is refused by `Clock.Update`; a last-writer-wins merge will then prefer that remote value.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.

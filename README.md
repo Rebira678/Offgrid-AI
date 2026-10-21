@@ -167,6 +167,11 @@ make top-demo                               # automated live screen & truth veri
 # 12. Day 15: Hybrid Logical Clock (HLC) simulation (orders edits across skewed clocks)
 ./bin/offgrid clock demo -skew 10m          # Bob's clock is 10m behind; HLC resolves correct causal order
 make clock-demo                             # run automated clock skew & HLC demo
+
+# 13. Day 16: Last-Writer-Wins Map (LWW-Map) simulation (merges per-field edits)
+./bin/offgrid lww demo                      # simulate Alice & Bob merging concurrent edits
+./bin/offgrid store -db tasks.db fields     # inspect per-field registers in SQLite log
+make lww-demo                               # run automated LWW-Map demo
 ```
 
 ---
@@ -225,6 +230,7 @@ internal/drain/           Queue worker: concurrency limit, network gate, leases,
 internal/obs/             Structured logs (slog), counters, atomic JSON snapshot files
 internal/dash/            One-screen live view: pure ANSI render function & terminal repaint loop
 internal/hlc/             Hybrid logical clock (Kulkarni et al.): causal ordering across clock skew
+internal/crdt/            LWW-Map: per-field registers and a pure, order-independent merge
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -250,6 +256,7 @@ make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
 make top-demo         # Runs Day 13 automated live dashboard & telemetry verification
 make release          # Runs Day 14 pre-flight checks and creates local v0.1 annotated tag
 make clock-demo       # Runs Day 15 automated clock skew & HLC demo
+make lww-demo         # Runs Day 16 automated LWW-Map CRDT demo
 ```
 
 ---
@@ -260,6 +267,7 @@ The codebase adheres to rigorous reliability engineering standards:
 - **Contract Testing (`storetest`):** The exact same contract test suite runs against both ephemeral `MemStore` and persistent `sqlstore.Store`.
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
+- **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized total order comparisons, 200 random multi-replica sync scenarios, and differential agreement against the SQLite materialized view across random workloads.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.

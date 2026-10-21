@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -60,3 +60,7 @@ release: build
 # Day 15: why wall clocks cannot order edits, and the hybrid logical clock (a simulation).
 clock-demo: build
 	bin/offgrid clock demo
+
+# Day 16: two people edit the same task while apart; how the merge decides (a simulation).
+lww-demo: build
+	bin/offgrid lww demo
