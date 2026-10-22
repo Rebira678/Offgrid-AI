@@ -1,6 +1,7 @@
 package crdt
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -249,6 +250,30 @@ func TestPropertyCompareTotalOrderStrictTransitivity(t *testing.T) {
 		c13 := e1.Compare(e3)
 		if c12 <= 0 && c23 <= 0 && c13 > 0 {
 			rt.Fatalf("transitivity violated: e1 <= e2 (%d) and e2 <= e3 (%d) but e1 > e3 (%d)", c12, c23, c13)
+		}
+	})
+}
+
+// TestPropertyMergeAllEquivalenceToPairwiseFolding proves that MergeAll over N generated maps
+// matches sequential pairwise Merge folding under all permutations.
+func TestPropertyMergeAllEquivalenceToPairwiseFolding(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		k := rapid.IntRange(0, 6).Draw(rt, "numMaps")
+		maps := make([]Map, k)
+		for i := 0; i < k; i++ {
+			maps[i] = genAdversarialMap().Draw(rt, fmt.Sprintf("map-%d", i))
+		}
+
+		mergedAll := MergeAll(maps...)
+
+		// Fold sequentially
+		var folded Map
+		for _, m := range maps {
+			folded = Merge(folded, m)
+		}
+
+		if !Equal(mergedAll, folded) {
+			rt.Fatalf("MergeAll diverged from sequential pairwise folding:\n MergeAll: %v\n Folded:   %v", mergedAll, folded)
 		}
 	})
 }

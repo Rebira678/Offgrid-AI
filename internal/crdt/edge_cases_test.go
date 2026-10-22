@@ -214,3 +214,39 @@ func TestZeroValueEntryCompare(t *testing.T) {
 		t.Errorf("zero value should sort before non-zero stamp")
 	}
 }
+
+// TestMergeAllEquivalence verifies that MergeAll produces bit-for-bit identical
+// state to pairwise Merge folding across multiple replicas.
+func TestMergeAllEquivalence(t *testing.T) {
+	m1 := Map{
+		TaskKey("T1", FieldTitle):    Entry{Value: "Alpha", Stamp: at(10, 0), Node: "n1"},
+		TaskKey("T1", FieldPriority): Entry{Value: "low", Stamp: at(10, 0), Node: "n1"},
+	}
+	m2 := Map{
+		TaskKey("T1", FieldPriority): Entry{Value: "high", Stamp: at(12, 0), Node: "n2"},
+		TaskKey("T2", FieldStatus):   Entry{Value: "open", Stamp: at(15, 0), Node: "n2"},
+	}
+	m3 := Map{
+		TaskKey("T1", FieldPriority): Entry{Value: "urgent", Stamp: at(11, 0), Node: "n3"},
+		TaskKey("T2", FieldStatus):   Entry{Value: "in_progress", Stamp: at(16, 0), Node: "n3"},
+		TaskKey("T3", FieldSite):     Entry{Value: "Site C", Stamp: at(5, 0), Node: "n3"},
+	}
+
+	pairwise := Merge(Merge(m1, m2), m3)
+	all := MergeAll(m1, m2, m3)
+
+	if !Equal(pairwise, all) {
+		t.Fatalf("MergeAll diverged from pairwise merge:\nPairwise: %v\nMergeAll: %v", pairwise, all)
+	}
+
+	// Boundary cases: empty, 1 map, nil maps
+	if empty := MergeAll(); len(empty) != 0 {
+		t.Fatalf("expected empty map for 0 args, got %v", empty)
+	}
+	if single := MergeAll(m1); !Equal(single, m1) {
+		t.Fatalf("expected single map clone, got %v", single)
+	}
+	if withNil := MergeAll(m1, nil, m2); !Equal(withNil, Merge(m1, m2)) {
+		t.Fatalf("MergeAll with nil map failed: %v", withNil)
+	}
+}

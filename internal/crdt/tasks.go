@@ -39,14 +39,14 @@ func SplitTaskKey(key string) (id, field string, ok bool) {
 // TaskFields reads the live fields of every task out of m: task ID to field
 // name to value. A task whose fields are all deleted does not appear.
 func TaskFields(m Map) map[string]map[string]string {
-	out := map[string]map[string]string{}
+	out := make(map[string]map[string]string, len(m)/2)
 	for k, e := range m {
 		id, field, ok := SplitTaskKey(k)
 		if !ok || e.Deleted {
 			continue
 		}
 		if out[id] == nil {
-			out[id] = map[string]string{}
+			out[id] = make(map[string]string, 4)
 		}
 		out[id][field] = e.Value
 	}

@@ -85,3 +85,27 @@ func BenchmarkSplitTaskKey(b *testing.B) {
 		_, _, _ = SplitTaskKey(key)
 	}
 }
+
+func BenchmarkMergeAll(b *testing.B) {
+	const numReplicas = 5
+	const keysPerReplica = 100
+	reps := make([]Map, numReplicas)
+	for r := 0; r < numReplicas; r++ {
+		reps[r] = make(Map, keysPerReplica)
+		node := fmt.Sprintf("node-%d", r)
+		for k := 0; k < keysPerReplica; k++ {
+			id := fmt.Sprintf("T%d", k)
+			reps[r][TaskKey(id, FieldPriority)] = Entry{
+				Value: "high",
+				Stamp: hlc.Timestamp{Wall: int64(100 + r*10 + k), Counter: uint32(r)},
+				Node:  node,
+			}
+		}
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = MergeAll(reps...)
+	}
+}

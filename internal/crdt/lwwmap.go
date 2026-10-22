@@ -127,6 +127,33 @@ func Merge(a, b Map) Map {
 	return out
 }
 
+// MergeAll merges an arbitrary number of maps in a single allocation pass.
+// It is equivalent to folding with Merge, but avoids intermediate map allocations
+// when synchronizing across multiple replicas.
+func MergeAll(maps ...Map) Map {
+	if len(maps) == 0 {
+		return Map{}
+	}
+	if len(maps) == 1 {
+		return maps[0].clone(0)
+	}
+	maxCap := 0
+	for _, m := range maps {
+		if len(m) > maxCap {
+			maxCap = len(m)
+		}
+	}
+	out := make(Map, maxCap)
+	for _, m := range maps {
+		for k, e := range m {
+			if cur, ok := out[k]; !ok || e.Compare(cur) > 0 {
+				out[k] = e
+			}
+		}
+	}
+	return out
+}
+
 func (m Map) clone(extra int) Map {
 	out := make(Map, len(m)+extra)
 	for k, e := range m {
