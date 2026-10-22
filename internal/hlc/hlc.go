@@ -99,7 +99,7 @@ func Parse(s string) (Timestamp, error) {
 	}
 	c, err := strconv.ParseUint(s[i+1:], 10, 32)
 	if err != nil {
-		return Timestamp{}, fmt.Errorf("hlc: %q: bad counter", s)
+		return Timestamp{}, fmt.Errorf("hlc: %q: bad counter: %w", s, err)
 	}
 	if at.Before(time.Unix(0, 0)) {
 		return Timestamp{}, fmt.Errorf("hlc: %q is before 1970", s)
