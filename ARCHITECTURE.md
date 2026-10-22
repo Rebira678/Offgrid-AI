@@ -32,7 +32,7 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
    obs + dash (internal/obs, internal/dash): structured logs, counters, and the one-screen `offgrid top`
 ```
 
-Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Not built yet: the OR-Set (notes) and sync between two replicas.
+Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Property tests (Day 17, `pgregory.net/rapid`) check that merge is commutative, associative and idempotent, and that the same tests catch deliberately broken merges. Not built yet: the OR-Set (notes) and sync between two replicas.
 
 ## 2. Process model
 
@@ -99,6 +99,8 @@ Dependencies point downward; nothing lower knows about anything above it.
 | The state machine does not flap | hysteresis, asymmetric thresholds (down faster than up) | `internal/connectivity` |
 | The viewer cannot change the queue | read-only connection, no migrations | `TestReadOnlyViewSeesTheQueueAndCannotChangeIt` |
 | The screen never presents old data as live | snapshot age against the publisher's own interval | `internal/dash`, `internal/obs` |
+| Op timestamps never go backwards and always follow what a node has seen, even with a wrong clock | hybrid logical clock; restored from the log on open | `internal/hlc` tests (including a 25-seed skewed-clock simulation); `sqlstore/hlc_test.go` |
+| Merging task fields gives the same result in any order, grouping or repetition | `crdt.Merge` keeps the larger of a total order (stamp, node, deleted, value) | `internal/crdt/props_test.go` (13 properties x 3000 generated cases); `broken_test.go` shows broken merges are caught |
 
 **Not promised:** exactly-once *execution* (impossible after a crash: the worker cannot know whether it died before or after the effect), protection against power loss beyond what SQLite's WAL and `synchronous=FULL` give (not tested by pulling a plug), or any cross-replica behaviour (no sync yet).
 
