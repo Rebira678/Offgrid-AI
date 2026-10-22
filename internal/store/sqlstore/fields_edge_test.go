@@ -2,8 +2,12 @@ package sqlstore
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	"pgregory.net/rapid"
 
 	"offgrid/internal/crdt"
 	"offgrid/internal/task"
@@ -143,4 +147,112 @@ func TestFieldsStressManyPagingCycles(t *testing.T) {
 			t.Fatalf("page size %d diverged from default", ps)
 		}
 	}
+}
+
+// TestPropertyFieldsFromOpsMalformedLogResilience checks that FieldsFromOps cleanly
+// fails with ErrCorruptLog when encountering corrupt payloads or unknown kinds,
+// while skipping note ops without error or false registers.
+func TestPropertyFieldsFromOpsMalformedLogResilience(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		numOps := rapid.IntRange(1, 15).Draw(rt, "numOps")
+		hasCorrupt := false
+		ops := make([]Op, numOps)
+
+		for i := 0; i < numOps; i++ {
+			isCorrupt := rapid.Bool().Draw(rt, fmt.Sprintf("isCorrupt-%d", i))
+			now := time.Now().UTC()
+			if isCorrupt {
+				hasCorrupt = true
+				switch rapid.IntRange(0, 2).Draw(rt, "corruptType") {
+				case 0: // Unknown op kind
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: "task.forged_kind",
+						Payload: []byte(`{"id":"T1"}`),
+					}
+				case 1: // Bad json in created
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: KindTaskCreated,
+						Payload: []byte(`{invalid-json`),
+					}
+				case 2: // Bad json in updated
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: KindTaskUpdated,
+						Payload: []byte(`{invalid-json`),
+					}
+				}
+			} else {
+				// Valid op: created, updated, or note_added
+				switch rapid.IntRange(0, 2).Draw(rt, "validType") {
+				case 0:
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: KindTaskCreated,
+						Payload: []byte(fmt.Sprintf(`{"id":"T%d","title":"Valid","site":"S","priority":"low"}`, i)),
+					}
+				case 1:
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: KindTaskUpdated,
+						Payload: []byte(fmt.Sprintf(`{"id":"T%d","status":"done"}`, i)),
+					}
+				case 2:
+					ops[i] = Op{
+						Pos: int64(i + 1), NodeID: "node-x", Seq: int64(i + 1),
+						TS: now, Counter: 0, Kind: KindNoteAdded,
+						Payload: []byte(`{"id":"T1","body":"Note"}`),
+					}
+				}
+			}
+		}
+
+		m, err := FieldsFromOps(ops)
+		if hasCorrupt {
+			if err == nil {
+				rt.Fatalf("expected ErrCorruptLog on corrupted ops, got err=nil")
+			}
+			if !errors.Is(err, ErrCorruptLog) {
+				rt.Fatalf("expected error wrapping ErrCorruptLog, got: %v", err)
+			}
+		} else {
+			if err != nil {
+				rt.Fatalf("unexpected error on valid op stream: %v", err)
+			}
+			// Note ops must not register any fields
+			for k := range m {
+				if _, _, ok := crdt.SplitTaskKey(k); !ok {
+					rt.Fatalf("invalid task key registered: %q", k)
+				}
+			}
+		}
+	})
+}
+
+// TestPropertyFieldsFromOpsEmptyOrIdempotent checks that empty logs produce empty maps,
+// and duplicating an entire log preserves exact CRDT map equality.
+func TestPropertyFieldsFromOpsEmptyOrIdempotent(t *testing.T) {
+	// Empty slices
+	mNil, err1 := FieldsFromOps(nil)
+	mEmpty, err2 := FieldsFromOps([]Op{})
+	if err1 != nil || err2 != nil {
+		t.Fatalf("unexpected error on empty/nil ops: %v, %v", err1, err2)
+	}
+	if len(mNil) != 0 || len(mEmpty) != 0 {
+		t.Fatalf("expected 0 entries from empty logs")
+	}
+
+	lists := buildOpLists(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		ops := lists[rapid.IntRange(0, len(lists)-1).Draw(rt, "log")]
+		single, errSingle := FieldsFromOps(ops)
+		duplicated, errDup := FieldsFromOps(append(append([]Op{}, ops...), ops...))
+		if errSingle != nil || errDup != nil {
+			rt.Fatalf("unexpected error: single=%v, dup=%v", errSingle, errDup)
+		}
+		if !crdt.Equal(single, duplicated) {
+			rt.Fatalf("duplicating entire op log changed the registers")
+		}
+	})
 }

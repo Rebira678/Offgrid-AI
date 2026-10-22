@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"pgregory.net/rapid"
+
 	"offgrid/internal/crdt"
 	"offgrid/internal/task"
 )
@@ -272,3 +274,75 @@ func TestAReplicaWithASlowClockLosesToTheOlderEditAndTheDocsSayWhy(t *testing.T)
 }
 
 func errorsIs(err, target error) bool { return errors.Is(err, target) }
+
+// ---- properties: the registers behave like the merge says they should
+
+// buildOpLists makes a few real op logs from random workloads, once per test,
+// so the properties below can draw subsets of them thousands of times cheaply.
+func buildOpLists(t *testing.T) [][]Op {
+	t.Helper()
+	var out [][]Op
+	for seed := int64(1); seed <= 6; seed++ {
+		s, clk := freshStore(t)
+		workload(t, s, clk, seed, 60)
+		out = append(out, allOps(t, s))
+	}
+	return out
+}
+
+// Reading a log in a different order, with some ops delivered twice, gives the
+// same registers. (Sync will deliver ops late, early and more than once.)
+func TestPropertyFieldsDoNotDependOnOrderOrDuplicates(t *testing.T) {
+	lists := buildOpLists(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		ops := lists[rapid.IntRange(0, len(lists)-1).Draw(rt, "log")]
+		want, err := FieldsFromOps(ops)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		shuffled := rapid.Permutation(ops).Draw(rt, "order")
+		for _, i := range rapid.SliceOfN(rapid.IntRange(0, len(ops)-1), 0, 20).Draw(rt, "delivered twice") {
+			shuffled = append(shuffled, ops[i])
+		}
+		got, err := FieldsFromOps(shuffled)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		if !crdt.Equal(got, want) {
+			rt.Fatalf("a different delivery order or duplicates changed the registers")
+		}
+	})
+}
+
+// The property that makes sync possible: registers built from two partial
+// logs, merged, equal the registers built from everything. Two replicas can
+// therefore exchange registers or ops and reach the same state.
+func TestPropertyMergingPartialRegistersEqualsRegistersOfTheUnion(t *testing.T) {
+	lists := buildOpLists(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		ops := lists[rapid.IntRange(0, len(lists)-1).Draw(rt, "log")]
+		var a, b []Op
+		for _, op := range ops {
+			switch rapid.IntRange(0, 2).Draw(rt, "who has it") {
+			case 0:
+				a = append(a, op)
+			case 1:
+				b = append(b, op)
+			default: // both have it
+				a, b = append(a, op), append(b, op)
+			}
+		}
+		fa, err1 := FieldsFromOps(a)
+		fb, err2 := FieldsFromOps(b)
+		all, err3 := FieldsFromOps(append(append([]Op{}, a...), b...))
+		if err1 != nil || err2 != nil || err3 != nil {
+			rt.Fatal(err1, err2, err3)
+		}
+		if got := crdt.Merge(fa, fb); !crdt.Equal(got, all) {
+			rt.Fatalf("merge of the halves differs from the registers of the union")
+		}
+		if got := crdt.Merge(fb, fa); !crdt.Equal(got, all) {
+			rt.Fatalf("merge in the other order differs from the registers of the union")
+		}
+	})
+}
