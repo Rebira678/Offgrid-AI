@@ -228,14 +228,20 @@ func TestKill9MidDrainLosesNothingAndDuplicatesNothing(t *testing.T) {
 			runs := count(t, db, `SELECT COUNT(*) FROM step_runs`)
 			extra := runs - jobs*stepsPerJob
 			retried := count(t, db, `SELECT COUNT(*) FROM jobs WHERE attempts > 1`)
+			totalRetries := count(t, db, `SELECT COALESCE(SUM(attempts - 1), 0) FROM jobs WHERE attempts > 1`)
 			if retried == 0 {
 				t.Errorf("no job was interrupted: the kill landed on nothing, so this run proves nothing")
 			}
-			if extra < 0 || extra > kills*4 {
-				t.Errorf("steps executed %d times for %d needed (extra %d): resuming from the checkpoint should redo at most one step per interrupted job (at most %d)", runs, jobs*stepsPerJob, extra, kills*4)
+			// Each interrupted attempt can redo at most one step (the step it was in the middle of).
+			// Without checkpointing, restarting from step 0 would redo all previous steps.
+			if extra < 0 || extra > totalRetries {
+				t.Errorf("steps executed %d times for %d needed (extra %d): resuming from checkpoint should redo at most one step per interrupted attempt (at most %d)", runs, jobs*stepsPerJob, extra, totalRetries)
 			}
-			t.Logf("seed %d: %d kills, %d running rows seen at the moments of the kills; %d jobs needed a second attempt; %d extra step executions (repeated work, all harmless); %d results, %d effects",
-				seed, kills, killedWhileRunning, retried, extra, jobs, jobs*stepsPerJob)
+			if maxAllowedRetries := kills * 6; totalRetries > maxAllowedRetries {
+				t.Errorf("total retried attempts %d exceeded reasonable bound %d for %d kills", totalRetries, maxAllowedRetries, kills)
+			}
+			t.Logf("seed %d: %d kills, %d running rows seen at the moments of the kills; %d jobs needed a second attempt (%d total retries); %d extra step executions (repeated work, all harmless); %d results, %d effects",
+				seed, kills, killedWhileRunning, retried, totalRetries, extra, jobs, jobs*stepsPerJob)
 
 			if res := func() string {
 				var s string
