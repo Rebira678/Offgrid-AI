@@ -17,9 +17,13 @@ import (
 // Notes are not registers (they are appended, and become an OR-Set on Day 18),
 // so note ops are skipped. Any other unknown kind is a corrupt log.
 func FieldsFromOps(ops []Op) (crdt.Map, error) {
-	m := crdt.Map{}
+	m := make(crdt.Map, len(ops)*2)
 	put := func(op Op, id, field, value string) {
-		m = m.Put(crdt.TaskKey(id, field), crdt.Entry{Value: value, Stamp: op.Stamp(), Node: op.NodeID})
+		k := crdt.TaskKey(id, field)
+		e := crdt.Entry{Value: value, Stamp: op.Stamp(), Node: op.NodeID}
+		if cur, ok := m[k]; !ok || e.Compare(cur) > 0 {
+			m[k] = e
+		}
 	}
 	for _, op := range ops {
 		switch op.Kind {

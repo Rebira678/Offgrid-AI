@@ -81,4 +81,28 @@ func BenchmarkRebuild(b *testing.B) {
 	}
 }
 
+// BenchmarkFields measures reading the entire op log into per-field CRDT registers
+// from logs of 1,000 and 10,000 ops.
+func BenchmarkFields(b *testing.B) {
+	for _, n := range []int{1_000, 10_000} {
+		b.Run(fmt.Sprintf("%d-ops", n), func(b *testing.B) {
+			clk := &clock{t: epoch}
+			s, err := Open(context.Background(), newBenchDB(b), Options{NodeID: "bench", Now: clk.now})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer s.Close()
+			fill(b, s, n)
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := s.Fields(ctx); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func newBenchDB(b *testing.B) string { return b.TempDir() + "/bench.db" }
