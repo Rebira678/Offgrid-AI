@@ -29,7 +29,7 @@ func SplitTaskKey(key string) (id, field string, ok bool) {
 	if !found {
 		return "", "", false
 	}
-	i := strings.LastIndex(rest, "/")
+	i := strings.LastIndexByte(rest, '/')
 	if i <= 0 || i == len(rest)-1 {
 		return "", "", false
 	}
