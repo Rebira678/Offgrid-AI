@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo
+.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -64,3 +64,8 @@ clock-demo: build
 # Day 16: two people edit the same task while apart; how the merge decides (a simulation).
 lww-demo: build
 	bin/offgrid lww demo
+
+# Day 17: property tests on the merge, then the same tests catching deliberately broken merges.
+# Needs once: go get pgregory.net/rapid@v1.2.0
+prove-merge:
+	scripts/prove-merge.sh $(CHECKS)
