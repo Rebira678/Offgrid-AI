@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -28,9 +28,13 @@ check: vet
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed on:"; gofmt -l .; exit 1)
 	go test ./...
 
-# Append and rebuild speed of the SQLite store on this machine.
+# Append, rebuild, and CRDT fields speed of the SQLite store on this machine.
 bench-store:
-	go test -run '^$$' -bench 'Append|Rebuild/(1000|10000)' -benchtime 1x ./internal/store/sqlstore
+	go test -run '^$$' -bench 'Append|Rebuild/(1000|10000)|Fields/(1000|10000)' -benchtime 1x ./internal/store/sqlstore
+
+# Benchmarks for in-memory CRDT merge and HLC logical clock operations.
+bench-crdt:
+	go test -run '^$$' -bench . -benchmem ./internal/crdt ./internal/hlc
 
 # The no-network, no-model demo (pass PAUSE=2 for screen recording).
 demo: build

@@ -194,6 +194,9 @@ make bench-store
 | **Rebuild View** (`BenchmarkRebuild`) | 1,000 ops | **23.1 ms** (~43,000 ops/s) | In-memory reconstruction of full materialized view from scratch. |
 | **Rebuild View** (`BenchmarkRebuild`) | 10,000 ops | **233.6 ms** (~42,800 ops/s) | Entire dataset reconstructed in under a quarter of a second. |
 | **Rebuild View** (`BenchmarkRebuild`) | 50,000 ops | **1.15 s** (~43,500 ops/s) | 50,000 historical ops replayed in barely over 1 second. |
+| **CRDT Register Projection** (`BenchmarkFields`) | 10,000 ops | **26.0 ms** (~384,000 ops/s) | Reads op-log and folds into LWW-Map per-field registers with single allocation. |
+| **HLC Timestamp Issue** (`BenchmarkNow`) | 1 op | **55.4 ns** (~18,000,000 ops/s) | Thread-safe, monotonic, causal timestamp issuance (0 allocs). |
+| **CRDT Merge (Small)** (`BenchmarkMergeSmall`) | 4 fields | **345 ns** (~2,900,000 merges/s) | Pure semilattice join over per-field registers. |
 
 ### 2. Tier 0 vs Tier 1 Intent Routing Latency
 ```bash
@@ -252,6 +255,7 @@ scripts/                  Automated test, offline runners, and release scripts (
 make check            # Runs go vet, gofmt verification, and full test suite
 make test-race        # Executes test suite under Go race detector
 make bench-store      # Executes storage append & view rebuild benchmarks
+make bench-crdt       # Executes in-memory CRDT merge, splitting, and HLC benchmarks
 make demo             # Runs end-to-end offline demo (pass PAUSE=2 for recordings)
 make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, queue fills
 make partition-demo   # Runs Day 11 automated network partition & recovery test
