@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"pgregory.net/rapid"
 
 	"offgrid/internal/crdt"
 	"offgrid/internal/task"
@@ -171,3 +172,53 @@ func TestRemovingANoteWhileAnotherReplicaAddsOneKeepsTheNewNote(t *testing.T) {
 	}
 }
 
+// ---- properties over real logs
+
+func TestPropertyNotesDoNotDependOnOrderOrDuplicates(t *testing.T) {
+	lists := buildOpLists(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		ops := lists[rapid.IntRange(0, len(lists)-1).Draw(rt, "log")]
+		want, err := NotesFromOps(ops)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		shuffled := rapid.Permutation(ops).Draw(rt, "order")
+		for _, i := range rapid.SliceOfN(rapid.IntRange(0, len(ops)-1), 0, 20).Draw(rt, "delivered twice") {
+			shuffled = append(shuffled, ops[i])
+		}
+		got, err := NotesFromOps(shuffled)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		if !crdt.EqualSet(got, want) {
+			rt.Fatalf("a different delivery order or duplicates changed the notes")
+		}
+	})
+}
+
+func TestPropertyMergingPartialNoteSetsEqualsTheNotesOfTheUnion(t *testing.T) {
+	lists := buildOpLists(t)
+	rapid.Check(t, func(rt *rapid.T) {
+		ops := lists[rapid.IntRange(0, len(lists)-1).Draw(rt, "log")]
+		var a, b []Op
+		for _, op := range ops {
+			switch rapid.IntRange(0, 2).Draw(rt, "who has it") {
+			case 0:
+				a = append(a, op)
+			case 1:
+				b = append(b, op)
+			default:
+				a, b = append(a, op), append(b, op)
+			}
+		}
+		na, e1 := NotesFromOps(a)
+		nb, e2 := NotesFromOps(b)
+		all, e3 := NotesFromOps(append(append([]Op{}, a...), b...))
+		if e1 != nil || e2 != nil || e3 != nil {
+			rt.Fatal(e1, e2, e3)
+		}
+		if !crdt.EqualSet(crdt.MergeSet(na, nb), all) || !crdt.EqualSet(crdt.MergeSet(nb, na), all) {
+			rt.Fatalf("merging the partial note sets differs from the notes of the union")
+		}
+	})
+}
