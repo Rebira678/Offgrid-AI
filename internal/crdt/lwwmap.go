@@ -1,8 +1,8 @@
 // Package crdt holds the conflict-free replicated data types Offgrid merges
 // with. Day 16 is the first: a last-writer-wins map.
 //
-// The problem: two replicas edit the same task while apart. Alice sets the
-// priority to low, Bob sets it to high. When they meet, both must end up with
+// The problem: two replicas edit the same task while apart. Lidia sets the
+// priority to low, Beka sets it to high. When they meet, both must end up with
 // the same value, without asking anyone and without a server deciding. The
 // rule has to give the same answer no matter which replica merges, in which
 // order, or how many times.
@@ -10,7 +10,7 @@
 // An LWW-Map keeps, for every key, ONE entry: the value, the hybrid logical
 // timestamp it was written at, and the node that wrote it. Merging two maps
 // keeps, per key, the entry that sorts last. Different keys never interfere,
-// so Alice changing the priority and Bob changing the status both survive.
+// so Lidia changing the priority and Beka changing the status both survive.
 // That is what "per-field" buys over "the whole task, last writer wins", where
 // one of them would be thrown away.
 //

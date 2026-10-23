@@ -17,11 +17,11 @@ func e(v string, st hlc.Timestamp, node string) Entry {
 
 func TestConcurrentEditsToTheSameFieldTheLaterStampWinsOnBothSides(t *testing.T) {
 	k := TaskKey("T1", FieldPriority)
-	alice := Map{}.Put(k, e("low", at(100, 0), "alice"))
-	bob := Map{}.Put(k, e("high", at(200, 0), "bob"))
-	ab, ba := Merge(alice, bob), Merge(bob, alice)
+	lidia := Map{}.Put(k, e("low", at(100, 0), "lidia"))
+	beka := Map{}.Put(k, e("high", at(200, 0), "beka"))
+	ab, ba := Merge(lidia, beka), Merge(beka, lidia)
 	if v, _ := ab.Get(k); v != "high" {
-		t.Errorf("alice.Merge(bob) = %q, want high", v)
+		t.Errorf("lidia.Merge(beka) = %q, want high", v)
 	}
 	if !Equal(ab, ba) {
 		t.Errorf("merge order changed the result: %v vs %v", ab, ba)
@@ -49,9 +49,9 @@ func TestEqualStampsAreDecidedByNodeIDTheSameOnEveryReplica(t *testing.T) {
 }
 
 func TestEditsToDifferentFieldsAreBothKept(t *testing.T) {
-	alice := Map{}.Put(TaskKey("T1", FieldPriority), e("low", at(100, 0), "alice"))
-	bob := Map{}.Put(TaskKey("T1", FieldStatus), e("done", at(50, 0), "bob")) // even though older
-	m := Merge(alice, bob)
+	lidia := Map{}.Put(TaskKey("T1", FieldPriority), e("low", at(100, 0), "lidia"))
+	beka := Map{}.Put(TaskKey("T1", FieldStatus), e("done", at(50, 0), "beka")) // even though older
+	m := Merge(lidia, beka)
 	if p, _ := m.Get(TaskKey("T1", FieldPriority)); p != "low" {
 		t.Errorf("priority lost: %q", p)
 	}
