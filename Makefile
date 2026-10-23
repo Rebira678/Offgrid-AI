@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -73,3 +73,8 @@ lww-demo: build
 # Needs once: go get pgregory.net/rapid@v1.2.0
 prove-merge:
 	scripts/prove-merge.sh $(CHECKS)
+
+# Day 18: delete a task while someone edits it; how the add-wins set decides (a simulation).
+orset-demo: build
+	bin/offgrid orset demo
+
