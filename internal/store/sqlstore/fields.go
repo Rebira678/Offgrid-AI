@@ -63,6 +63,15 @@ var fieldsPageSize = 5000
 // last-writer-wins map. Two replicas that have exchanged their logs (Day 19)
 // will hold maps that crdt.Merge brings to the same value.
 func (s *Store) Fields(ctx context.Context) (crdt.Map, error) {
+	all, err := s.readAllOps(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return FieldsFromOps(all)
+}
+
+// readAllOps pages through the log, fieldsPageSize ops at a time.
+func (s *Store) readAllOps(ctx context.Context) ([]Op, error) {
 	var all []Op
 	var after int64
 	for {
@@ -71,10 +80,10 @@ func (s *Store) Fields(ctx context.Context) (crdt.Map, error) {
 			return nil, err
 		}
 		if len(page) == 0 {
-			break
+			return all, nil
 		}
 		all = append(all, page...)
 		after = page[len(page)-1].Pos
 	}
-	return FieldsFromOps(all)
 }
+
