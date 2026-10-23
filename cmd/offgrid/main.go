@@ -33,7 +33,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.17.0-day17"
+const version = "0.18.0-day18"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -76,6 +76,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdNet(args[1:], stdout, stderr)
 	case "drain":
 		return cmdDrain(args[1:], stdout, stderr)
+	case "orset":
+		return cmdORSet(args[1:], stdout, stderr)
 	case "lww":
 		return cmdLWW(args[1:], stdout, stderr)
 	case "clock":
@@ -115,6 +117,7 @@ Usage:
   offgrid store  -db FILE info|verify|rebuild|ops|fields   inspect the SQLite task store
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
   offgrid clock  demo [-skew 10m]                                     why wall clocks cannot order edits, and the hybrid clock that can
+  offgrid orset  demo                                                 what happens when I delete a task while you edit it
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
   offgrid top    -queue FILE                                          one screen: connection, queue, tiers (live)
   offgrid drain  -db FILE [-once] [-concurrency N] [-deep-host URL]   empty the queue: runs saved jobs, waits for the network
