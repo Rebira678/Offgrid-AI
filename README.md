@@ -236,7 +236,7 @@ internal/drain/           Queue worker: concurrency limit, network gate, leases,
 internal/obs/             Structured logs (slog), counters, atomic JSON snapshot files
 internal/dash/            One-screen live view: pure ANSI render function & terminal repaint loop
 internal/hlc/             Hybrid logical clock (Kulkarni et al.): causal ordering across clock skew
-internal/crdt/            LWW-Map: per-field registers and a pure, order-independent merge
+internal/crdt/            CRDT engines: LWW-Map (per-field registers) & OR-Set (add-wins sets with tombstones)
 internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
 internal/tools/           Closed tool registry with strict input schema validation
 internal/task/            Task domain models and storage contracts
@@ -264,7 +264,8 @@ make top-demo         # Runs Day 13 automated live dashboard & telemetry verific
 make release          # Runs Day 14 pre-flight checks and creates local v0.1 annotated tag
 make clock-demo       # Runs Day 15 automated clock skew & HLC demo
 make lww-demo         # Runs Day 16 automated LWW-Map CRDT demo
-make prove-merge      # Runs Day 17 property-based testing (43,000+ checks) proving CRDT merge laws
+make prove-merge      # Runs Day 17-18 property-based testing (67,000+ checks) proving CRDT merge laws
+make orset-demo       # Runs Day 18 automated OR-Set add-wins CRDT demo
 ```
 
 ---
@@ -276,7 +277,8 @@ The codebase adheres to rigorous reliability engineering standards:
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
 - **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized total order comparisons, 200 random multi-replica sync scenarios, and differential agreement against the SQLite materialized view across random workloads.
-- **Property-Based Testing (`pgregory.net/rapid`):** 43,000+ generated test cases across 13 formal algebraic properties mathematically proving that `crdt.Merge` is a bounded join-semilattice (commutative, associative, idempotent) and satisfies Last-Writer-Wins rules with HLC tiebreaking. Deliberately broken merge mutants (7 anti-patterns) are proven caught and shrunk.
+- **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices (commutative, associative, idempotent). Deliberately broken merge mutants (12 anti-patterns across LWW-Map and OR-Set) are proven caught and shrunk.
+- **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid property-based testing (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit, tombstones hold against stale copies, and multi-replica clusters converge to an independent operational oracle regardless of delivery order or duplicate messages.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
