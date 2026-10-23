@@ -24,6 +24,7 @@ type env struct {
 	t       *testing.T
 	q       *jobqueue.Queue
 	rawExec func(query string, args ...any)
+	rawInt  func(query string, args ...any) int64
 	path    string
 
 	mu     sync.Mutex
@@ -54,6 +55,13 @@ func openEnv(t *testing.T, path string) *env {
 		if _, err := db.Exec(query, args...); err != nil {
 			t.Fatal(err)
 		}
+	}
+	e.rawInt = func(query string, args ...any) int64 {
+		var n int64
+		if err := db.QueryRow(query, args...).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
 	}
 	return e
 }
@@ -583,12 +591,21 @@ func TestHeartbeatKeepsALongJobFromBeingTakenOver(t *testing.T) {
 
 // takeOver simulates a second worker winning the job after the first one's
 // lease ran out: it expires the lease by hand and claims the job.
+//
+// It does this in ONE statement, the same bump of the attempt number that
+// Claim makes. Expiring the lease and then calling Claim leaves a gap in which
+// the worker under test (which also polls for work, and renews short leases)
+// can win the job itself, which made this helper fail on a loaded machine.
 func (e *env) takeOver() jobqueue.Job {
 	e.t.Helper()
-	e.rawExec(`UPDATE jobs SET lease_until=1 WHERE status='running'`)
-	j, ok, err := e.q.Claim(bg, time.Minute)
-	if err != nil || !ok {
-		e.t.Fatalf("takeover claim: ok=%v err=%v", ok, err)
+	id := e.rawInt(`SELECT id FROM jobs WHERE status='running'`)
+	until := time.Now().Add(time.Minute).UnixNano()
+	e.rawExec(`UPDATE jobs SET attempts = attempts + 1, lease_until = ?, updated_at = ?,
+		last_error = 'lease expired: the worker never reported back'
+		WHERE id = ? AND status = 'running'`, until, time.Now().UnixNano(), id)
+	j, err := e.q.Get(bg, id)
+	if err != nil {
+		e.t.Fatalf("takeover: %v", err)
 	}
 	return j
 }
