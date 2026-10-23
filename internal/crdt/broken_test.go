@@ -51,9 +51,16 @@ func (r *recorder) Fail()                     { r.mu.Lock(); r.failed = true; r.
 func (r *recorder) Failed() bool              { r.mu.Lock(); defer r.mu.Unlock(); return r.failed }
 
 // runLaw runs one law against a merge and reports whether rapid found a
-// counterexample, plus rapid's report (the shrunk counterexample). It runs in
-// a scratch directory so rapid's fail files do not land in the source tree.
+// counterexample, plus rapid's report (the shrunk counterexample).
 func runLaw(t *testing.T, l law, merge mergeFn) (failed bool, report string) {
+	t.Helper()
+	return runProp(t, "Broken/"+l.name, func(rt *rapid.T) { l.check(rt, merge) })
+}
+
+// runProp runs a property under rapid with a recorder instead of the real
+// test, in a scratch directory so rapid's fail files do not land in the source
+// tree. It reports whether a counterexample was found and rapid's report.
+func runProp(t *testing.T, name string, prop func(*rapid.T)) (failed bool, report string) {
 	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -63,11 +70,11 @@ func runLaw(t *testing.T, l law, merge mergeFn) (failed bool, report string) {
 		t.Fatal(err)
 	}
 	defer os.Chdir(wd)
-	rec := &recorder{name: "Broken/" + l.name}
+	rec := &recorder{name: name}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		rapid.Check(rec, func(rt *rapid.T) { l.check(rt, merge) })
+		rapid.Check(rec, prop)
 	}()
 	<-done
 	return rec.Failed(), rec.out.String()
