@@ -70,6 +70,15 @@ func (s *Store) Fields(ctx context.Context) (crdt.Map, error) {
 	return FieldsFromOps(all)
 }
 
+// Notes reads the whole op log and returns the task notes as an OR-Set.
+func (s *Store) Notes(ctx context.Context) (crdt.Set, error) {
+	all, err := s.readAllOps(ctx)
+	if err != nil {
+		return crdt.Set{}, err
+	}
+	return NotesFromOps(all)
+}
+
 // readAllOps pages through the log, fieldsPageSize ops at a time.
 func (s *Store) readAllOps(ctx context.Context) ([]Op, error) {
 	var all []Op
@@ -87,3 +96,30 @@ func (s *Store) readAllOps(ctx context.Context) ([]Op, error) {
 	}
 }
 
+// NotesFromOps turns the note ops of a log into an OR-Set: each task.note_added
+// is one add, tagged with the writing node and the op's HLC stamp, so two notes
+// never share a tag even if their text is the same. Pure and order-independent,
+// like FieldsFromOps.
+//
+// Removing a note has no op yet: the type supports it (crdt.Set.Remove) and is
+// tested, but the store does not write note removals until the sync layer
+// needs them (Day 19), so this reads adds only. Other known kinds are not
+// notes and are skipped; an unknown kind is a corrupt log.
+func NotesFromOps(ops []Op) (crdt.Set, error) {
+	set := crdt.NewSet(len(ops), 0)
+	for _, op := range ops {
+		switch op.Kind {
+		case KindNoteAdded:
+			var p notePayload
+			if err := json.Unmarshal(op.Payload, &p); err != nil {
+				return crdt.Set{}, fmt.Errorf("%w: op %d: %v", ErrCorruptLog, op.Pos, err)
+			}
+			tag := crdt.Tag{Node: op.NodeID, Stamp: op.Stamp()}
+			set.AddInPlace(crdt.NoteElement(p.ID, tag, p.Text), tag)
+		case KindTaskCreated, KindTaskUpdated:
+		default:
+			return crdt.Set{}, fmt.Errorf("%w: op %d has unknown kind %q", ErrCorruptLog, op.Pos, op.Kind)
+		}
+	}
+	return set, nil
+}
