@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Day 17: run the property tests on the merge, then show them catching a broken one.
+# Day 17 (extended on Day 18 with the OR-Set): run the property tests on the merges, then show them catching a broken one.
 #
 #   scripts/prove-merge.sh [CHECKS]     CHECKS = generated cases per law (default 3000)
 #
@@ -16,14 +16,15 @@ if ! grep -q 'pgregory.net/rapid' go.mod; then
 fi
 
 echo "== 1. the real merge: every law, $CHECKS generated cases each =="
-go test ./internal/crdt ./internal/store/sqlstore -count=1 -run 'Laws|Generated|Written|Writes|PutIs|Property' -v \
+go test ./internal/crdt ./internal/store/sqlstore -count=1 -run 'Laws|Generated|Written|Writes|PutIs|Property|Oracle|SyncOrder|EveryElement|NoteElementsRound' -v \
   -args -rapid.checks="$CHECKS" 2>&1 | grep -E '\[rapid\] OK|^(ok|FAIL|--- FAIL)'
 test "${PIPESTATUS[0]}" -eq 0
 
 echo
 echo "== 2. deliberately broken merges: the same laws must catch them =="
 go test -count=1 -run 'Deliberately' -v ./internal/crdt 2>&1 \
-  | grep -E '^(=== RUN .*Deliberately[A-Za-z]*/|\s+--- FAIL|\s+broken_test.go:[0-9]+: (caught by|accepted by))' \
-  | sed -E 's/broken_test.go:[0-9]+: //; s#^=== RUN +[A-Za-z]+/#\n#; s#_# #g; s/^ +//'
+  | grep -E '^(=== RUN .*Deliberately[A-Za-z]*/|\s+--- FAIL|\s+(broken_test|orset_broken_test)\.go:[0-9]+: (caught by|accepted by))' \
+  | sed -E 's/(broken_test|orset_broken_test)\.go:[0-9]+: //; s#^=== RUN +[A-Za-z]+/#\n#; s#_# #g; s/^ +//'
 echo
 echo "Every broken merge is caught by at least one law; the CONTROLS (legitimate, just different) are accepted."
+
