@@ -32,7 +32,7 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
    obs + dash (internal/obs, internal/dash): structured logs, counters, and the one-screen `offgrid top`
 ```
 
-Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Property tests (Day 17, `pgregory.net/rapid`) check that merge is commutative, associative and idempotent, and that the same tests catch deliberately broken merges. Also built: the OR-Set (`crdt.Set`, Day 18), an add-wins observed-remove set with tombstones, used for notes. Not built yet: sync between two replicas, and a note-removal op in the store (the type supports removal; the store only writes adds).
+Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Property tests (Day 17, `pgregory.net/rapid`) check that merge is commutative, associative and idempotent, and that the same tests catch deliberately broken merges. Also built: the OR-Set (`crdt.Set`, Day 18), an add-wins observed-remove set with tombstones, used for notes. Also built (Day 19): sync between two replicas, `internal/syncer` plus `Store.Summary`, `OpsSince` and `ApplyRemote`. The view is the op log folded in HLC order `(ts, counter, node, seq)`, so replicas holding the same ops hold the same state; an op that sorts before something already applied makes the store rebuild the view in the same transaction. Task IDs become `T<n>.<node>` once a replica holds another replica's ops. Requests and responses are HMAC-SHA256 signed with a shared key (authentication and integrity, not encryption). Not built yet: a note-removal op in the store (the type supports removal; the store only writes adds), tombstone cleanup, TLS, discovery of peers, and any test over a real network.
 
 ## 2. Process model
 
@@ -103,7 +103,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 | Deleting something never destroys an add the deleter had not seen (add-wins); removed stays removed | `crdt.MergeSet`: union of adds and of tombstones; a remove tombstones only the tags it observed | `internal/crdt/orset_props_test.go` (oracle and laws, 3000 cases each); `orset_broken_test.go` |
 | Merging task fields gives the same result in any order, grouping or repetition | `crdt.Merge` keeps the larger of a total order (stamp, node, deleted, value) | `internal/crdt/props_test.go` (13 properties x 3000 generated cases); `broken_test.go` shows broken merges are caught |
 
-**Not promised:** exactly-once *execution* (impossible after a crash: the worker cannot know whether it died before or after the effect), protection against power loss beyond what SQLite's WAL and `synchronous=FULL` give (not tested by pulling a plug), or any cross-replica behaviour (no sync yet).
+**Not promised:** exactly-once *execution* (impossible after a crash: the worker cannot know whether it died before or after the effect), protection against power loss beyond what SQLite's WAL and `synchronous=FULL` give (not tested by pulling a plug), or behaviour across a real network (sync is tested over localhost and in-process only).
 
 ## 7. Decisions worth defending
 
@@ -119,7 +119,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 ## 8. Known limits (v0.1)
 
 - Real Ollama and real network loss are **untested here**: the test and demo model is a stand-in server with canned answers, and the network is simulated.
-- No sync yet. `crdt.Merge` can merge two field maps, but nothing yet moves ops between replicas, and task IDs (`T1`, `T2`...) are per-replica counters that would collide. The HLC exists and is tested (including a multi-node simulation with skewed clocks), but only a simulation has exercised it across nodes, not real devices.
+- Sync is young. Ops move between replicas (Day 19) but only over localhost and in-process tests, never a real WiFi link or real phones. Two replicas that each created tasks before ever syncing both own a `T1`: the first sync is refused with an ID-collision error, and the second replica must start from an empty database. A far-future timestamp (over `-max-drift`, 1h) makes a batch be refused until the clock is fixed. The HMAC timestamp window (5 min) means badly skewed clocks cannot sync. Nothing is encrypted. Tombstones and the log are never compacted.
 - A clock once far ahead drags the HLC with it (`offgrid store info` warns). A remote stamp more than 1 h ahead is refused by `Clock.Update`; a last-writer-wins merge will then prefer that remote value.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
