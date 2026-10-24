@@ -9,7 +9,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 [![Tests](https://img.shields.io/badge/Tests-Passing%20(550%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **v0.1 (Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. A router decides per message whether to answer now or save it. A fault-injecting transport can break the network on purpose, reproducibly. `offgrid drain` empties the queue when the network is back, and survives `kill -9` without losing or duplicating a job. Structured logs (`log/slog`), counters, and a one-screen live view (`offgrid top`). **Day 14:** `ARCHITECTURE.md` v1, target list of 40 organizations, release `v0.1` tagged.
+> Status: **Day 19, sync between two replicas over HTTP (localhost-tested); OR-Set, LWW map, property-tested merge (v0.1 tagged on Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. Two replicas can now exchange only the ops each is missing over HTTP with HMAC-signed requests (`offgrid sync serve` / `sync once`); tested on localhost.
 
 ---
 
@@ -32,6 +32,10 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **13** | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
 | **14** | Recap: architecture specification, guarantees, tests, release v0.1 | [ARCHITECTURE.md](ARCHITECTURE.md), `scripts/release-v0.1.sh` |
 | **15** | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
+| **16** | LWW-Map: per-field last-writer-wins registers, pure merge, node-ID tie-break | `offgrid lww demo` |
+| **17** | Property-based testing (`rapid`): algebraic laws & mutant detection | `scripts/prove-merge.sh` |
+| **18** | OR-Set: Add-Wins Observed-Remove Set with tombstones (zero-alloc `Has`) | `offgrid orset demo` |
+| **19** | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
 
 
 ---
