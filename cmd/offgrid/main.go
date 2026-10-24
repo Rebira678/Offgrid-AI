@@ -13,6 +13,7 @@
 //	offgrid store    inspect, verify and rebuild the SQLite task store
 //	offgrid net      watch connectivity: ONLINE, DEGRADED or OFFLINE
 //	offgrid queue    the durable job queue: enqueue, list, claim, done, fail, retry
+//	offgrid sync     serve, once, summary: exchange tasks with another replica
 package main
 
 import (
@@ -33,7 +34,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.18.0-day18"
+const version = "0.19.0-day19"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -76,6 +77,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdNet(args[1:], stdout, stderr)
 	case "drain":
 		return cmdDrain(args[1:], stdout, stderr)
+	case "sync":
+		return cmdSync(args[1:], stdout, stderr)
 	case "orset":
 		return cmdORSet(args[1:], stdout, stderr)
 	case "lww":
@@ -116,6 +119,7 @@ Usage:
   offgrid agent  -route [-queue FILE] [-net auto|online|offline] ...      hard messages wait in the durable queue
   offgrid store  -db FILE info|verify|rebuild|ops|fields   inspect the SQLite task store
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
+  offgrid sync   serve|once|summary -db FILE ...                       exchange tasks with another replica over HTTP (HMAC-signed)
   offgrid clock  demo [-skew 10m]                                     why wall clocks cannot order edits, and the hybrid clock that can
   offgrid orset  demo                                                 what happens when I delete a task while you edit it
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
