@@ -551,16 +551,18 @@ func TestNodeIdentity(t *testing.T) {
 func TestACorruptLogIsRefusedLoudlyAndNothingIsHalfRebuilt(t *testing.T) {
 	ctx := context.Background()
 	cases := map[string]string{
-		"unknown kind":                   `('x', 1, 0, 'task.exploded', '{}')`,
-		"update of a missing task":       `('x', 1, 0, 'task.updated', '{"id":"T404","status":"done"}')`,
-		"note on a missing task":         `('x', 1, 0, 'task.note_added', '{"id":"T404","text":"hi"}')`,
-		"created twice":                  `('x', 1, 0, 'task.created', '{"id":"T1","title":"dup","site":"","priority":"low"}')`,
-		"unknown payload field":          `('x', 1, 0, 'task.created', '{"id":"Z","title":"t","site":"","priority":"low","surprise":1}')`,
-		"invalid priority":               `('x', 1, 0, 'task.created', '{"id":"Z","title":"t","site":"","priority":"urgent"}')`,
-		"an update that changes nothing": `('x', 1, 0, 'task.updated', '{"id":"T1"}')`,
-		"empty note":                     `('x', 1, 0, 'task.note_added', '{"id":"T1","text":"  "}')`,
-		"payload is not an object":       `('x', 1, 0, 'task.created', '[1,2]')`,
+		"unknown kind":                   `('x', 1, 4000000000000000000, 'task.exploded', '{}')`,
+		"update of a missing task":       `('x', 1, 4000000000000000000, 'task.updated', '{"id":"T404","status":"done"}')`,
+		"note on a missing task":         `('x', 1, 4000000000000000000, 'task.note_added', '{"id":"T404","text":"hi"}')`,
+		"created twice":                  `('x', 1, 4000000000000000000, 'task.created', '{"id":"T1","title":"dup","site":"","priority":"low"}')`,
+		"unknown payload field":          `('x', 1, 4000000000000000000, 'task.created', '{"id":"Z","title":"t","site":"","priority":"low","surprise":1}')`,
+		"invalid priority":               `('x', 1, 4000000000000000000, 'task.created', '{"id":"Z","title":"t","site":"","priority":"urgent"}')`,
+		"an update that changes nothing": `('x', 1, 4000000000000000000, 'task.updated', '{"id":"T1"}')`,
+		"empty note":                     `('x', 1, 4000000000000000000, 'task.note_added', '{"id":"T1","text":"  "}')`,
+		"payload is not an object":       `('x', 1, 4000000000000000000, 'task.created', '[1,2]')`,
 	}
+	// The damaged op gets a timestamp after the real one: the view is folded in
+	// timestamp order, so this keeps it "position 2" in that order too.
 	for name, values := range cases {
 		s, _ := freshStore(t)
 		s.Create(ctx, task.NewTask{Title: "good task", Priority: task.PriorityLow})
