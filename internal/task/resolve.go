@@ -11,7 +11,10 @@ import (
 // code's answer to "which task is that?", and its main rule is: never guess.
 //
 //  1. An ID ("T3", "t3", "T-3", "3", "#3") must match an ID exactly. An ID-shaped
-//     reference never falls back to a title search.
+//     reference never falls back to a title search. Once replicas sync, new
+//     tasks get IDs that carry the replica ("T5.n-1a2b3c"); the full ID matches
+//     exactly, and the short form "T5" matches them too when exactly one task
+//     has that number (otherwise it is ambiguous and says which).
 //  2. Otherwise titles are searched, ignoring case and extra spaces. An exact
 //     title match beats a "contains" match, and unfinished tasks are searched
 //     before finished ones, so "the pump" means the open pump task, not last
@@ -23,6 +26,28 @@ import (
 func Resolve(tasks []Task, ref string) (Task, error) {
 	ref = strings.TrimSpace(ref)
 	if id, ok := idShaped(ref); ok {
+		for _, t := range tasks {
+			if t.ID == id {
+				return t, nil
+			}
+		}
+		// the short form "T5" also names "T5.<replica>"
+		var hits []Task
+		for _, t := range tasks {
+			if strings.HasPrefix(t.ID, id+".") {
+				hits = append(hits, t)
+			}
+		}
+		switch len(hits) {
+		case 0:
+			return Task{}, ErrNotFound
+		case 1:
+			return hits[0], nil
+		default:
+			return Task{}, &AmbiguousError{Ref: ref, Candidates: hits}
+		}
+	}
+	if id, ok := qualifiedID(ref); ok {
 		for _, t := range tasks {
 			if t.ID == id {
 				return t, nil
@@ -65,6 +90,30 @@ func Resolve(tasks []Task, ref string) (Task, error) {
 		}
 	}
 	return Task{}, ErrNotFound
+}
+
+// qualifiedID recognises "T5.n-1a2b3c" (any case for the T): a task number, a
+// dot, and the replica that created it. The replica part is case-sensitive.
+func qualifiedID(ref string) (string, bool) {
+	s := strings.TrimPrefix(ref, "#")
+	if len(s) < 4 || (s[0] != 'T' && s[0] != 't') {
+		return "", false
+	}
+	i := strings.IndexByte(s, '.')
+	if i < 2 || i == len(s)-1 {
+		return "", false
+	}
+	for _, r := range s[1:i] {
+		if r < '0' || r > '9' {
+			return "", false
+		}
+	}
+	for _, r := range s[i+1:] {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '_' || r == '-') {
+			return "", false
+		}
+	}
+	return "T" + s[1:], true
 }
 
 // idShaped recognises "T3", "t3", "#3", "#T3" and "3", and returns "T3".
