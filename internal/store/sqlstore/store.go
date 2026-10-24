@@ -334,13 +334,22 @@ func (s *Store) Create(ctx context.Context, n task.NewTask) (task.Task, bool, er
 		}
 
 		// The ID is decided HERE and written into the op, never at apply time.
-		// (It is unique within this replica. Making IDs unique across replicas
-		// is a sync-day problem; see docs/day-06.md.)
-		var count int
+		// (Plain "T3" while this replica has only its own ops; "T3.<replica>"
+		// once it holds another replica's, so IDs never collide across replicas.)
+		var count, foreign int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM ops WHERE kind = ?`, KindTaskCreated).Scan(&count); err != nil {
 			return err
 		}
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM ops WHERE node_id != ?`, s.node).Scan(&foreign); err != nil {
+			return err
+		}
 		id := fmt.Sprintf("T%d", count+1)
+		if foreign > 0 {
+			// This replica has taken in another replica's ops, so another replica may
+			// be numbering tasks at the same moment. Naming the replica keeps IDs
+			// unique without anyone agreeing on a number.
+			id += "." + s.node
+		}
 		if err := s.record(ctx, tx, KindTaskCreated, createdPayload{ID: id, Title: title, Site: n.Site, Priority: n.Priority}); err != nil {
 			return err
 		}
