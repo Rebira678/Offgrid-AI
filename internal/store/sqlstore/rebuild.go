@@ -17,7 +17,7 @@ import (
 
 const replayBatch = 1000
 
-// replay applies, in log order, every op in src with pos > after to dst, and
+// replay applies, in log order (by position), every op in src with pos > after to dst, and
 // returns how many it applied and the last position. It reads in batches so a
 // large log does not have to fit in memory.
 func replay(ctx context.Context, dst, src execer, after int64) (n int, last int64, err error) {
@@ -63,7 +63,7 @@ func (s *Store) Rebuild(ctx context.Context) (rep RebuildReport, err error) {
 	if err = resetProjection(ctx, tx); err != nil {
 		return rep, err
 	}
-	n, last, err := replay(ctx, tx, tx, 0)
+	n, last, err := replayCanonical(ctx, tx, tx)
 	if err != nil {
 		return rep, fmt.Errorf("sqlstore: rebuild: %w", err)
 	}
@@ -170,7 +170,7 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 	if err := resetProjection(ctx, scratch); err != nil {
 		return rep, err
 	}
-	n, _, err := replay(ctx, scratch, s.db, 0)
+	n, _, err := replayCanonical(ctx, scratch, s.db)
 	if err != nil {
 		return rep, fmt.Errorf("sqlstore: verify: %w", err)
 	}
