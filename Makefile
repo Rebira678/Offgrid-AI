@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -77,4 +77,8 @@ prove-merge:
 # Day 18: delete a task while someone edits it; how the add-wins set decides (a simulation).
 orset-demo: build
 	bin/offgrid orset demo
+
+# Day 19: two real offgrid processes sync over localhost HTTP (needs openssl for the key).
+sync-demo: build
+	scripts/sync-demo.sh
 
