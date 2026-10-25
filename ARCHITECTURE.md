@@ -1,6 +1,6 @@
 # Offgrid architecture (v1, at tag v0.1)
 
-Offgrid is an AI agent runtime for places where the network comes and goes. A small local model makes the instant decisions, a durable queue holds the hard thinking for later, and (not built yet) CRDT sync will merge offline and online work. This document says what exists **today**, how the parts fit, which guarantees hold and what tests enforce them, and what is deliberately not done. Where something is planned rather than built, it says so.
+Offgrid is an AI agent runtime for places where the network comes and goes. A small local model makes the instant decisions, a durable queue holds the hard thinking for later, and CRDT-style sync merges offline and online work (two replicas exchange ops over HTTP since Day 19, tested on localhost only). This document says what exists **today**, how the parts fit, which guarantees hold and what tests enforce them, and what is deliberately not done. Where something is planned rather than built, it says so.
 
 ## 1. The system in one picture
 
@@ -32,7 +32,7 @@ Offgrid is an AI agent runtime for places where the network comes and goes. A sm
    obs + dash (internal/obs, internal/dash): structured logs, counters, and the one-screen `offgrid top`
 ```
 
-Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Property tests (Day 17, `pgregory.net/rapid`) check that merge is commutative, associative and idempotent, and that the same tests catch deliberately broken merges. Also built: the OR-Set (`crdt.Set`, Day 18), an add-wins observed-remove set with tombstones, used for notes. Also built (Day 19): sync between two replicas, `internal/syncer` plus `Store.Summary`, `OpsSince` and `ApplyRemote`. The view is the op log folded in HLC order `(ts, counter, node, seq)`, so replicas holding the same ops hold the same state; an op that sorts before something already applied makes the store rebuild the view in the same transaction. Task IDs become `T<n>.<node>` once a replica holds another replica's ops. Requests and responses are HMAC-SHA256 signed with a shared key (authentication and integrity, not encryption). Not built yet: a note-removal op in the store (the type supports removal; the store only writes adds), tombstone cleanup, TLS, discovery of peers, and any test over a real network.
+Also built, but a library rather than a box: the hybrid logical clock (`internal/hlc`, Day 15). Every op in the log carries an HLC stamp: `ts` is its wall part in nanoseconds and `counter` its tie-break part. Also built: the LWW-Map (`internal/crdt`, Day 16), a pure `Merge` over per-field registers, which `Store.Fields` fills from the op log. Property tests (Day 17, `pgregory.net/rapid`) check that merge is commutative, associative and idempotent, and that the same tests catch deliberately broken merges. Also built: the OR-Set (`crdt.Set`, Day 18), an add-wins observed-remove set with tombstones, used for notes. Also built (Day 19): sync between two replicas, `internal/syncer` plus `Store.Summary`, `OpsSince` and `ApplyRemote`. The view is the op log folded in HLC order `(ts, counter, node, seq)`, so replicas holding the same ops hold the same state; an op that sorts before something already applied makes the store rebuild the view in the same transaction. Task IDs become `T<n>.<node>` once a replica holds another replica's ops. Requests and responses are HMAC-SHA256 signed with a shared key (authentication and integrity, not encryption). Also built (Day 20, Checkpoint 2): deletion. `task.removed` records the deleter's version summary, so an edit it had not seen brings the task back (add-wins); `note.removed` names one note by the identity of the op that added it. The view keeps `task_marks` and `task_removals` so whether a task is deleted depends on the set of ops, not their order (projection version 2; old databases rebuild their view on open). Deleting is available from the command line (`offgrid task delete`, `remove-note`) and is deliberately not an intent the language model can use. Not built yet: tombstone cleanup, TLS, discovery of peers, and any test over a real network. A replica from before Day 20 refuses a batch containing delete ops (unknown kind), so upgrade both replicas together.
 
 ## 2. Process model
 
@@ -119,7 +119,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 ## 8. Known limits (v0.1)
 
 - Real Ollama and real network loss are **untested here**: the test and demo model is a stand-in server with canned answers, and the network is simulated.
-- Sync is young. Ops move between replicas (Day 19) but only over localhost and in-process tests, never a real WiFi link or real phones. Two replicas that each created tasks before ever syncing both own a `T1`: the first sync is refused with an ID-collision error, and the second replica must start from an empty database. A far-future timestamp (over `-max-drift`, 1h) makes a batch be refused until the clock is fixed. The HMAC timestamp window (5 min) means badly skewed clocks cannot sync. Nothing is encrypted. Tombstones and the log are never compacted.
+- Sync is young. Ops move between replicas (Day 19) but only over localhost and in-process tests, never a real WiFi link or real phones. Two replicas that each created tasks before ever syncing both own a `T1`: the first sync is refused with an ID-collision error, and the second replica must start from an empty database. A far-future timestamp (over `-max-drift`, 1h) makes a batch be refused until the clock is fixed. The HMAC timestamp window (5 min) means badly skewed clocks cannot sync. Nothing is encrypted. Tombstones and the log are never compacted. Deletion is final only for edits the deleter had seen: an unseen concurrent edit resurrects the task. The convergence scenario uses a simulated network cut (offgrid's fault injection) on localhost; no real WiFi or phones.
 - A clock once far ahead drags the HLC with it (`offgrid store info` warns). A remote stamp more than 1 h ahead is refused by `Clock.Update`; a last-writer-wins merge will then prefer that remote value.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
@@ -133,10 +133,3 @@ Dependencies point downward; nothing lower knows about anything above it.
 3. `internal/drain/worker.go`: the loop that uses them.
 4. `internal/drain/kill_test.go`: the test that makes the claims above believable.
 5. `docs/day-NN.md`: the concept behind each day's code.
-
-
-
-
-
-
-
