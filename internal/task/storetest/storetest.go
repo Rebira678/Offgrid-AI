@@ -310,4 +310,69 @@ func Run(t *testing.T, newStore Factory) {
 			t.Errorf("a cancelled call changed the store: %+v", all)
 		}
 	})
+
+	// Deleting is optional for a Store (see task.Remover); the stores that can
+	// do it must all do it the same way.
+	t.Run("deleting a task and a note", func(t *testing.T) {
+		s, _ := setup(t)
+		rm, ok := s.(task.Remover)
+		if !ok {
+			t.Skip("this store cannot delete")
+		}
+		a := create(t, s, "pump", "4", task.PriorityHigh)
+		b := create(t, s, "filter", "5", task.PriorityLow)
+		for _, n := range []string{"one", "two", "three"} {
+			if _, err := s.AddNote(ctx, a.ID, n); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		got, err := rm.RemoveNote(ctx, a.ID, 2)
+		if err != nil || len(got.Notes) != 2 || got.Notes[0].Text != "one" || got.Notes[1].Text != "three" {
+			t.Fatalf("RemoveNote(2) = %+v, %v; want notes one, three", got.Notes, err)
+		}
+		if _, err := rm.RemoveNote(ctx, a.ID, 3); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("RemoveNote past the end: %v, want ErrNotFound", err)
+		}
+		if _, err := rm.RemoveNote(ctx, a.ID, 0); !errors.Is(err, task.ErrInvalid) {
+			t.Errorf("RemoveNote(0): %v, want ErrInvalid", err)
+		}
+		if _, err := rm.RemoveNote(ctx, "T999", 1); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("RemoveNote on a missing task: %v, want ErrNotFound", err)
+		}
+
+		if err := rm.DeleteTask(ctx, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Get(ctx, a.ID); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("Get after delete: %v, want ErrNotFound", err)
+		}
+		if all, _ := s.List(ctx, task.Filter{}); len(all) != 1 || all[0].ID != b.ID {
+			t.Errorf("List after delete = %+v, want only %s", all, b.ID)
+		}
+		if _, _, err := s.Update(ctx, a.ID, task.Changes{Priority: ptr(task.PriorityLow)}); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("Update of a deleted task: %v, want ErrNotFound", err)
+		}
+		if _, err := s.AddNote(ctx, a.ID, "x"); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("AddNote on a deleted task: %v, want ErrNotFound", err)
+		}
+		if err := rm.DeleteTask(ctx, a.ID); !errors.Is(err, task.ErrNotFound) {
+			t.Errorf("deleting twice: %v, want ErrNotFound", err)
+		}
+		// the same title can be created again: a deleted task is not a duplicate
+		again, created, err := s.Create(ctx, task.NewTask{Title: "pump", Site: "4", Priority: task.PriorityHigh})
+		if err != nil || !created || again.ID == a.ID {
+			t.Errorf("recreate = %+v created=%v err=%v, want a new task", again, created, err)
+		}
+		dead, cancel := context.WithCancel(ctx)
+		cancel()
+		if err := rm.DeleteTask(dead, b.ID); !errors.Is(err, context.Canceled) {
+			t.Errorf("DeleteTask with a cancelled context: %v", err)
+		}
+		if _, err := s.Get(ctx, b.ID); err != nil {
+			t.Errorf("a cancelled delete deleted the task: %v", err)
+		}
+	})
 }
+
+func ptr[T any](v T) *T { return &v }
