@@ -9,7 +9,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 [![Tests](https://img.shields.io/badge/Tests-Passing%20(550%2B%20cases)-brightgreen)](https://github.com/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 19, sync between two replicas over HTTP (localhost-tested); OR-Set, LWW map, property-tested merge (v0.1 tagged on Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. Two replicas can now exchange only the ops each is missing over HTTP with HMAC-signed requests (`offgrid sync serve` / `sync once`); tested on localhost.
+> Status: **Day 20, Checkpoint 2: two replicas edit offline, reconnect and end with identical state hashes (localhost, simulated network cut); sync, OR-Set, LWW map, property-tested merge (v0.1 tagged on Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. Two replicas can now exchange only the ops each is missing over HTTP with HMAC-signed requests (`offgrid sync serve` / `sync once`); tested on localhost. Tasks and notes can now be deleted (`offgrid task delete`), and `scripts/converge-demo.sh` runs the whole offline-edit-and-reconnect scenario.
 
 ---
 
@@ -36,6 +36,7 @@ Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud 
 | **17** | Property-based testing (`rapid`): algebraic laws & mutant detection | `scripts/prove-merge.sh` |
 | **18** | OR-Set: Add-Wins Observed-Remove Set with tombstones (zero-alloc `Has`) | `offgrid orset demo` |
 | **19** | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
+| **20** | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
 
 
 ---
@@ -270,6 +271,8 @@ make clock-demo       # Runs Day 15 automated clock skew & HLC demo
 make lww-demo         # Runs Day 16 automated LWW-Map CRDT demo
 make prove-merge      # Runs Day 17-18 property-based testing (67,000+ checks) proving CRDT merge laws
 make orset-demo       # Runs Day 18 automated OR-Set add-wins CRDT demo
+make sync-demo        # Runs Day 19 automated HTTP delta-sync demo
+make converge-demo    # Runs Day 20 / Checkpoint 2 offline partition & multi-replica convergence demo
 ```
 
 ---
@@ -277,12 +280,13 @@ make orset-demo       # Runs Day 18 automated OR-Set add-wins CRDT demo
 ## Testing & Quality Guarantees
 
 The codebase adheres to rigorous reliability engineering standards:
-- **Contract Testing (`storetest`):** The exact same contract test suite runs against both ephemeral `MemStore` and persistent `sqlstore.Store`.
+- **Contract Testing (`storetest`):** The exact same contract test suite runs against both ephemeral `MemStore` and persistent `sqlstore.Store`, now including `task.Remover` (`DeleteTask`, `RemoveNote`).
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
 - **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized total order comparisons, 200 random multi-replica sync scenarios, and differential agreement against the SQLite materialized view across random workloads.
 - **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices (commutative, associative, idempotent). Deliberately broken merge mutants (12 anti-patterns across LWW-Map and OR-Set) are proven caught and shrunk.
 - **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid property-based testing (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit, tombstones hold against stale copies, and multi-replica clusters converge to an independent operational oracle regardless of delivery order or duplicate messages.
+- **Multi-Replica Convergence (Checkpoint 2):** Chaos tests (`internal/syncer/chaos_test.go`) and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
