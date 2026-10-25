@@ -31,7 +31,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	}
 	sub := fs.Arg(0)
 	if sub == "" || fs.NArg() > 1 {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify|rebuild|ops|fields [-n N]")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify|rebuild|ops [-n N]")
 		return 2
 	}
 	switch sub {
@@ -51,7 +51,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	st, err := sqlstore.Open(ctx, *dbPath, sqlstore.Options{})
+	st, err := sqlstore.Open(ctx, *dbPath, sqlstore.Options{NodeID: nodeFromEnv()})
 	if err != nil {
 		return storeError(stderr, err)
 	}
@@ -127,7 +127,6 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 				return storeError(stderr, err)
 			}
 		}
-
 	case "ops":
 		ops, err := st.LastOps(ctx, *n)
 		if err != nil {
