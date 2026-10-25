@@ -215,3 +215,26 @@ func TestSyncServeGracefulShutdown(t *testing.T) {
 		t.Fatal("timed out waiting for sync serve to stop")
 	}
 }
+
+// TestCheckpoint2DemoScript runs scripts/converge-demo.sh, the Day 20 scenario
+// with real processes: it fails if the state hashes differ or the merged state
+// breaks any rule the script checks.
+func TestCheckpoint2DemoScript(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds and runs the binary")
+	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("bash not found")
+	}
+	bin := buildBinary(t)
+	cmd := exec.Command(bash, "../../scripts/converge-demo.sh")
+	cmd.Env = append(os.Environ(), "BIN="+bin, "PAUSE=0")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("converge-demo.sh failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "IDENTICAL") {
+		t.Fatalf("the script did not report identical state:\n%s", out)
+	}
+}
