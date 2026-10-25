@@ -242,7 +242,7 @@ func (s *Store) Info(ctx context.Context) (Info, error) {
 	if info.AppliedPos, err = appliedPos(ctx, s.db); err != nil {
 		return info, err
 	}
-	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&info.Tasks); err != nil {
+	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE deleted = 0`).Scan(&info.Tasks); err != nil {
 		return info, err
 	}
 	if info.NewestStamp, err = s.newestStamp(ctx, s.db); err != nil {
