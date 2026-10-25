@@ -29,6 +29,8 @@ const (
 	KindTaskCreated = "task.created"
 	KindTaskUpdated = "task.updated"
 	KindNoteAdded   = "task.note_added"
+	KindTaskRemoved = "task.removed"
+	KindNoteRemoved = "note.removed"
 )
 
 // Op is one immutable entry in the log.
@@ -67,6 +69,24 @@ type updatedPayload struct {
 type notePayload struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
+}
+
+// removedPayload records that a task was deleted. Seen is everything the
+// deleting replica held at that moment (its version summary). A task edit the
+// deleter had NOT seen is concurrent with the delete, and add-wins: the task
+// stays. An edit it had seen happened before the delete, and the delete wins.
+type removedPayload struct {
+	ID   string           `json:"id"`
+	Seen map[string]int64 `json:"seen"`
+}
+
+// noteRemovedPayload records that one note was removed. It names the note by
+// the identity of the op that added it, so it removes exactly that note and
+// never a note added concurrently.
+type noteRemovedPayload struct {
+	ID   string `json:"id"`
+	Node string `json:"node"`
+	Seq  int64  `json:"seq"`
 }
 
 // ErrCorruptLog means the log contains something that cannot be applied: an
