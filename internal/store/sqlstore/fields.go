@@ -47,8 +47,10 @@ func FieldsFromOps(ops []Op) (crdt.Map, error) {
 			if p.Priority != nil {
 				put(op, p.ID, crdt.FieldPriority, string(*p.Priority))
 			}
-		case KindNoteAdded:
-			// an append, not a register
+		case KindNoteAdded, KindNoteRemoved:
+			// an append or its removal, not a register
+		case KindTaskRemoved:
+			// whether a task is deleted is not a field: it depends on what the deleter had seen
 		default:
 			return nil, fmt.Errorf("%w: op %d has unknown kind %q", ErrCorruptLog, op.Pos, op.Kind)
 		}
@@ -98,15 +100,18 @@ func (s *Store) readAllOps(ctx context.Context) ([]Op, error) {
 
 // NotesFromOps turns the note ops of a log into an OR-Set: each task.note_added
 // is one add, tagged with the writing node and the op's HLC stamp, so two notes
-// never share a tag even if their text is the same. Pure and order-independent,
-// like FieldsFromOps.
-//
-// Removing a note has no op yet: the type supports it (crdt.Set.Remove) and is
-// tested, but the store does not write note removals until the sync layer
-// needs them (Day 19), so this reads adds only. Other known kinds are not
-// notes and are skipped; an unknown kind is a corrupt log.
+// never share a tag even if their text is the same. Each note.removed
+// tombstones the tag of the one note it names, so a note added at the same time
+// on another replica (a different tag) survives. Pure and order-independent,
+// like FieldsFromOps. Other known kinds are not notes and are skipped; an
+// unknown kind is a corrupt log.
 func NotesFromOps(ops []Op) (crdt.Set, error) {
-	set := crdt.NewSet(len(ops), 0)
+	type id struct {
+		node string
+		seq  int64
+	}
+	tags := make(map[id]crdt.Tag, len(ops))
+	set := crdt.NewSet(len(ops), len(ops)/4)
 	for _, op := range ops {
 		switch op.Kind {
 		case KindNoteAdded:
@@ -115,11 +120,28 @@ func NotesFromOps(ops []Op) (crdt.Set, error) {
 				return crdt.Set{}, fmt.Errorf("%w: op %d: %v", ErrCorruptLog, op.Pos, err)
 			}
 			tag := crdt.Tag{Node: op.NodeID, Stamp: op.Stamp()}
+			tags[id{op.NodeID, op.Seq}] = tag
 			set.AddInPlace(crdt.NoteElement(p.ID, tag, p.Text), tag)
-		case KindTaskCreated, KindTaskUpdated:
+		case KindTaskCreated, KindTaskUpdated, KindTaskRemoved, KindNoteRemoved:
 		default:
 			return crdt.Set{}, fmt.Errorf("%w: op %d has unknown kind %q", ErrCorruptLog, op.Pos, op.Kind)
 		}
+	}
+	// Removals are applied after every add is known, so the order of ops in the
+	// slice does not matter.
+	for _, op := range ops {
+		if op.Kind != KindNoteRemoved {
+			continue
+		}
+		var p noteRemovedPayload
+		if err := json.Unmarshal(op.Payload, &p); err != nil {
+			return crdt.Set{}, fmt.Errorf("%w: op %d: %v", ErrCorruptLog, op.Pos, err)
+		}
+		tag, ok := tags[id{p.Node, p.Seq}]
+		if !ok {
+			return crdt.Set{}, fmt.Errorf("%w: op %d removes a note (%s/%d) that is not in the log", ErrCorruptLog, op.Pos, p.Node, p.Seq)
+		}
+		set.RemoveTagsInPlace(tag)
 	}
 	return set, nil
 }
