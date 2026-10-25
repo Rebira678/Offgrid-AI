@@ -177,3 +177,44 @@ func clone(t Task) Task {
 	t.Notes = append([]Note(nil), t.Notes...)
 	return t
 }
+
+var _ Remover = (*MemStore)(nil)
+
+// DeleteTask removes a task. The in-memory store has no replicas, so the delete
+// is simply final; it is here so tests and demos behave like the SQLite store
+// on one machine.
+func (s *MemStore) DeleteTask(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, t := range s.tasks {
+		if t.ID == id {
+			s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
+			return nil
+		}
+	}
+	return ErrNotFound
+}
+
+// RemoveNote removes the number-th note of a task.
+func (s *MemStore) RemoveNote(ctx context.Context, id string, number int) (Task, error) {
+	if err := ctx.Err(); err != nil {
+		return Task{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.find(id)
+	if t == nil {
+		return Task{}, ErrNotFound
+	}
+	if number < 1 {
+		return Task{}, fmt.Errorf("%w: notes are numbered from 1", ErrInvalid)
+	}
+	if number > len(t.Notes) {
+		return Task{}, fmt.Errorf("%w: task %s has no note %d", ErrNotFound, id, number)
+	}
+	t.Notes = append(t.Notes[:number-1], t.Notes[number:]...)
+	return clone(*t), nil
+}
