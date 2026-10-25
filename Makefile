@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -81,4 +81,10 @@ orset-demo: build
 # Day 19: two real offgrid processes sync over localhost HTTP (needs openssl for the key).
 sync-demo: build
 	scripts/sync-demo.sh
+
+# Day 20 / Checkpoint 2: two replicas, the network cut by the fault switch, edits on both sides, reconnect, hashes compared.
+# scripts/converge-clip.sh (needs tmux) is the same scenario as a split-screen clip.
+converge-demo: build
+	scripts/converge-demo.sh
+
 
