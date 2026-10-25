@@ -142,6 +142,17 @@ func (s *Set) AddInPlace(elem string, tag Tag) {
 	s.putAdd(tag, elem)
 }
 
+// RemoveTagsInPlace tombstones tags directly in the receiver.
+// It is intended for batch construction where the receiver is not shared.
+func (s *Set) RemoveTagsInPlace(tags ...Tag) {
+	if s.removed == nil {
+		s.removed = make(map[Tag]struct{}, len(tags))
+	}
+	for _, t := range tags {
+		s.removed[t] = struct{}{}
+	}
+}
+
 // Has reports whether elem is in the set. It runs in O(N) over adds with
 // zero allocations and short-circuits on the first live tag found.
 func (s Set) Has(elem string) bool {
