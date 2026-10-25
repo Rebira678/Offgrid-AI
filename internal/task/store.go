@@ -49,3 +49,15 @@ type Store interface {
 	// List returns matching tasks in creation order.
 	List(ctx context.Context, f Filter) ([]Task, error)
 }
+
+// Remover is the optional part of a store that can delete. It is separate from
+// Store on purpose: deleting is not something the language model is allowed to
+// ask for (the "unknown" intent exists so that "delete everything" goes
+// nowhere), so only the command line and tests reach it.
+type Remover interface {
+	// DeleteTask removes a task from every list, or returns ErrNotFound.
+	DeleteTask(ctx context.Context, id string) error
+	// RemoveNote removes the number-th note currently shown on a task
+	// (counting from 1) and returns the task, or ErrNotFound.
+	RemoveNote(ctx context.Context, id string, number int) (Task, error)
+}
