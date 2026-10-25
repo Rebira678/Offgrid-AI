@@ -196,9 +196,9 @@ func TestWorkerGracefulContextCancellationReleasesInFlightJobs(t *testing.T) {
 func TestWorkerPanicRecoveryCatchesVariedTypesAndContinues(t *testing.T) {
 	e := newEnv(t)
 
-	e.add("p-str", "panic_str")
-	e.add("p-err", "panic_err")
-	e.add("p-int", "panic_int")
+	e.addWith("p-str", "panic_str", jobqueue.EnqueueOptions{MaxAttempts: 1})
+	e.addWith("p-err", "panic_err", jobqueue.EnqueueOptions{MaxAttempts: 1})
+	e.addWith("p-int", "panic_int", jobqueue.EnqueueOptions{MaxAttempts: 1})
 	healthy := e.add("healthy", "healthy")
 
 	w, err := New(Config{
