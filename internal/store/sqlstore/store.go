@@ -323,7 +323,7 @@ func (s *Store) Create(ctx context.Context, n task.NewTask) (task.Task, bool, er
 		// write-locked transaction, so two racing requests cannot both pass it.
 		var dupID string
 		err := tx.QueryRowContext(ctx,
-			`SELECT id FROM tasks WHERE status != 'done' AND title_key = ? AND site_key = ? ORDER BY n LIMIT 1`,
+			`SELECT id FROM tasks WHERE deleted = 0 AND status != 'done' AND title_key = ? AND site_key = ? ORDER BY n LIMIT 1`,
 			task.TitleKey(title), strings.ToLower(n.Site)).Scan(&dupID)
 		if err == nil {
 			out, err = getTask(ctx, tx, dupID)
@@ -438,6 +438,62 @@ func (s *Store) AddNote(ctx context.Context, id, text string) (task.Task, error)
 	return out, err
 }
 
+// DeleteTask removes a task from every list. It records a fact ("this replica
+// deleted T3, knowing what it knew") rather than erasing anything: the task's
+// ops stay in the log. If another replica edits the task without having seen
+// this delete, the task comes back when they meet (add-wins).
+func (s *Store) DeleteTask(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.write(ctx, func(tx *sql.Tx) error {
+		if _, err := getTask(ctx, tx, id); err != nil {
+			return err
+		}
+		seen, err := summaryOf(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return s.record(ctx, tx, KindTaskRemoved, removedPayload{ID: id, Seen: seen})
+	})
+}
+
+// RemoveNote removes one note of a task, named by its position (1 is the
+// first note currently shown). Only that note goes: a note someone adds at the
+// same time, on another replica, is a different note and stays.
+func (s *Store) RemoveNote(ctx context.Context, id string, number int) (task.Task, error) {
+	if err := ctx.Err(); err != nil {
+		return task.Task{}, err
+	}
+	var out task.Task
+	err := s.write(ctx, func(tx *sql.Tx) error {
+		if _, err := getTask(ctx, tx, id); err != nil {
+			return err
+		}
+		if number < 1 {
+			return fmt.Errorf("%w: notes are numbered from 1", task.ErrInvalid)
+		}
+		var node string
+		var seq int64
+		err := tx.QueryRowContext(ctx,
+			`SELECT node, seq FROM task_notes WHERE task_id = ? AND removed = 0 ORDER BY n LIMIT 1 OFFSET ?`, id, number-1).Scan(&node, &seq)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: task %s has no note %d", task.ErrNotFound, id, number)
+		}
+		if err != nil {
+			return err
+		}
+		if err := s.record(ctx, tx, KindNoteRemoved, noteRemovedPayload{ID: id, Node: node, Seq: seq}); err != nil {
+			return err
+		}
+		out, err = getTask(ctx, tx, id)
+		return err
+	})
+	return out, err
+}
+
+var _ task.Remover = (*Store)(nil)
+
 // ---- reading ----------------------------------------------------------------
 
 const taskColumns = `id, title, site, priority, status, created_at, updated_at, done_at`
@@ -456,14 +512,14 @@ func scanTask(row interface{ Scan(...any) error }) (task.Task, error) {
 
 // getTask loads one task with its notes, or task.ErrNotFound.
 func getTask(ctx context.Context, x execer, id string) (task.Task, error) {
-	t, err := scanTask(x.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ?`, id))
+	t, err := scanTask(x.QueryRowContext(ctx, `SELECT `+taskColumns+` FROM tasks WHERE id = ? AND deleted = 0`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return task.Task{}, task.ErrNotFound
 	}
 	if err != nil {
 		return task.Task{}, err
 	}
-	rows, err := x.QueryContext(ctx, `SELECT text, at FROM task_notes WHERE task_id = ? ORDER BY n`, id)
+	rows, err := x.QueryContext(ctx, `SELECT text, at FROM task_notes WHERE task_id = ? AND removed = 0 ORDER BY n`, id)
 	if err != nil {
 		return task.Task{}, err
 	}
@@ -496,7 +552,7 @@ func (s *Store) List(ctx context.Context, f task.Filter) ([]task.Task, error) {
 
 // listTasks is shared with the state hash, which reads the whole view.
 func listTasks(ctx context.Context, x execer, f task.Filter) ([]task.Task, error) {
-	var where []string
+	where := []string{"deleted = 0"}
 	var args []any
 	switch {
 	case f.Status != "":
@@ -546,7 +602,7 @@ func listTasks(ctx context.Context, x execer, f task.Filter) ([]task.Task, error
 	for i, t := range out {
 		index[t.ID] = i
 	}
-	nrows, err := x.QueryContext(ctx, `SELECT task_id, text, at FROM task_notes ORDER BY task_id, n`)
+	nrows, err := x.QueryContext(ctx, `SELECT task_id, text, at FROM task_notes WHERE removed = 0 ORDER BY task_id, n`)
 	if err != nil {
 		return nil, err
 	}
