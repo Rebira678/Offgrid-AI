@@ -1,50 +1,85 @@
-# Offgrid: Offline-First AI Agent Runtime
+# Offgrid
 
-> **An AI agent runtime designed to keep operating when the internet goes down. Features tiered intent execution (sub-millisecond rules to edge SLMs), an immutable event-sourced SQLite log, and conflict-free multi-replica CRDT synchronization.**
+**An AI agent runtime that keeps working when the internet doesn't.**
 
-Everything runs locally on consumer x86_64 CPU hardware with no GPU, zero cloud dependencies, and $0 infrastructure cost.
+A small local model makes instant decisions, a durable queue holds the hard
+thinking until a connection returns, and replicas that were apart merge their
+edits deterministically when they meet again. Everything runs on one laptop
+with no GPU and costs $0.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(550%2B%20cases)-brightgreen)](https://github.com/)
+[![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(820%2B%20cases)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 20, Checkpoint 2: two replicas edit offline, reconnect and end with identical state hashes (localhost, simulated network cut); sync, OR-Set, LWW map, property-tested merge (v0.1 tagged on Day 14).** A field worker can log, update and review tasks entirely offline, the data survives restarts, the program knows whether it is ONLINE, DEGRADED or OFFLINE, and work that cannot run now is kept in a durable queue. Two replicas can now exchange only the ops each is missing over HTTP with HMAC-signed requests (`offgrid sync serve` / `sync once`); tested on localhost. Tasks and notes can now be deleted (`offgrid task delete`), and `scripts/converge-demo.sh` runs the whole offline-edit-and-reconnect scenario.
+> Status: **Day 21, v0.1 plus Checkpoint 2.** Tasks are logged, updated and
+> reviewed entirely offline; the data survives restarts and `kill -9`; the
+> program knows whether it is ONLINE, DEGRADED or OFFLINE; hard requests wait in
+> a durable queue. Two replicas can edit the same task with the network cut,
+> reconnect, and end with identical state hashes (`make converge-demo`).
+> **Not yet tested on real devices or a real network:** sync has only run on
+> localhost, with the network cut simulated by fault injection. See
+> [Honest limits](#honest-limits).
+
+Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
+that enforces it) and [Why I used CRDTs for an AI agent](docs/article-why-crdts-for-an-ai-agent.md) (draft).
 
 ---
 
-## What Works Today
+## Quickstart: three commands
 
-| Day | Capability | Verification & CLI Command |
+```bash
+sudo apt install -y build-essential golang   # once: C compiler (for SQLite) and Go 1.22+
+make build && make test                      # 1. build and test
+scripts/demo-offline.sh                      # 2. see it work with no network and no model
+```
+
+That demo logs tasks, restarts, shows them again, then deletes the task table
+and rebuilds it from the log. Nothing in it needs Ollama or the internet.
+
+Want the language model too (Tier 1, for messages the rules do not understand)?
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh && scripts/pull-models.sh
+./bin/offgrid agent -seed                    # type messages; shows which tier answered
+```
+
+Without a model, `offgrid agent -no-model` still handles everything the rules
+cover, and says so politely for the rest.
+
+---
+
+## What works today
+
+| Day | What | Try it |
 |---|---|---|
-| **1** | Empirical hardware benchmarking & token speeds | `offgrid bench` |
-| **2** | Streaming local LLM client & typed errors | `offgrid ask "what is a CRDT?"` |
-| **3** | Constrained JSON schema & bounded retry loops | `offgrid parse "close the pump ticket"` |
-| **4** | Closed tool registry & blast-radius containment | `offgrid exec -seed '{"intent":"list_tasks"}'` |
-| **5** | Tiered agent loop (Tier 0 rules vs Tier 1 model) | `offgrid agent -seed -no-model` |
-| **6** | Event-sourced SQLite log & zero-drift view rebuilds | `offgrid store -db FILE verify` |
-| **7** | Automated offline demo & developer test harness | `make demo` / `make check` |
-| **8** | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
-| **9** | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
-| **10** | Router: answer now or defer to durable queue with visible status (Checkpoint 1) | `offgrid agent -route -net offline` |
-| **11** | Switch to break network: injected latency, packet loss, partitions | `scripts/partition-demo.sh` |
-| **12** | Drain on reconnect, survive crash: concurrency, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
-| **13** | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
-| **14** | Recap: architecture specification, guarantees, tests, release v0.1 | [ARCHITECTURE.md](ARCHITECTURE.md), `scripts/release-v0.1.sh` |
-| **15** | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
-| **16** | LWW-Map: per-field last-writer-wins registers, pure merge, node-ID tie-break | `offgrid lww demo` |
-| **17** | Property-based testing (`rapid`): algebraic laws & mutant detection | `scripts/prove-merge.sh` |
-| **18** | OR-Set: Add-Wins Observed-Remove Set with tombstones (zero-alloc `Has`) | `offgrid orset demo` |
-| **19** | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
-| **20** | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
+| 1 | Measure local model speed honestly | `offgrid bench` |
+| 2 | Streaming client, typed errors | `offgrid ask "..."` |
+| 3 | Free text to a validated command | `offgrid parse "close the pump ticket"` |
+| 4 | Closed tool menu, code re-validates what the model proposes | `offgrid exec -seed '{"intent":"list_tasks"}'` |
+| 5 | Tier 0 rules first, model second | `offgrid agent -seed -no-model` |
+| 6 | Event-sourced SQLite store: append-only op log plus a rebuildable view | `offgrid store -db FILE verify` |
+| 7 | Automated offline demo & developer test harness | `make demo` / `make check` |
+| 8 | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
+| 9 | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
+| 10 | Router: answer now, or save hard requests in the queue with a visible status. **Checkpoint 1** | `offgrid agent -route -net offline` |
+| 11 | A switch to break your own network: injected latency, packet loss and partitions | `scripts/partition-demo.sh` |
+| 12 | Drain on reconnect, survive a crash: worker with concurrency limit, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
+| 13 | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
+| 14 | Recap: `ARCHITECTURE.md` v1, release v0.1 | `ARCHITECTURE.md`, `scripts/release-v0.1.sh` |
+| 15 | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
+| 16 | LWW-Map: per-field last-writer-wins registers, pure merge, node-ID tie-break | `offgrid lww demo` |
+| 17 | Property tests (`rapid`): merge is commutative, associative, idempotent; broken merges are caught | `scripts/prove-merge.sh` |
+| 18 | OR-Set: add-wins observed-remove set with tombstones (notes, task lists) | `offgrid orset demo` |
+| 19 | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
+| 20 | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
+| 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
 
+Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
 ---
 
-## The Problem
-Most AI agent frameworks assume constant gigabit connectivity, unbounded cloud API budgets, and zero-latency network roundtrips. When connectivity drops—in field operations, disaster response, remote utility grids, agriculture, or offline logistics—these systems fail completely.
-
-Offgrid is engineered with **local-first, resilience-first, and distributed systems principles**:
+## Architectural Flow
 
 ```
                               [ User Command ]
@@ -87,108 +122,27 @@ Offgrid is engineered with **local-first, resilience-first, and distributed syst
 
 ---
 
-## Core Architectural Pillars
+## Benchmarks
 
-### 1. Tiered Execution Pipeline ("Rules Before Models")
-Calling an LLM for structured, repetitive commands waste seconds of battery and latency. Offgrid implements an asymmetric routing loop:
-- **Tier 0 (Deterministic Rules):** A strict closed-vocabulary tokenizer resolves common domain intents (`list_tasks`, `daily_summary`, `create_task`) in **26 microseconds** with 100% precision. If an unfamiliar token appears, it safely stays silent.
-- **Tier 1 (Edge SLM):** Natural language commands ("I finished replacing the gasket on pump 4") route to local small language models (Llama 3.2 1B/3B via Ollama) with constrained JSON decoding and bounded retries.
-- **Tier 2 (Durable Queue):** Heavy analytical reasoning jobs are deferred to an offline-safe SQLite job queue with exponential backoff and jitter.
+Measured with `offgrid bench` (medians of 3 runs after a warm-up) and `make bench-store`. All numbers are measured directly on the target hardware:
 
-### 2. "Model Proposes, Code Disposes"
-Language models are untrusted natural language translators, never direct database mutators:
-- Both Tier 0 and Tier 1 terminate at the exact same **closed tool registry**.
-- The Go runtime validates schemas, bounds parameter values, resolves ambiguities (prompting for clarification if multiple tasks match), and enforces business logic.
-- A hallucinating model cannot delete tables or execute unauthorized mutations.
+**Hardware:** HP EliteBook 845 G8, AMD Ryzen 5 PRO 5650U (6 cores / 12 threads), 16 GB RAM, consumer SSD, no GPU used for inference. Zorin OS 18.1.
 
-### 3. Event-Sourced Storage ("The Log is Truth, Tables are a Cache")
-Traditional CRUD architectures overwrite rows in place, discarding historical facts and making offline multi-master sync impossible:
-- **Append-Only Op Log:** State transitions (`task.created`, `task.updated`, `task.note_added`) are written to an immutable `ops` table with unique sequence pairs `(node_id, seq)` and nanosecond timestamps.
-- **Engine-Level Immutability:** SQLite triggers (`BEFORE UPDATE`, `BEFORE DELETE`) physically reject modifications to past operations at the database engine level.
-- **Disposable Projections:** The `tasks` and `task_notes` tables are materialized view caches. Dropping or corrupting them triggers an automatic rebuild from the immutable log.
-- **Pure Replay Function (`applyOp`):** Never accesses the system clock; every timestamp and ID is frozen into the op at commit time, guaranteeing bit-for-bit replay equivalence.
-- **Cryptographic State Verification:** `offgrid store verify` replays history into an in-memory scratch database (`:memory:`) and asserts state parity via canonical SHA-256 state hashes.
+### 1. Local Language Model Inference (`offgrid bench`)
 
----
-
-## Quickstart
-
-### Three Commands: Fresh Clone to Running Demo
 ```bash
-sudo apt install -y build-essential golang   # C compiler (for SQLite CGO) & Go 1.22+
-make build && make test                      # 1. Build binary and verify tests pass
-make demo                                    # 2. Run offline demo (no network, no model)
+make bench     # writes docs/benchmarks.md and docs/benchmarks.json
 ```
 
-The offline demo runs end-to-end: it creates tasks with Tier 0 rules, restarts in a new process to prove persistence, verifies the log against a scratch replay, destroys the `tasks` table with `DROP TABLE`, and rebuilds it bit-for-bit.
+| Model | Prompt Type | Load Time | Time to First Token | Generation Rate | Prompt Processing |
+|---|---|---|---|---|---|
+| **Llama 3.2 (1B)** | Short (60 tok) | 3.3 s | **0.7 s** | **16.0 tok/s** | 88.0 tok/s |
+| **Llama 3.2 (1B)** | Long (1,176 tok) | 3.3 s | 23.7 s | **13.9 tok/s** | 49.7 tok/s |
+| **Llama 3.2 (3B)** | Short (60 tok) | 0.0 s | **1.0 s** | **9.9 tok/s** | 61.5 tok/s |
+| **Llama 3.2 (3B)** | Long (1,176 tok) | 0.0 s | 16.5 s | **9.0 tok/s** | 71.8 tok/s |
 
-### Interactive CLI Workflows
-```bash
-# 1. Seed tasks into persistent SQLite storage
-./bin/offgrid exec -db offgrid.db -seed '{"intent":"create_task","title":"Inspect solar inverter","site":"4","priority":"high"}'
+### 2. Storage & CRDT Replay Throughput (`make bench-store`)
 
-# 2. Query state via natural language (Tier 0 resolves in microseconds)
-./bin/offgrid exec -db offgrid.db '{"intent":"list_tasks","site":"4"}'
-
-# 3. Run interactive agent loop (without model)
-./bin/offgrid agent -no-model
-
-# 4. Optional: Run with local LLM (Tier 1 fallback via Ollama)
-# curl -fsSL https://ollama.com/install.sh | sh && scripts/pull-models.sh
-./bin/offgrid agent -db offgrid.db -seed
-
-# 5. Inspect storage metadata and facts log
-./bin/offgrid store -db offgrid.db info
-./bin/offgrid store -db offgrid.db ops -n 5
-
-# 6. Cryptographic integrity check (scratch in-memory replay vs live view)
-./bin/offgrid store -db offgrid.db verify
-
-# 7. The "Kill-the-View" Test: Drop tables and rebuild from the immutable log
-sqlite3 offgrid.db 'DROP TABLE tasks; DROP TABLE task_notes;'
-./bin/offgrid store -db offgrid.db rebuild
-
-# 8. Checkpoint 1: Routing with complexity gate & durable queue deferral
-./bin/offgrid agent -route -net offline "summarize this week's incidents and suggest priorities"
-./bin/offgrid agent -route -net offline "queue"
-./bin/offgrid agent -route-eval
-
-# 9. Day 11: Network Fault Injection (reproducible latency, drops, partitions)
-./bin/offgrid fault serve                  # local 204 server simulating internet
-./bin/offgrid fault set partition          # break the network via atomic control file
-./bin/offgrid fault set ok                 # heal the network
-make partition-demo                        # run automated partition & recovery test
-
-# 10. Day 12: Drain on reconnect & crash resilience (survives kill -9)
-./bin/offgrid drain -db tasks.db -once      # drains queued jobs when network allows
-./bin/offgrid queue result 1                # reads stored execution result
-make drain-demo                             # runs kill -9 mid-drain resilience test
-
-# 11. Day 13: Live observability (offgrid top) & structured logging
-./bin/offgrid top -queue queue.db -once      # capture single plain-text frame of system state
-./bin/offgrid drain -db tasks.db -slog drain.log -slog-level debug # structured logging to file
-make top-demo                               # automated live screen & truth verification runner
-
-# 12. Day 15: Hybrid Logical Clock (HLC) simulation (orders edits across skewed clocks)
-./bin/offgrid clock demo -skew 10m          # Bob's clock is 10m behind; HLC resolves correct causal order
-make clock-demo                             # run automated clock skew & HLC demo
-
-# 13. Day 16: Last-Writer-Wins Map (LWW-Map) simulation (merges per-field edits)
-./bin/offgrid lww demo                      # simulate Lidia & Beka merging concurrent edits
-./bin/offgrid store -db tasks.db fields     # inspect per-field registers in SQLite log
-make lww-demo                               # run automated LWW-Map demo
-
-# 14. Day 17: Property-based testing (pgregory.net/rapid) proves the merge is correct
-make prove-merge                            # run 43,000+ generated cases & verify broken merge detection
-```
-
----
-
-## Empirical Benchmarks
-
-All benchmarks are measured directly on consumer mobile hardware (**AMD Ryzen 5 PRO 5650U**, 6 cores / 12 threads, 16 GB RAM, consumer SSD, no GPU inference):
-
-### 1. Storage & Replay Throughput (`make bench-store`)
 ```bash
 make bench-store
 ```
@@ -203,23 +157,6 @@ make bench-store
 | **HLC Timestamp Issue** (`BenchmarkNow`) | 1 op | **55.4 ns** (~18,000,000 ops/s) | Thread-safe, monotonic, causal timestamp issuance (0 allocs). |
 | **CRDT Merge (Small)** (`BenchmarkMergeSmall`) | 4 fields | **345 ns** (~2,900,000 merges/s) | Pure semilattice join over per-field registers. |
 
-### 2. Tier 0 vs Tier 1 Intent Routing Latency
-```bash
-./bin/offgrid agent -eval
-```
-- **Tier 0 (Deterministic Rules):** **26 µs** median latency (100% precision on domain commands).
-- **Tier 1 (Edge SLM):** **~1.0s – 3.2s** (handles arbitrary linguistic variations).
-- **Efficiency Gain:** Tier 0 is **~100,000x faster** than invoking an LLM for deterministic intents.
-
-### 3. Local Model Token Generation (`offgrid bench`)
-
-| Model | Prompt Type | Load Time | Time to First Token | Generation Rate | Prompt Processing |
-|---|---|---|---|---|---|
-| **Llama 3.2 (1B)** | Short (60 tok) | 3.3 s | **0.7 s** | **16.0 tok/s** | 88.0 tok/s |
-| **Llama 3.2 (1B)** | Long (1,176 tok) | 3.3 s | 23.7 s | **13.9 tok/s** | 49.7 tok/s |
-| **Llama 3.2 (3B)** | Short (60 tok) | 0.0 s | **1.0 s** | **9.9 tok/s** | 61.5 tok/s |
-| **Llama 3.2 (3B)** | Long (1,176 tok) | 0.0 s | 16.5 s | **9.0 tok/s** | 71.8 tok/s |
-
 ---
 
 ## Architecture
@@ -228,67 +165,96 @@ How the parts fit, what is guaranteed and what tests enforce it, and what is not
 
 ---
 
-## Repository Layout
+## Layout
 
 ```
-cmd/offgrid/              CLI entrypoint (models, bench, ask, exec, agent, store, net, queue, fault, drain, top)
-internal/agent/           Tiered orchestrator (Tier 0 rules -> Tier 1 local model fallback)
-internal/connectivity/    Connectivity state machine, probers, and monitor goroutine
-internal/jobqueue/        Durable job queue: backoff with jitter, leases, dead-letter, checkpoints, results
-internal/router/          Answer now or defer: complexity gate, output validity, connectivity
-internal/netfault/        Fault-injecting RoundTripper: latency, drop %, partitions (file/schedule/flag)
-internal/drain/           Queue worker: concurrency limit, network gate, leases, release, checkpoints, handlers
-internal/obs/             Structured logs (slog), counters, atomic JSON snapshot files
-internal/dash/            One-screen live view: pure ANSI render function & terminal repaint loop
-internal/hlc/             Hybrid logical clock (Kulkarni et al.): causal ordering across clock skew
-internal/crdt/            CRDT engines: LWW-Map (per-field registers) & OR-Set (add-wins sets with tombstones)
-internal/store/sqlstore/  Event-sourced SQLite engine (immutable log, triggers, rebuild, verify)
-internal/tools/           Closed tool registry with strict input schema validation
-internal/task/            Task domain models and storage contracts
-internal/intent/          Intent schema definitions and validation logic
-internal/structured/      Constrained JSON extraction with bounded retry loops
-internal/llm/             LLM client interfaces and anti-corruption adapters
-internal/ollama/          Streaming HTTP client for local Ollama daemon
-scripts/                  Automated test, offline runners, and release scripts (release-v0.1.sh, prove-merge.sh)
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync
+internal/ollama/        HTTP client for Ollama: streaming, typed errors
+internal/bench/         benchmark method and report writers
+internal/sysinfo/       reads CPU and RAM so every result names its hardware
+internal/intent/        the Command type and its validation
+internal/structured/    getting valid JSON out of a model, with retries
+internal/llm/           the interface models sit behind (real and fake)
+internal/eval/          measures how reliably models produce valid commands
+internal/task/          the Task type, matching rules, the Store contract
+internal/task/storetest shared contract tests every store must pass
+internal/tools/         the closed menu of tools and the registry
+internal/agent/         tiered loop: rules first, model second
+internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
+internal/connectivity   state machine, probers and the monitor goroutine
+internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
+internal/router         answer now or defer: complexity gate, output validity, connectivity
+internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
+internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; job handlers
+internal/obs            structured logs (slog), counters, snapshot files other processes can read
+internal/dash           the one-screen view: a pure render function plus a repaint loop
+internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
+internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
+internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
+scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh (tmux)
+examples/               sample command and message files
+docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
 
 ---
 
-## Developer Targets
+## Tests
+
+As of Day 21, `go test -v ./...` runs **821 test functions** (plus their subtests)
+in 22 packages: about 16,000 lines of Go and about 24,000 lines of tests. One
+test skips by design (a helper process that only runs when launched by another
+test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 
 ```bash
-make check            # Runs go vet, gofmt verification, and full test suite
-make test-race        # Executes test suite under Go race detector
-make bench-store      # Executes storage append & view rebuild benchmarks
-make bench-crdt       # Executes in-memory CRDT merge, splitting, and HLC benchmarks
-make demo             # Runs end-to-end offline demo (pass PAUSE=2 for recordings)
-make demo-checkpoint1 # Runs Checkpoint 1 demo: WiFi off, agent keeps working, queue fills
-make partition-demo   # Runs Day 11 automated network partition & recovery test
-make drain-demo       # Runs Day 12 automated kill -9 crash-recovery demo
-make top-demo         # Runs Day 13 automated live dashboard & telemetry verification
-make release          # Runs Day 14 pre-flight checks and creates local v0.1 annotated tag
-make clock-demo       # Runs Day 15 automated clock skew & HLC demo
-make lww-demo         # Runs Day 16 automated LWW-Map CRDT demo
-make prove-merge      # Runs Day 17-18 property-based testing (67,000+ checks) proving CRDT merge laws
-make orset-demo       # Runs Day 18 automated OR-Set add-wins CRDT demo
-make sync-demo        # Runs Day 19 automated HTTP delta-sync demo
-make converge-demo    # Runs Day 20 / Checkpoint 2 offline partition & multi-replica convergence demo
+make check                 # vet + gofmt + tests
+go test -race ./...        # with the race detector
+scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
+make converge-demo         # runs Checkpoint 2 multi-replica convergence demo
 ```
 
----
-
-## Testing & Quality Guarantees
-
-The codebase adheres to rigorous reliability engineering standards:
-- **Contract Testing (`storetest`):** The exact same contract test suite runs against both ephemeral `MemStore` and persistent `sqlstore.Store`, now including `task.Remover` (`DeleteTask`, `RemoveNote`).
+### Quality Guarantees
+- **Contract Testing (`storetest`):** Shared contract test suite runs identically against `MemStore` and `sqlstore.Store`, including `task.Remover` (`DeleteTask`, `RemoveNote`).
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
-- **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized total order comparisons, 200 random multi-replica sync scenarios, and differential agreement against the SQLite materialized view across random workloads.
-- **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices (commutative, associative, idempotent). Deliberately broken merge mutants (12 anti-patterns across LWW-Map and OR-Set) are proven caught and shrunk.
-- **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid property-based testing (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit, tombstones hold against stale copies, and multi-replica clusters converge to an independent operational oracle regardless of delivery order or duplicate messages.
-- **Multi-Replica Convergence (Checkpoint 2):** Chaos tests (`internal/syncer/chaos_test.go`) and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
+- **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized comparisons and 200 random multi-replica sync scenarios.
+- **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices. Deliberately broken merge mutants (12 anti-patterns) are proven caught and shrunk.
+- **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit.
+- **Multi-Replica Convergence (Checkpoint 2):** Chaos tests and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
 
+---
 
+## Honest limits
+
+- **No real devices, no real network.** Everything ran on one HP EliteBook
+  over localhost. Network cuts are simulated by the fault-injection transport.
+- **Sync is signed, not encrypted** (HMAC with a shared key). Use a trusted
+  network or put TLS in front. The signature has a five-minute clock window,
+  and an op stamped more than an hour in the future is refused.
+- **Deleting is not final against unseen edits:** an edit made by a replica that
+  had not seen the delete brings the task back (add-wins). Only the command
+  line deletes; the language model cannot.
+- **Two replicas that each created tasks before ever syncing** both own a `T1`;
+  the first sync is refused with a clear error and changes nothing.
+- **The log only grows.** No compaction of old ops or tombstones.
+- **Model quality is measured separately** (`offgrid bench`, `offgrid eval`);
+  the benchmark table above is filled from measurements on this machine.
+- Upgrade both replicas together: an older replica refuses ops it does not know.
+
+---
+
+## Design rules
+
+- The model proposes, the code disposes: nothing a model says is trusted until validated.
+- Precision over coverage: when unsure, ask or refuse, never guess a task.
+- The op log is the truth; tables are a disposable cache.
+- Honest numbers only, always with the hardware named.
+
+---
+
+## Roadmap
+
+The 30-day plan is in the roadmap file; each day has a guide in `docs/`.
