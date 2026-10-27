@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"offgrid/internal/task"
 )
 
 func TestAnswersEdgeThreeNodeConvergence(t *testing.T) {
@@ -378,3 +380,130 @@ func TestAnswersCanonicalTieBreakingSameTimestamp(t *testing.T) {
 		t.Fatalf("state hash divergence: %s != %s", hashOf(t, a), hashOf(t, b))
 	}
 }
+
+func TestRebuildPreservesAnswersAcrossTaskDeletions(t *testing.T) {
+	ctx := context.Background()
+	s, clk := freshStore(t)
+
+	// Step 1: Create Task 1 and Task 2
+	t1, created1, err := s.Create(ctx, task.NewTask{
+		Title:    "Water pump inspection",
+		Site:     "Site-4",
+		Priority: task.PriorityHigh,
+	})
+	if err != nil || !created1 {
+		t.Fatalf("create t1 failed: created=%v err=%v", created1, err)
+	}
+
+	t2, created2, err := s.Create(ctx, task.NewTask{
+		Title:    "Battery bank voltage check",
+		Site:     "Site-4",
+		Priority: task.PriorityMedium,
+	})
+	if err != nil || !created2 {
+		t.Fatalf("create t2 failed: created=%v err=%v", created2, err)
+	}
+
+	// Step 2: Add note to Task 1 and record Answer 1
+	clk.tick(5 * time.Minute)
+	if _, err := s.AddNote(ctx, t1.ID, "Bearing vibration detected"); err != nil {
+		t.Fatalf("add note to t1: %v", err)
+	}
+	if ok, err := s.RecordAnswer(ctx, "k-pump-vibe", "Why is the pump vibrating?", "Check impeller cavitation and mount alignment.", "qwen2.5:7b", "local"); !ok || err != nil {
+		t.Fatalf("record answer 1: ok=%v err=%v", ok, err)
+	}
+
+	// Step 3: Record Answer 2
+	clk.tick(5 * time.Minute)
+	if ok, err := s.RecordAnswer(ctx, "k-battery-cell", "Cell 3 voltage is 1.95V", "Isolate and equalize cell 3 immediately.", "deepseek-r1:70b", "cloud"); !ok || err != nil {
+		t.Fatalf("record answer 2: ok=%v err=%v", ok, err)
+	}
+
+	// Step 4: Delete Task 1 (tombstone)
+	clk.tick(5 * time.Minute)
+	if err := s.DeleteTask(ctx, t1.ID); err != nil {
+		t.Fatalf("delete t1: %v", err)
+	}
+
+	// Step 5: Update Task 2 status to in_progress
+	clk.tick(5 * time.Minute)
+	inProg := task.StatusInProgress
+	if _, _, err := s.Update(ctx, t2.ID, task.Changes{Status: &inProg}); err != nil {
+		t.Fatalf("update t2 status: %v", err)
+	}
+
+	// Step 6: Record Answer 3
+	clk.tick(5 * time.Minute)
+	if ok, err := s.RecordAnswer(ctx, "k-inverter-temp", "Inverter heatsink is 65C", "Normal operating threshold under load.", "qwen2.5:7b", "local"); !ok || err != nil {
+		t.Fatalf("record answer 3: ok=%v err=%v", ok, err)
+	}
+
+	// Snapshot live hashes and views before rebuild
+	liveHash := hashOf(t, s)
+	repBefore, err := s.Verify(ctx)
+	if err != nil {
+		t.Fatalf("verify before rebuild: %v", err)
+	}
+	if repBefore.LiveHash != repBefore.ReplayHash {
+		t.Fatalf("divergence before rebuild: live=%s replay=%s", repBefore.LiveHash, repBefore.ReplayHash)
+	}
+
+	// Check live tasks: t1 must not be found, t2 must be found with StatusInProgress
+	tasksBefore, err := s.List(ctx, task.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasksBefore) != 1 || tasksBefore[0].ID != t2.ID || tasksBefore[0].Status != task.StatusInProgress {
+		t.Fatalf("tasks before rebuild mismatch: %+v", tasksBefore)
+	}
+
+	// Check live answers: exactly 3 answers
+	answersBefore, err := s.Answers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(answersBefore) != 3 {
+		t.Fatalf("answers before rebuild count=%d, want 3", len(answersBefore))
+	}
+
+	// Perform full rebuild from the append-only op-log
+	reb, err := s.Rebuild(ctx)
+	if err != nil {
+		t.Fatalf("Rebuild failed: %v", err)
+	}
+	if reb.Ops < 6 {
+		t.Fatalf("Rebuild ops count unexpectedly low: %d", reb.Ops)
+	}
+
+	// Verify post-rebuild
+	repAfter, err := s.Verify(ctx)
+	if err != nil {
+		t.Fatalf("verify after rebuild: %v", err)
+	}
+	if repAfter.LiveHash != liveHash || repAfter.ReplayHash != liveHash {
+		t.Fatalf("hash changed after rebuild: got live=%s replay=%s, want %s", repAfter.LiveHash, repAfter.ReplayHash, liveHash)
+	}
+
+	tasksAfter, err := s.List(ctx, task.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasksAfter) != 1 || tasksAfter[0].ID != t2.ID || tasksAfter[0].Status != task.StatusInProgress {
+		t.Fatalf("tasks after rebuild mismatch: %+v", tasksAfter)
+	}
+
+	answersAfter, err := s.Answers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(answersAfter) != 3 {
+		t.Fatalf("answers after rebuild count=%d, want 3", len(answersAfter))
+	}
+
+	for i := range answersBefore {
+		if answersBefore[i] != answersAfter[i] {
+			t.Fatalf("answer %d changed after rebuild: before=%+v after=%+v", i, answersBefore[i], answersAfter[i])
+		}
+	}
+}
+
