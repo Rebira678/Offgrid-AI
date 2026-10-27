@@ -9,7 +9,7 @@ with no GPU and costs $0.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(890%2B%20cases)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(919%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Status: **Day 22: Deliberate Reasoning (Tier 2), Idle Gating & Cloud Failover.**
@@ -202,8 +202,8 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 22, `go test -v ./...` runs **897 test functions** (plus their subtests)
-in 23 packages: about 17,500 lines of Go and about 26,000 lines of tests. One
+As of Day 22, `go test -v ./...` runs **919 test functions** (plus their subtests)
+in 23 packages: about 17,500 lines of Go and about 26,500 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 
@@ -211,7 +211,7 @@ test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 make check                 # vet + gofmt + tests
 go test -race ./...        # with the race detector
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
-make converge-demo         # runs Checkpoint 2 multi-replica convergence demo
+make converge-demo         # runs multi-replica convergence demo
 make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
 ```
 
@@ -222,7 +222,7 @@ make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle ga
 - **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized comparisons and 200 random multi-replica sync scenarios.
 - **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices. Deliberately broken merge mutants (12 anti-patterns) are proven caught and shrunk.
 - **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit.
-- **Multi-Replica Convergence (Checkpoint 2):** Chaos tests and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
+- **Multi-Replica Convergence:** Chaos tests and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
 - **Tier 2 Deliberate Reasoning & Idle Gate:** End-to-end testing of `internal/idle` CPU sampler, window boundaries, `/proc/stat` counter resets, graceful fail-open on non-Linux, and worker idle backoff (`make two-brains-demo`).
 - **Cloud Failover & Dead-Letter Isolation:** Exhaustive failure testing verifying that cloud HTTP 401/403/429/500/503 errors safely trigger automatic fallback to local models, while missing local models (`*llm.ModelNotFoundError`) are marked `Permanent` to prevent endless CPU burns.
 - **Answer Synchronization & Rebuild Parity:** Three-replica out-of-order delta sync tests prove that Tier 2 answers converge canonically across partitions. Tamper injection tests prove `Verify` detects corrupted projection rows and `Rebuild` restores cryptographic op-log parity.
