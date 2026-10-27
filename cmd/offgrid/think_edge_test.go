@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -198,3 +199,61 @@ func TestDrainCmdConcurrencyAndTimeoutValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestAnswersCmdMultiLineFormattingAndJSON(t *testing.T) {
+	db, _ := fill(t)
+	ctx := context.Background()
+
+	st, err := sqlstore.Open(ctx, db, sqlstore.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	nodeID := st.NodeID()
+	multiLineText := "Phase 1: Shut down generator.\nPhase 2: Inspect stator coils.\nPhase 3: Restart under no-load condition."
+	if _, err := st.RecordAnswer(ctx, "k-multiline", "What is the procedure for generator fault?", multiLineText, "deepseek-r1:70b", "cloud"); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Test human-readable multi-line formatting
+	var out, errBuf bytes.Buffer
+	code := run([]string{"answers", "-db", db}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("answers command failed: %d, %s", code, errBuf.String())
+	}
+	rendered := out.String()
+	if !strings.Contains(rendered, "Q: What is the procedure for generator fault?") {
+		t.Fatalf("rendered output missing question:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "   Phase 1: Shut down generator.") ||
+		!strings.Contains(rendered, "   Phase 2: Inspect stator coils.") ||
+		!strings.Contains(rendered, "   Phase 3: Restart under no-load condition.") {
+		t.Fatalf("rendered output did not indent all multi-line lines:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "— deepseek-r1:70b on "+nodeID) || !strings.Contains(rendered, "(cloud)") {
+		t.Fatalf("rendered output missing metadata line:\n%s", rendered)
+	}
+
+	// 2. Test JSON formatting
+	out.Reset()
+	errBuf.Reset()
+	code = run([]string{"answers", "-db", db, "-json"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("answers -json failed: %d, %s", code, errBuf.String())
+	}
+
+	var parsed []sqlstore.Answer
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v\n%s", err, out.String())
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 answer in JSON, got %d", len(parsed))
+	}
+	ans := parsed[0]
+	if ans.Key != "k-multiline" || ans.Text != multiLineText || ans.Model != "deepseek-r1:70b" || ans.Source != "cloud" || ans.Node != nodeID {
+		t.Fatalf("parsed JSON answer mismatch: %+v", ans)
+	}
+}
+
+
