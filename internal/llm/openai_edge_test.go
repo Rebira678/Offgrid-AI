@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenAIEdgeDirectStructInitTrailingSlashes(t *testing.T) {
@@ -138,5 +139,27 @@ func TestOpenAIEdgeLargePayloadAndTokens(t *testing.T) {
 	}
 	if resp.Usage.CompletionTokens != 12000 {
 		t.Fatalf("unexpected completion tokens: %d", resp.Usage.CompletionTokens)
+	}
+}
+
+func TestOpenAIEdgeHTTPTimeoutContextPropagation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond) // intentional delay
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	client := NewOpenAICompat(srv.URL, "super-secret-cloud-key")
+	client.HTTP = &http.Client{Timeout: 20 * time.Millisecond}
+
+	_, err := client.Chat(context.Background(), validRequest(), nil)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("expected ErrUnavailable on HTTP timeout, got: %v", err)
+	}
+	if strings.Contains(err.Error(), "super-secret-cloud-key") {
+		t.Fatal("secret key leaked in timeout error string")
 	}
 }
