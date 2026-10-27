@@ -506,4 +506,3 @@ func TestRebuildPreservesAnswersAcrossTaskDeletions(t *testing.T) {
 		}
 	}
 }
-

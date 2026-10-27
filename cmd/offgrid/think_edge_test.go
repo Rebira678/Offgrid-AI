@@ -255,5 +255,3 @@ func TestAnswersCmdMultiLineFormattingAndJSON(t *testing.T) {
 		t.Fatalf("parsed JSON answer mismatch: %+v", ans)
 	}
 }
-
-

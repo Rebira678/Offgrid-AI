@@ -459,5 +459,3 @@ func TestThinkHandlerNilBook(t *testing.T) {
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
-
-
