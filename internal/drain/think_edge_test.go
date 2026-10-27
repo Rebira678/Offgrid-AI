@@ -373,3 +373,67 @@ func TestThinkEdgeContextReadError(t *testing.T) {
 		t.Fatalf("expected wrapped context read error, got: %v", err)
 	}
 }
+
+func TestThinkHandlerGiantAnswerBookStorage(t *testing.T) {
+	book := newMemoryBook()
+	modelCalls := 0
+
+	// Generate 75KB string with multi-byte runes: "ኢትዮጵያ 💡 ⚡ "
+	repeats := 3000
+	giantOutput := strings.Repeat("ኢትዮጵያ 💡 ⚡ ", repeats)
+	if len(giantOutput) < 65000 {
+		t.Fatalf("expected giantOutput length >= 65000, got %d", len(giantOutput))
+	}
+
+	fakeClient := &llm.Fake{
+		Handler: func(ctx context.Context, req llm.Request) (string, error) {
+			modelCalls++
+			return giantOutput, nil
+		},
+	}
+
+	spec := Think(ThinkConfig{
+		Local:      fakeClient,
+		LocalModel: "qwen2.5:7b",
+		Book:       book,
+	})
+
+	job := edgeJob("job-giant-answer", "How to fix the generator?")
+	out, err := spec.Handle(context.Background(), job, nil)
+	if err != nil {
+		t.Fatalf("expected clean handling, got err: %v", err)
+	}
+
+	// Verify length is capped at maxResultBytes
+	if len(out) > maxResultBytes {
+		t.Fatalf("out length %d exceeds max %d", len(out), maxResultBytes)
+	}
+	if !utf8.ValidString(out) {
+		t.Fatal("out is not valid UTF-8 string!")
+	}
+
+	// Verify book recorded the exact truncated output
+	ans, found, err := book.Lookup(context.Background(), "job-giant-answer")
+	if err != nil || !found {
+		t.Fatalf("book lookup failed: found=%v err=%v", found, err)
+	}
+	if ans != out {
+		t.Fatalf("book recorded text mismatch: len(ans)=%d len(out)=%d", len(ans), len(out))
+	}
+	if len(book.answers["job-giant-answer"].Text) > maxResultBytes {
+		t.Fatalf("book stored answer length exceeds maxResultBytes: %d", len(book.answers["job-giant-answer"].Text))
+	}
+
+	// Second execution must hit book cache without calling LLM again
+	out2, err := spec.Handle(context.Background(), job, nil)
+	if err != nil {
+		t.Fatalf("second handle failed: %v", err)
+	}
+	if out2 != out {
+		t.Fatalf("second call mismatch: got %q, want %q", out2, out)
+	}
+	if modelCalls != 1 {
+		t.Fatalf("expected model to be called only once, called %d times", modelCalls)
+	}
+}
+
