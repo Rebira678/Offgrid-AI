@@ -163,3 +163,29 @@ func TestOpenAIEdgeHTTPTimeoutContextPropagation(t *testing.T) {
 		t.Fatal("secret key leaked in timeout error string")
 	}
 }
+
+func TestOpenAIEdgeEmptyUsageAndMultipleChoices(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Usage is omitted, multiple choices returned
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"role": "assistant", "content": "Primary choice"}},
+				{"message": map[string]string{"role": "assistant", "content": "Secondary choice"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewOpenAICompat(srv.URL, "key")
+	resp, err := client.Chat(context.Background(), validRequest(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Text != "Primary choice" {
+		t.Fatalf("expected first choice 'Primary choice', got: %q", resp.Text)
+	}
+	if resp.Usage.PromptTokens != 0 || resp.Usage.CompletionTokens != 0 {
+		t.Fatalf("expected 0 usage when omitted, got: %+v", resp.Usage)
+	}
+}
