@@ -73,6 +73,9 @@ func Think(cfg ThinkConfig) Spec {
 		Background:   true,
 		NeedsNetwork: cloudOnly || cfg.LocalNeedsNetwork,
 		Handle: func(ctx context.Context, job jobqueue.Job, _ Progress) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
 			text, err := decodeText(job.Payload)
 			if err != nil {
 				return "", err
@@ -83,6 +86,9 @@ func Think(cfg ThinkConfig) Spec {
 				} else if found {
 					return truncate(have), nil
 				}
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
 			}
 			data := ""
 			if cfg.Context != nil {

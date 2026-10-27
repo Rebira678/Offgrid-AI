@@ -343,3 +343,33 @@ func TestThinkEdgeOfflineCloudSkipped(t *testing.T) {
 		t.Fatal("local client was not called!")
 	}
 }
+
+func TestThinkEdgeContextCancellationUpfront(t *testing.T) {
+	spec := Think(ThinkConfig{
+		LocalModel: "qwen2.5:7b",
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancelled
+
+	job := edgeJob("job-pre-cancelled", "Should not run")
+	_, err := spec.Handle(ctx, job, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got: %v", err)
+	}
+}
+
+func TestThinkEdgeContextReadError(t *testing.T) {
+	spec := Think(ThinkConfig{
+		Local:      &llm.Fake{},
+		LocalModel: "qwen2.5:7b",
+		Context: func(ctx context.Context) (string, error) {
+			return "", errors.New("corrupt tasks file")
+		},
+	})
+
+	job := edgeJob("job-ctx-err", "Query")
+	_, err := spec.Handle(context.Background(), job, nil)
+	if err == nil || !strings.Contains(err.Error(), "reading the task data: corrupt tasks file") {
+		t.Fatalf("expected wrapped context read error, got: %v", err)
+	}
+}
