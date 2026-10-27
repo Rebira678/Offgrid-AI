@@ -147,3 +147,27 @@ func TestDrainEdgeZeroIdleWaitExitsImmediatelyWhenBusy(t *testing.T) {
 		t.Fatalf("expected output to mention job still queued:\n%s", out)
 	}
 }
+
+func TestAnswersCmdJSONEmptyArray(t *testing.T) {
+	db, _ := fill(t)
+	var out, errBuf bytes.Buffer
+	code := run([]string{"answers", "-db", db, "-json"}, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("answers -json failed: %d, %s", code, errBuf.String())
+	}
+	if strings.TrimSpace(out.String()) != "[]" {
+		t.Fatalf("expected exactly '[]', got: %q", out.String())
+	}
+}
+
+func TestAnswersCmdHelpUsage(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := run([]string{"answers", "-h"}, &out, &errBuf)
+	if code != 2 {
+		t.Fatalf("expected code 2 on -h, got %d", code)
+	}
+	usage := errBuf.String()
+	if !strings.Contains(usage, "-db") || !strings.Contains(usage, "-json") {
+		t.Fatalf("usage missing flags:\n%s", usage)
+	}
+}
