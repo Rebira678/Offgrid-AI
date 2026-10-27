@@ -437,3 +437,27 @@ func TestThinkHandlerGiantAnswerBookStorage(t *testing.T) {
 	}
 }
 
+func TestThinkHandlerNilBook(t *testing.T) {
+	fakeClient := &llm.Fake{
+		Handler: func(ctx context.Context, req llm.Request) (string, error) {
+			return "Clean direct answer without book storage", nil
+		},
+	}
+
+	spec := Think(ThinkConfig{
+		Local:      fakeClient,
+		LocalModel: "qwen2.5:7b",
+		Book:       nil, // Legacy mode: no book configured
+	})
+
+	job := edgeJob("job-nil-book", "Is the fuel pump operational?")
+	out, err := spec.Handle(context.Background(), job, nil)
+	if err != nil {
+		t.Fatalf("unexpected error with nil book: %v", err)
+	}
+	if out != "Clean direct answer without book storage" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+
