@@ -78,3 +78,35 @@ func TestSyncerSyncsAnswersOverHTTP(t *testing.T) {
 		t.Fatalf("state hash divergence after HTTP sync: A=%s B=%s", hashA, hashB)
 	}
 }
+
+func TestSyncerAnswersHMACAuthenticationTamper(t *testing.T) {
+	ctx := context.Background()
+	clk := &fakeClock{t: t0}
+
+	storeA := newStore(t, "node-lidia", clk)
+	storeB := newStore(t, "node-beka", clk)
+
+	// Lidia records an answer
+	if _, err := storeA.RecordAnswer(ctx, "k-tamper-sync", "Secure question", "Confidential answer", "qwen2.5:7b", "local"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Server on Beka uses key
+	client, _ := serve(t, storeB, clk, key)
+	// Adversary/tampered client uses a different invalid key
+	client.Key = []byte("wrong-unauthorized-key-00000000")
+
+	_, err := client.Once(ctx, storeA)
+	if err == nil {
+		t.Fatal("expected HMAC authentication error, got nil")
+	}
+
+	// Verify Beka's store rejected the answer and has 0 answers
+	answers, err := storeB.Answers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(answers) != 0 {
+		t.Fatalf("unauthorized sync wrote %d answers to target store!", len(answers))
+	}
+}
