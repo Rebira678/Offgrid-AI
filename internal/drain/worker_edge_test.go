@@ -2,6 +2,7 @@ package drain
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -126,5 +127,57 @@ func TestWorkerIdleGateAllowsForegroundJobsWhenBusy(t *testing.T) {
 	bj := e.get(bgJob.ID)
 	if bj.Status != jobqueue.Queued || bj.Attempts != 0 {
 		t.Fatalf("background job state corrupted: status=%s attempts=%d", bj.Status, bj.Attempts)
+	}
+}
+
+func TestWorkerBackgroundSingleFlightEnforcement(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < 4; i++ {
+		e.add(string(rune('A'+i)), KindDeepThink)
+	}
+
+	var currentFlight atomic.Int32
+	var maxObservedFlight atomic.Int32
+	var totalCompleted atomic.Int32
+
+	spec := Spec{
+		Background: true,
+		Handle: func(ctx context.Context, j jobqueue.Job, p Progress) (string, error) {
+			cur := currentFlight.Add(1)
+			for {
+				max := maxObservedFlight.Load()
+				if cur <= max || maxObservedFlight.CompareAndSwap(max, cur) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond) // simulate slow inference
+			currentFlight.Add(-1)
+			totalCompleted.Add(1)
+			return "done", nil
+		},
+	}
+
+	w, err := New(Config{
+		Queue:        e.q,
+		Specs:        map[string]Spec{KindDeepThink: spec},
+		Concurrency:  4, // High worker concurrency, but background jobs MUST run 1 at a time!
+		Poll:         10 * time.Millisecond,
+		Lease:        time.Minute,
+		Idle:         func() bool { return true }, // Quiet machine
+		ExitWhenIdle: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := w.Run(context.Background()); err != nil {
+		t.Fatalf("worker failed: %v", err)
+	}
+
+	if totalCompleted.Load() != 4 {
+		t.Fatalf("expected 4 jobs completed, got %d", totalCompleted.Load())
+	}
+	if max := maxObservedFlight.Load(); max != 1 {
+		t.Fatalf("CRITICAL: background flight exceeded 1! Max observed simultaneous slow jobs: %d", max)
 	}
 }
