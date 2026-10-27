@@ -171,3 +171,30 @@ func TestAnswersCmdHelpUsage(t *testing.T) {
 		t.Fatalf("usage missing flags:\n%s", usage)
 	}
 }
+
+func TestDrainCmdConcurrencyAndTimeoutValidation(t *testing.T) {
+	db, queue := fill(t)
+
+	badFlags := [][]string{
+		{"-concurrency", "0"},
+		{"-concurrency", "65"},
+		{"-idle-max-busy", "-0.1"},
+		{"-idle-max-busy", "1.1"},
+		{"-no-model"},
+		{"unexpected-positional-arg"},
+	}
+
+	for _, flags := range badFlags {
+		t.Run(strings.Join(flags, "_"), func(t *testing.T) {
+			args := append([]string{"drain", "-db", db, "-queue", queue, "-once"}, flags...)
+			var out, errBuf bytes.Buffer
+			code := run(args, &out, &errBuf)
+			if code != 2 {
+				t.Fatalf("expected exit code 2 for flags %v, got %d: %s", flags, code, errBuf.String())
+			}
+			if !strings.Contains(errBuf.String(), "error:") {
+				t.Fatalf("expected error output for flags %v, got: %q", flags, errBuf.String())
+			}
+		})
+	}
+}
