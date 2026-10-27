@@ -335,3 +335,46 @@ func TestAnswersEdgeContextCancelled(t *testing.T) {
 		t.Fatal("Answers succeeded with cancelled context")
 	}
 }
+
+func TestAnswersCanonicalTieBreakingSameTimestamp(t *testing.T) {
+	ctx := context.Background()
+	// Replicas node-a and node-b at the exact same epoch
+	a, _ := replicaAt(t, "node-lidia", epoch)
+	b, _ := replicaAt(t, "node-beka", epoch)
+
+	// Both record an answer for the same key at the exact same timestamp
+	if _, err := a.RecordAnswer(ctx, "k-tie", "Tie test", "Lidia response", "qwen2.5:7b", "local"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.RecordAnswer(ctx, "k-tie", "Tie test", "Beka response", "qwen2.5:7b", "local"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exchange ops in both directions
+	meet(t, a, b)
+
+	// Rebuild on both to fold in canonical order (ordered by at, node, seq)
+	if _, err := a.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Because "node-beka" < "node-lidia", node-beka's answer must win deterministically on both!
+	ansA, foundA, err := a.Answer(ctx, "k-tie")
+	if err != nil || !foundA {
+		t.Fatalf("node-lidia answer not found: %v", err)
+	}
+	ansB, foundB, err := b.Answer(ctx, "k-tie")
+	if err != nil || !foundB {
+		t.Fatalf("node-beka answer not found: %v", err)
+	}
+
+	if ansA.Text != "Beka response" || ansB.Text != "Beka response" {
+		t.Fatalf("canonical tie-break failed: A=%q B=%q, want 'Beka response'", ansA.Text, ansB.Text)
+	}
+	if hashOf(t, a) != hashOf(t, b) {
+		t.Fatalf("state hash divergence: %s != %s", hashOf(t, a), hashOf(t, b))
+	}
+}
