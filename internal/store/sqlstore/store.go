@@ -180,10 +180,10 @@ func (s *Store) ensureProjection(ctx context.Context) error {
 	}
 	var present int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_notes')`).Scan(&present); err != nil {
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_notes', 'answers')`).Scan(&present); err != nil {
 		return err
 	}
-	if version != projectionVersion || present != 2 {
+	if version != projectionVersion || present != 3 {
 		_, err := s.Rebuild(ctx)
 		return err
 	}
