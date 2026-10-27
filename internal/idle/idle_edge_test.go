@@ -2,6 +2,7 @@ package idle
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -176,5 +177,24 @@ func TestIdleEdgeSamplerRecoveryAfterReset(t *testing.T) {
 	idleVal += 90
 	if !s.Quiet() {
 		t.Fatal("sampler failed to recover after counter reset")
+	}
+}
+
+func TestIdleParseProcStat128CoresAndWindowsCRLF(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("cpu  128000 6400 25600 512000 12800 2560 1280 0\r\n")
+	for i := 0; i < 128; i++ {
+		fmt.Fprintf(&b, "cpu%d 1000 50 200 4000 100 20 10 0\r\n", i)
+	}
+	b.WriteString("intr 123456789\r\nctxt 987654321\r\nbtime 1700000000\r\n")
+	c, err := ParseProcStat(scan(b.String()))
+	if err != nil {
+		t.Fatalf("failed to parse 128-core CRLF stats: %v", err)
+	}
+	if c.Idle != 512000+12800 {
+		t.Fatalf("unexpected idle ticks: %d", c.Idle)
+	}
+	if c.Total != 128000+6400+25600+512000+12800+2560+1280 {
+		t.Fatalf("unexpected total ticks: %d", c.Total)
 	}
 }
