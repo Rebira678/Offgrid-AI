@@ -22,8 +22,17 @@ BIN=./bin/offgrid
 make build >/dev/null
 WORK="${TMPDIR:-/tmp}/offgrid-brains-$$"; mkdir -p "$WORK"
 PIDS=()
-cleanup() { for p in "${PIDS[@]:-}"; do [ -z "$p" ] || kill "$p" 2>/dev/null || true; done; rm -rf "$WORK"; }
-trap cleanup EXIT
+cleanup() {
+  trap - EXIT INT TERM
+  for p in "${PIDS[@]:-}"; do
+    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then
+      kill "$p" 2>/dev/null || true
+    fi
+  done
+  wait 2>/dev/null || true
+  rm -rf "$WORK"
+}
+trap cleanup EXIT INT TERM
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; sleep "$PAUSE"; }
 export OFFGRID_QUEUE="$WORK/queue.db"
 LAPTOP="$WORK/laptop.db"; PHONE="$WORK/phone.db"
