@@ -111,7 +111,7 @@ func (s *Sampler) Quiet() bool {
 		window = 2 * time.Second
 	}
 	t := now()
-	if s.started && t.Sub(s.at) < window {
+	if s.started && t.Sub(s.at) >= 0 && t.Sub(s.at) < window {
 		return s.quiet
 	}
 	c, err := read()

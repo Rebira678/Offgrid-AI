@@ -198,3 +198,45 @@ func TestIdleParseProcStat128CoresAndWindowsCRLF(t *testing.T) {
 		t.Fatalf("unexpected total ticks: %d", c.Total)
 	}
 }
+
+func TestIdleSamplerBackwardsClockJump(t *testing.T) {
+	currTime := time.Unix(5000, 0)
+	total := uint64(1000)
+	idleVal := uint64(500)
+	reads := 0
+
+	s := &Sampler{
+		Read: func() (Counters, error) {
+			reads++
+			return Counters{Total: total, Idle: idleVal}, nil
+		},
+		Now:     func() time.Time { return currTime },
+		MaxBusy: 0.5,
+		Window:  2 * time.Second,
+	}
+
+	// 1. Initial look at t=5000
+	s.Quiet()
+	if reads != 1 {
+		t.Fatalf("expected 1 read, got %d", reads)
+	}
+
+	// 2. Normal look within window (t=5001) -> cached verdict, no read
+	currTime = currTime.Add(time.Second)
+	s.Quiet()
+	if reads != 1 {
+		t.Fatalf("look within window triggered read unexpectedly: %d", reads)
+	}
+
+	// 3. NTP / virtualization steps clock backwards by 1 hour to t=1401!
+	currTime = time.Unix(1401, 0)
+	total += 200
+	idleVal += 180 // 10% busy
+	s.Quiet()
+
+	// With backwards clock jump protection, this must NOT be trapped in a 1-hour freeze;
+	// it must invoke Read again and refresh measurements immediately!
+	if reads != 2 {
+		t.Fatalf("backwards clock jump failed to trigger refresh, reads=%d", reads)
+	}
+}
