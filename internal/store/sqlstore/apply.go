@@ -15,7 +15,7 @@ import (
 // projectionVersion identifies the shape of these tables and the meaning of
 // applyOp. Change either, bump the number, and every database rebuilds its view
 // the next time it is opened. There is never a data migration for derived data.
-const projectionVersion = "2"
+const projectionVersion = "3"
 
 const projectionDDL = `
 CREATE TABLE tasks (
@@ -53,6 +53,18 @@ CREATE TABLE task_marks (
 	seq     INTEGER NOT NULL,
 	PRIMARY KEY (task_id, node, seq)
 ) WITHOUT ROWID;
+-- Tier 2 answers. The first one recorded for a key, in canonical fold order,
+-- is the answer on every replica.
+CREATE TABLE answers (
+	key      TEXT    PRIMARY KEY,
+	question TEXT    NOT NULL,
+	text     TEXT    NOT NULL,
+	model    TEXT    NOT NULL,
+	source   TEXT    NOT NULL,
+	at       INTEGER NOT NULL,
+	node     TEXT    NOT NULL,
+	seq      INTEGER NOT NULL
+) WITHOUT ROWID;
 CREATE TABLE task_removals (
 	task_id TEXT    NOT NULL,
 	node    TEXT    NOT NULL,
@@ -64,7 +76,7 @@ CREATE TABLE task_removals (
 
 // resetProjection drops and recreates the materialized tables, empty.
 func resetProjection(ctx context.Context, x execer) error {
-	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
+	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS answers; DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
 		return err
 	}
 	_, err := x.ExecContext(ctx, projectionDDL)
@@ -211,6 +223,24 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			return bad("removal recorded twice: %v", err)
 		}
 		if err := settleDeleted(ctx, x, p.ID); err != nil {
+			return err
+		}
+
+	case KindAnswerRecorded:
+		var p answerPayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad payload: %v", err)
+		}
+		if strings.TrimSpace(p.Key) == "" || strings.TrimSpace(p.Text) == "" {
+			return bad("an answer needs a key and text")
+		}
+		if p.Source != "local" && p.Source != "cloud" {
+			return bad("an answer's source must be local or cloud, not %q", p.Source)
+		}
+		// OR IGNORE: a second answer for the same key keeps the first. Ops are
+		// folded in one canonical order, so "first" is the same on every replica.
+		if _, err := x.ExecContext(ctx, `INSERT OR IGNORE INTO answers (key, question, text, model, source, at, node, seq)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, p.Key, p.Question, p.Text, p.Model, p.Source, ts, op.NodeID, op.Seq); err != nil {
 			return err
 		}
 

@@ -34,7 +34,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.20.0-day20"
+const version = "0.22.0-day22"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -93,6 +93,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdFault(args[1:], stdout, stderr)
 	case "queue":
 		return cmdQueue(args[1:], stdout, stderr)
+	case "answers":
+		return cmdAnswers(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -127,6 +129,7 @@ Usage:
   offgrid orset  demo                                                 what happens when I delete a task while you edit it
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
   offgrid top    -queue FILE                                          one screen: connection, queue, tiers (live)
+  offgrid answers -db FILE [-json]                                   what the slow brain (deep_think) concluded; syncs like tasks
   offgrid drain  -db FILE [-once] [-concurrency N] [-deep-host URL]   empty the queue: runs saved jobs, waits for the network
   offgrid fault  serve|set|show   break the network on purpose: -fault-latency/-drop/-partition/-file/-schedule on net and agent -route
   offgrid queue  [-q FILE] enqueue|list|stats|claim|done|fail|retry|jitter   the durable job queue

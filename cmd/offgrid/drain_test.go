@@ -26,7 +26,10 @@ type fakeModels struct {
 func useFakeModels(t *testing.T) *fakeModels {
 	t.Helper()
 	f := &fakeModels{}
-	oldChat, oldClass := newChatClient, newClassifier
+	oldChat, oldClass, oldGate := newChatClient, newClassifier, newIdleGate
+	// The real CPU gate needs two seconds to take its first measurement; tests
+	// about something else should not pay that. Tests of the gate replace it again.
+	newIdleGate = func(float64) func() bool { return func() bool { return true } }
 	newChatClient = func(host string) llm.Client {
 		f.mu.Lock()
 		f.chatHosts = append(f.chatHosts, host)
@@ -39,7 +42,7 @@ func useFakeModels(t *testing.T) *fakeModels {
 		}}
 	}
 	newClassifier = func(host, model string, attempts int) agent.Model { return fakeClassifier{} }
-	t.Cleanup(func() { newChatClient, newClassifier = oldChat, oldClass })
+	t.Cleanup(func() { newChatClient, newClassifier, newIdleGate = oldChat, oldClass, oldGate })
 	return f
 }
 

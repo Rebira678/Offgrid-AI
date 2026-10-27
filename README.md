@@ -9,17 +9,15 @@ with no GPU and costs $0.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(820%2B%20cases)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(890%2B%20cases)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 21, v0.1 plus Checkpoint 2.** Tasks are logged, updated and
-> reviewed entirely offline; the data survives restarts and `kill -9`; the
-> program knows whether it is ONLINE, DEGRADED or OFFLINE; hard requests wait in
-> a durable queue. Two replicas can edit the same task with the network cut,
-> reconnect, and end with identical state hashes (`make converge-demo`).
-> **Not yet tested on real devices or a real network:** sync has only run on
-> localhost, with the network cut simulated by fault injection. See
-> [Honest limits](#honest-limits).
+> Status: **Day 22: Deliberate Reasoning (Tier 2), Idle Gating & Cloud Failover.**
+> Tasks are logged, updated and reviewed entirely offline; the data survives restarts and `kill -9`;
+> hard requests wait in a durable queue. Tier 2 slow-thinking runs a larger 7-8B local model
+> only while the machine is quiet (`-idle-max-busy`), with optional cloud failover (`-cloud-url`).
+> Answers are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo`).
+> See [Honest limits](#honest-limits).
 
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
 that enforces it) and [Why I used CRDTs for an AI agent](docs/article-why-crdts-for-an-ai-agent.md) (draft).
@@ -74,6 +72,7 @@ cover, and says so politely for the rest.
 | 19 | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
 | 20 | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
 | 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
+| 22 | Tier 2 Deliberate Reasoning: local 7-8B slow thinking gated by CPU idle meter, optional cloud failover, answers synced via op log | `make two-brains-demo` / `offgrid answers -db FILE` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -88,36 +87,37 @@ Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.d
                         +--------------------------+
                         |  Tiered Intent Router    |
                         +--------------------------+
-                         /                        \
-           (Deterministic: 26 µs)        (Natural Language: ~1-3s)
-                       v                            v
-             +--------------------+       +--------------------+
-             | Tier 0: Regex Rules|       | Tier 1: Local SLM  |
-             | (Closed Vocabulary)|       | (Llama 3.2 1B/3B)  |
-             +--------------------+       +--------------------+
-                         \                        /
-                          v                      v
-                        +--------------------------+
-                        |   Closed Tool Registry   |
-                        | ("Model Proposes, Code   |
-                        |        Disposes")        |
-                        +--------------------------+
-                                     |
-                                     v
-                        +--------------------------+
-                        | Event-Sourced SQLite Log |
-                        | (Immutable `ops` table)  |
-                        +--------------------------+
-                                     |
-                                     v
-                     +--------------------------------+
-                     | Materialized View (`tasks`)    |
-                     | Disposable & 100% Rebuildable  |
-                     +--------------------------------+
-                                     |
-                    (Sync Protocol & CRDT Merge: HLC)
-                                     v
-                        [ Remote Replica Nodes ]
+                         /            |           \
+           (Deterministic)     (SLM: ~1-3s)     (Complex Request)
+                       v              v                   v
+             +----------------+ +---------------+ +--------------------+
+             | Tier 0: Regex  | | Tier 1: SLM   | | Tier 2: Job Queue  |
+             | (Closed Vocab) | | (Llama 1B/3B) | | (Durable Deferral) |
+             +----------------+ +---------------+ +--------------------+
+                         \            |                    |
+                          v           v           (Worker & Idle Gate)
+                        +---------------+                  v
+                        | Closed Tools  |         +--------------------+
+                        | ("Propose,    |         | 7-8B Model / Cloud |
+                        |   Dispose")   |         | (Quiet CPU / Net)  |
+                        +---------------+         +--------------------+
+                                |                          |
+                                \                          /
+                                 v                        v
+                        +----------------------------------+
+                        |     Event-Sourced SQLite Log     |
+                        |  (`ops`: tasks, notes, answers)  |
+                        +----------------------------------+
+                                        |
+                                        v
+                        +----------------------------------+
+                        |   Materialized Views (v3 DDL)    |
+                        |   Disposable & 100% Rebuildable  |
+                        +----------------------------------+
+                                        |
+                        (Sync Protocol & CRDT Merge: HLC)
+                                        v
+                           [ Remote Replica Nodes ]
 ```
 
 ---
@@ -168,31 +168,32 @@ How the parts fit, what is guaranteed and what tests enforce it, and what is not
 ## Layout
 
 ```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync, answers
 internal/ollama/        HTTP client for Ollama: streaming, typed errors
 internal/bench/         benchmark method and report writers
 internal/sysinfo/       reads CPU and RAM so every result names its hardware
 internal/intent/        the Command type and its validation
 internal/structured/    getting valid JSON out of a model, with retries
-internal/llm/           the interface models sit behind (real and fake)
+internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, and fakes)
 internal/eval/          measures how reliably models produce valid commands
 internal/task/          the Task type, matching rules, the Store contract
 internal/task/storetest shared contract tests every store must pass
 internal/tools/         the closed menu of tools and the registry
 internal/agent/         tiered loop: rules first, model second
-internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
+internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify, answers projection
 internal/connectivity   state machine, probers and the monitor goroutine
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
 internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
-internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; job handlers
+internal/idle           measures CPU busy share (/proc/stat) so slow jobs start only when the machine is quiet
+internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; slow-thinking (Tier 2) handlers
 internal/obs            structured logs (slog), counters, snapshot files other processes can read
 internal/dash           the one-screen view: a pure render function plus a repaint loop
 internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
 internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
-                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh (tmux)
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
@@ -201,8 +202,8 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 21, `go test -v ./...` runs **821 test functions** (plus their subtests)
-in 22 packages: about 16,000 lines of Go and about 24,000 lines of tests. One
+As of Day 22, `go test -v ./...` runs **897 test functions** (plus their subtests)
+in 23 packages: about 17,500 lines of Go and about 26,000 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 
@@ -211,6 +212,7 @@ make check                 # vet + gofmt + tests
 go test -race ./...        # with the race detector
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
 make converge-demo         # runs Checkpoint 2 multi-replica convergence demo
+make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
 ```
 
 ### Quality Guarantees
@@ -221,6 +223,10 @@ make converge-demo         # runs Checkpoint 2 multi-replica convergence demo
 - **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices. Deliberately broken merge mutants (12 anti-patterns) are proven caught and shrunk.
 - **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit.
 - **Multi-Replica Convergence (Checkpoint 2):** Chaos tests and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
+- **Tier 2 Deliberate Reasoning & Idle Gate:** End-to-end testing of `internal/idle` CPU sampler, window boundaries, `/proc/stat` counter resets, graceful fail-open on non-Linux, and worker idle backoff (`make two-brains-demo`).
+- **Cloud Failover & Dead-Letter Isolation:** Exhaustive failure testing verifying that cloud HTTP 401/403/429/500/503 errors safely trigger automatic fallback to local models, while missing local models (`*llm.ModelNotFoundError`) are marked `Permanent` to prevent endless CPU burns.
+- **Answer Synchronization & Rebuild Parity:** Three-replica out-of-order delta sync tests prove that Tier 2 answers converge canonically across partitions. Tamper injection tests prove `Verify` detects corrupted projection rows and `Rebuild` restores cryptographic op-log parity.
+- **UTF-8 Boundary Safety:** Truncation guards ensure multi-byte UTF-8 runes (Japanese, Amharic, Emoji) crossing the 8KB limit are never bisected, preventing JSON encoding or SQLite projection errors.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.

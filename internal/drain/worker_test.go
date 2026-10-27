@@ -479,6 +479,8 @@ func TestFailureRetriesWithBackoffThenGoesDead(t *testing.T) {
 		return "", errors.New("model is busy")
 	}}}})
 	eventually(t, "dead", 5*time.Second, func() bool { return e.get(j.ID).Status == jobqueue.Dead })
+	// The status changes in the database a moment BEFORE the event is announced.
+	eventually(t, "the dead event", 5*time.Second, func() bool { return e.count(EvDead) == 1 })
 	got := e.get(j.ID)
 	if got.Attempts != 3 || runs.Load() != 3 || got.LastError != "model is busy" {
 		t.Errorf("attempts=%d runs=%d lastError=%q", got.Attempts, runs.Load(), got.LastError)

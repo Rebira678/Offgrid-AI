@@ -128,7 +128,18 @@ func stateHash(ctx context.Context, x execer) (string, error) {
 		}
 		canon = append(canon, c)
 	}
-	raw, err := json.Marshal(canon)
+	answers, err := listAnswers(ctx, x)
+	if err != nil {
+		return "", err
+	}
+	var payload any = canon
+	if len(answers) > 0 { // omitted when empty, so databases without answers keep their old hashes
+		payload = struct {
+			Tasks   []canonTask `json:"tasks"`
+			Answers []Answer    `json:"answers"`
+		}{canon, answers}
+	}
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return "", err
 	}

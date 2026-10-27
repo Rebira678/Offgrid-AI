@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -86,5 +86,10 @@ sync-demo: build
 # scripts/converge-clip.sh (needs tmux) is the same scenario as a split-screen clip.
 converge-demo: build
 	scripts/converge-demo.sh
+
+# Day 22: the slow brain. A hard question waits for a quiet laptop, is answered, and the answer syncs to a second device.
+# STANDIN=0 uses your real Ollama with DEEP_MODEL (default qwen2.5:7b). BURN=0 skips the CPU burners.
+two-brains-demo: build
+	scripts/two-brains-demo.sh $(PAUSE)
 
 

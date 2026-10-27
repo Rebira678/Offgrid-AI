@@ -58,11 +58,12 @@ Dependencies point downward; nothing lower knows about anything above it.
 | | `internal/drain` | the worker: claim, gate, run, report; job handlers | how decisions are made |
 | Understanding | `internal/agent` | Tier 0 rules, then Tier 1 model; outcome with tier and timings | the queue, the network |
 | | `internal/intent`, `internal/structured` | the `Command` type; valid JSON out of a model, with retries | which model |
-| | `internal/llm` | the interface models sit behind (real Ollama client, fake for tests) | |
+| | `internal/llm` | the interface models sit behind (Ollama, an optional OpenAI-compatible cloud client, a fake for tests) | |
 | Acting | `internal/tools` | a **closed menu** of five typed tools (`create_task`, `update_task`, `list_tasks`, `add_note`, `daily_summary`) | models |
 | State | `internal/task` | the `Task` type and the `Store` contract, plus shared contract tests | SQLite |
 | | `internal/store/sqlstore` | the SQLite store: append-only ops, migrations, rebuild, verify | |
 | | `internal/jobqueue` | durable queue on any `*sql.DB`: idempotency, backoff, leases, fencing, results | the SQLite driver, the task store (a test enforces this) |
+| | `internal/idle` | is the CPU quiet? gates slow (Tier 2) jobs so they never slow the fast tier | what the jobs are |
 | Environment | `internal/connectivity` | probes, hysteresis state machine, monitor goroutine | what the state is used for |
 | | `internal/netfault` | an `http.RoundTripper` that injects latency, loss and partitions | |
 | Visibility | `internal/obs`, `internal/dash` | logs, counters, snapshot files; a pure render function | |
@@ -97,6 +98,8 @@ Dependencies point downward; nothing lower knows about anything above it.
 | Going offline never burns a job's attempts | filter by kind inside the claim; a stop or network loss is `Release`, not failure | worker tests (a job with 2 attempts restarted 6 times is still intact) |
 | A job that changes data is not repeated after a crash | `interpret` saves an `executing` marker; a rerun that finds it goes to a human | handler tests |
 | The state machine does not flap | hysteresis, asymmetric thresholds (down faster than up) | `internal/connectivity` |
+| A slow-thinking answer is recorded once, is identical on every device, and a crash after saving never re-runs the model | `answer.recorded` op with the job's idempotency key; first answer in the canonical fold order wins; the handler looks the key up before asking a model | `sqlstore/answers_test.go`, `drain/think_test.go` |
+| A slow job never starts beside fast work, nor two at once, nor on a busy CPU, and waiting costs no attempts | `Spec.Background`: the claim excludes the kind while the gate is closed | `drain/idle_test.go` |
 | The viewer cannot change the queue | read-only connection, no migrations | `TestReadOnlyViewSeesTheQueueAndCannotChangeIt` |
 | The screen never presents old data as live | snapshot age against the publisher's own interval | `internal/dash`, `internal/obs` |
 | Op timestamps never go backwards and always follow what a node has seen, even with a wrong clock | hybrid logical clock; restored from the log on open | `internal/hlc` tests (including a 25-seed skewed-clock simulation); `sqlstore/hlc_test.go` |
@@ -124,7 +127,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
 - The complexity gate is a closed vocabulary: it is explainable and measured on held-out cases, but it will miss phrasings it has not seen.
-- Tier 2 as drawn in the roadmap (a bigger local or cloud model) exists as the `deep_think` job and an unused `Cloud` hook in the router; no cloud client is written.
+- Tier 2 (Day 22) is a background job: a bigger local model (`-deep-model`) plus an optional OpenAI-compatible cloud client (`-cloud-url`, off by default; it sends task data off the device). Both are tested only against stand-in servers here. The idle gate reads CPU use from `/proc/stat` (fails open elsewhere).
 
 ## 9. Where to start reading
 

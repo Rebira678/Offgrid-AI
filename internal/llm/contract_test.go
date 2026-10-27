@@ -43,6 +43,11 @@ func chatServer(t *testing.T) *httptest.Server {
 func TestClientContract(t *testing.T) {
 	implementations := map[string]func(t *testing.T) Client{
 		"Fake": func(t *testing.T) Client { return &Fake{} },
+		"OpenAICompat": func(t *testing.T) Client {
+			srv := httptest.NewServer(http.HandlerFunc(okOAI))
+			t.Cleanup(srv.Close)
+			return NewOpenAICompat(srv.URL, "k")
+		},
 		"Ollama": func(t *testing.T) Client {
 			return NewOllama(ollama.NewClient(chatServer(t).URL))
 		},

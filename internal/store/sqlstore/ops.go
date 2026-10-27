@@ -31,6 +31,9 @@ const (
 	KindNoteAdded   = "task.note_added"
 	KindTaskRemoved = "task.removed"
 	KindNoteRemoved = "note.removed"
+	// KindAnswerRecorded: a slow-thinking (Tier 2) job finished and this is
+	// what it said. It is a fact about the world, not a change to any task.
+	KindAnswerRecorded = "answer.recorded"
 )
 
 // Op is one immutable entry in the log.
@@ -87,6 +90,16 @@ type noteRemovedPayload struct {
 	ID   string `json:"id"`
 	Node string `json:"node"`
 	Seq  int64  `json:"seq"`
+}
+
+// answerPayload is a finished Tier 2 answer. Key names the question (the job's
+// idempotency key), so the same question answered twice is one answer.
+type answerPayload struct {
+	Key      string `json:"key"`
+	Question string `json:"question"`
+	Text     string `json:"text"`
+	Model    string `json:"model"`
+	Source   string `json:"source"` // "local" or "cloud": where the words were produced
 }
 
 // ErrCorruptLog means the log contains something that cannot be applied: an

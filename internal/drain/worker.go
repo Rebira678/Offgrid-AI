@@ -54,6 +54,12 @@ type Handler func(ctx context.Context, job jobqueue.Job, p Progress) (string, er
 type Spec struct {
 	Handle       Handler
 	NeedsNetwork bool // only run while the network is up
+
+	// Background marks slow thinking: a job that keeps the CPU busy for a long
+	// time (a 7-8B model). It starts only when no foreground job is running
+	// here, no other background job is running, and Config.Idle says the
+	// machine is otherwise quiet, so it never makes the fast tier slow.
+	Background bool
 }
 
 // ErrPermanent marks a failure that retrying cannot fix.
@@ -122,11 +128,21 @@ type Config struct {
 	// Online says whether the network is up. nil means always up.
 	Online func() bool
 
+	// Idle says whether the machine is quiet enough to start a Background
+	// job. nil means always quiet. It is asked at the moment of claiming; a job
+	// already running is never stopped because the machine got busy.
+	Idle func() bool
+
 	// ExitWhenIdle makes Run return once nothing is ready and nothing is
 	// running anywhere, instead of waiting for more work. Jobs leased by
 	// another (or a dead) worker are waited for until their lease ends; jobs
 	// waiting out a backoff delay stay queued.
 	ExitWhenIdle bool
+
+	// IdleWait, with ExitWhenIdle, is how long to keep waiting for a quiet
+	// machine when the only work left is Background work held back by the idle
+	// gate. 0 means do not wait: exit, leaving those jobs queued.
+	IdleWait time.Duration
 
 	// OnEvent is called for every Event, one at a time (the worker holds a
 	// lock around it), so it needs no locking of its own, and must not call
@@ -143,12 +159,18 @@ type Worker struct {
 
 	slots    chan struct{}
 	inflight atomic.Int64
+	fgFlight atomic.Int64 // running jobs that are not Background
+	bgFlight atomic.Int64 // running Background jobs
 	wake     chan struct{}
 
 	mu      sync.Mutex // guards sum and serializes OnEvent
 	sum     Summary
 	gateSet bool
 	gateUp  bool
+
+	hasBackground bool
+	quietSet      bool
+	quietUp       bool
 }
 
 // New checks the configuration and builds a Worker.
@@ -185,6 +207,7 @@ func New(cfg Config) (*Worker, error) {
 	w := &Worker{cfg: cfg, slots: make(chan struct{}, cfg.Concurrency), wake: make(chan struct{}, 1)}
 	for k := range cfg.Specs {
 		w.kinds = append(w.kinds, k)
+		w.hasBackground = w.hasBackground || cfg.Specs[k].Background
 	}
 	sort.Strings(w.kinds)
 	return w, nil
@@ -224,19 +247,52 @@ func (w *Worker) online() bool { return w.cfg.Online == nil || w.cfg.Online() }
 
 // claimable returns the kinds that may be claimed right now, and tells the
 // listener when network jobs get paused or resumed.
-func (w *Worker) claimable() []string {
+func (w *Worker) claimable() (kinds []string, gated bool) {
 	up := w.online()
 	w.noteGate(up)
-	if up {
-		return w.kinds
-	}
+	bgOK := w.backgroundMayStart()
 	var out []string
 	for _, k := range w.kinds {
-		if !w.cfg.Specs[k].NeedsNetwork {
-			out = append(out, k)
+		sp := w.cfg.Specs[k]
+		if sp.NeedsNetwork && !up {
+			continue
 		}
+		if sp.Background && !bgOK {
+			gated = true
+			continue
+		}
+		out = append(out, k)
 	}
-	return out
+	return out, gated
+}
+
+// backgroundMayStart is the idle gate: nothing in the foreground, no other
+// slow job, and a quiet machine.
+func (w *Worker) backgroundMayStart() bool {
+	if !w.hasBackground {
+		return true
+	}
+	quiet := w.cfg.Idle == nil || w.cfg.Idle()
+	w.noteQuiet(quiet)
+	return quiet && w.fgFlight.Load() == 0 && w.bgFlight.Load() == 0
+}
+
+// noteQuiet tells the listener when the machine goes busy or quiet, so a person
+// watching sees why a slow job is waiting.
+func (w *Worker) noteQuiet(quiet bool) {
+	w.mu.Lock()
+	changed := !w.quietSet || w.quietUp != quiet
+	first := !w.quietSet
+	w.quietSet, w.quietUp = true, quiet
+	w.mu.Unlock()
+	if !changed || (first && quiet) {
+		return // only say something when it matters: busy, or quiet again after busy
+	}
+	if quiet {
+		w.emit(Event{Kind: EvGate, Note: "machine is quiet: slow jobs may run"})
+	} else {
+		w.emit(Event{Kind: EvGate, Note: "machine is busy: slow jobs wait; fast jobs still run"})
+	}
 }
 
 func (w *Worker) noteGate(up bool) {
@@ -267,6 +323,7 @@ func (w *Worker) noteGate(up bool) {
 func (w *Worker) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
+	var quietSince time.Time // when we started waiting for a quiet machine
 
 	for ctx.Err() == nil {
 		// Wait for a free slot BEFORE looking at the network and claiming, so
@@ -276,7 +333,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		}
-		kinds := w.claimable()
+		kinds, gated := w.claimable()
 		job, ok, err := w.cfg.Queue.ClaimKinds(ctx, w.cfg.Lease, kinds)
 		if err != nil && ctx.Err() == nil {
 			w.emit(Event{Kind: EvError, Err: err})
@@ -284,7 +341,9 @@ func (w *Worker) Run(ctx context.Context) error {
 		if !ok {
 			<-w.slots
 			if err == nil && w.cfg.ExitWhenIdle && w.inflight.Load() == 0 && !w.othersRunning(ctx) {
-				return nil
+				if !w.waitForQuiet(ctx, gated, &quietSince) {
+					return nil
+				}
 			}
 			select {
 			case <-time.After(w.cfg.Poll):
@@ -294,10 +353,16 @@ func (w *Worker) Run(ctx context.Context) error {
 			continue
 		}
 		w.inflight.Add(1)
+		flight := &w.fgFlight
+		if w.cfg.Specs[job.Kind].Background {
+			flight = &w.bgFlight
+		}
+		flight.Add(1)
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			defer func() {
+				flight.Add(-1)
 				w.inflight.Add(-1)
 				<-w.slots
 				select {
@@ -309,6 +374,35 @@ func (w *Worker) Run(ctx context.Context) error {
 		}()
 	}
 	return nil
+}
+
+// waitForQuiet decides whether a worker that would otherwise exit should keep
+// waiting: only when Background jobs are ready and held back by the idle gate,
+// and only for IdleWait.
+func (w *Worker) waitForQuiet(ctx context.Context, gated bool, since *time.Time) bool {
+	if w.cfg.IdleWait <= 0 || !gated {
+		*since = time.Time{}
+		return false
+	}
+	queued, err := w.cfg.Queue.List(ctx, jobqueue.Queued, 500)
+	if err != nil {
+		return false
+	}
+	now := w.cfg.Now()
+	ready := false
+	for _, j := range queued {
+		if w.cfg.Specs[j.Kind].Background && !j.RunAt.After(now) {
+			ready = true
+			break
+		}
+	}
+	if !ready {
+		return false
+	}
+	if since.IsZero() {
+		*since = now
+	}
+	return now.Sub(*since) < w.cfg.IdleWait
 }
 
 // othersRunning reports whether the queue still has jobs marked running that
