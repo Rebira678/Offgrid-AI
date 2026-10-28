@@ -132,12 +132,17 @@ func stateHash(ctx context.Context, x execer) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	sugs, err := canonSuggestions(ctx, x)
+	if err != nil {
+		return "", err
+	}
 	var payload any = canon
-	if len(answers) > 0 { // omitted when empty, so databases without answers keep their old hashes
+	if len(answers) > 0 || len(sugs) > 0 { // omitted when empty, so older databases keep their old hashes
 		payload = struct {
-			Tasks   []canonTask `json:"tasks"`
-			Answers []Answer    `json:"answers"`
-		}{canon, answers}
+			Tasks       []canonTask       `json:"tasks"`
+			Answers     []Answer          `json:"answers,omitempty"`
+			Suggestions []canonSuggestion `json:"suggestions,omitempty"`
+		}{canon, answers, sugs}
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
