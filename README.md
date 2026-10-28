@@ -9,7 +9,7 @@ with no GPU and costs $0.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(960%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(980%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 > Status: **Day 23: The AI Never Overwrites a Human (Safe Suggestions & Review).**
@@ -213,7 +213,7 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 23, `go test -v ./...` runs **960+ test functions** (plus their subtests)
+As of Day 23, `go test -v ./...` runs **980+ test functions** (plus their subtests)
 in 24 packages: about 19,000 lines of Go and about 28,500 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
