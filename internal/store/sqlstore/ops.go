@@ -34,6 +34,12 @@ const (
 	// KindAnswerRecorded: a slow-thinking (Tier 2) job finished and this is
 	// what it said. It is a fact about the world, not a change to any task.
 	KindAnswerRecorded = "answer.recorded"
+	// KindSuggestionMade: an AI proposed a change. It is stored beside the task
+	// and changes nothing in it.
+	KindSuggestionMade = "suggestion.made"
+	// KindSuggestionResolved: a person accepted or dismissed a suggestion.
+	// Accepting is the only way a suggestion ever changes a task.
+	KindSuggestionResolved = "suggestion.resolved"
 )
 
 // Op is one immutable entry in the log.
@@ -100,6 +106,27 @@ type answerPayload struct {
 	Text     string `json:"text"`
 	Model    string `json:"model"`
 	Source   string `json:"source"` // "local" or "cloud": where the words were produced
+}
+
+// suggestionPayload is an AI proposal plus what the task looked like when it
+// was made (Base*), so a later reader can tell if a person has since changed it.
+type suggestionPayload struct {
+	Task         string         `json:"task"`
+	Status       *task.Status   `json:"status,omitempty"`
+	Priority     *task.Priority `json:"priority,omitempty"`
+	Note         string         `json:"note,omitempty"`
+	BaseStatus   task.Status    `json:"base_status"`
+	BasePriority task.Priority  `json:"base_priority"`
+	By           string         `json:"by"`
+	Key          string         `json:"key,omitempty"`
+}
+
+// resolvedPayload names a suggestion by the identity (node, seq) of the op
+// that made it, exactly as a note removal names a note.
+type resolvedPayload struct {
+	Node       string `json:"node"`
+	Seq        int64  `json:"seq"`
+	Resolution string `json:"resolution"` // "accepted" or "dismissed"
 }
 
 // ErrCorruptLog means the log contains something that cannot be applied: an
