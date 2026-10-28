@@ -147,3 +147,84 @@ func (m *mockSafeSink) Suggestions(context.Context, bool) ([]task.Suggestion, er
 func (m *mockSafeSink) Resolve(context.Context, string, bool) (task.Task, error) {
 	return task.Task{}, nil
 }
+
+type errStore struct {
+	task.Store
+	err error
+}
+
+func (e errStore) Get(context.Context, string) (task.Task, error) {
+	return task.Task{}, e.err
+}
+
+func TestSuggestEdgeStoreErrorPropagation(t *testing.T) {
+	ctx := context.Background()
+	customErr := errors.New("simulated storage failure")
+	sk := &sink{}
+	s := Store{
+		Store: errStore{err: customErr},
+		Sink:  sk,
+		By:    "test-model",
+	}
+
+	hi := task.PriorityHigh
+	_, _, err := s.Update(ctx, "T1", task.Changes{Priority: &hi})
+	if !errors.Is(err, customErr) {
+		t.Fatalf("expected custom error on Update, got: %v", err)
+	}
+
+	_, err = s.AddNote(ctx, "T1", "note")
+	if !errors.Is(err, customErr) {
+		t.Fatalf("expected custom error on AddNote, got: %v", err)
+	}
+
+	if len(sk.drafts) != 0 {
+		t.Fatalf("sink should not be called when Store.Get fails, got %d calls", len(sk.drafts))
+	}
+}
+
+func TestSuggestEdgePartialFieldChangeFiltering(t *testing.T) {
+	ctx := context.Background()
+	s, real, sk := fixture(t)
+
+	// T1 has PriorityMedium and StatusOpen
+	med := task.PriorityMedium
+	prog := task.StatusInProgress
+
+	// 1. Status changes, priority is identical
+	sk.drafts = nil
+	_, _, err := s.Update(ctx, "T1", task.Changes{Priority: &med, Status: &prog})
+	var sug *Suggested
+	if !errors.As(err, &sug) {
+		t.Fatalf("expected *Suggested, got: %v", err)
+	}
+	if len(sk.drafts) != 1 {
+		t.Fatalf("expected 1 draft, got %d", len(sk.drafts))
+	}
+	if sk.drafts[0].Priority != nil {
+		t.Fatalf("priority should be nil in draft because it was identical: %v", sk.drafts[0].Priority)
+	}
+	if sk.drafts[0].Status == nil || *sk.drafts[0].Status != task.StatusInProgress {
+		t.Fatalf("status should be in_progress: %v", sk.drafts[0].Status)
+	}
+
+	// 2. Priority changes, status is identical
+	sk.drafts = nil
+	open := task.StatusOpen
+	low := task.PriorityLow
+	_, _, err = s.Update(ctx, "T1", task.Changes{Priority: &low, Status: &open})
+	if !errors.As(err, &sug) {
+		t.Fatalf("expected *Suggested, got: %v", err)
+	}
+	if len(sk.drafts) != 1 {
+		t.Fatalf("expected 1 draft, got %d", len(sk.drafts))
+	}
+	if sk.drafts[0].Status != nil {
+		t.Fatalf("status should be nil in draft because it was identical: %v", sk.drafts[0].Status)
+	}
+	if sk.drafts[0].Priority == nil || *sk.drafts[0].Priority != task.PriorityLow {
+		t.Fatalf("priority should be low: %v", sk.drafts[0].Priority)
+	}
+
+	_ = real
+}
