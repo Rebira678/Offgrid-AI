@@ -63,6 +63,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 | State | `internal/task` | the `Task` type and the `Store` contract, plus shared contract tests | SQLite |
 | | `internal/store/sqlstore` | the SQLite store: append-only ops, migrations, rebuild, verify | |
 | | `internal/jobqueue` | durable queue on any `*sql.DB`: idempotency, backoff, leases, fencing, results | the SQLite driver, the task store (a test enforces this) |
+| | `internal/suggest` | wraps a task store for AI code: creating passes through, but a change to an existing task becomes a recorded suggestion (`*Suggested`) instead of a write | the model, the queue |
 | | `internal/idle` | is the CPU quiet? gates slow (Tier 2) jobs so they never slow the fast tier | what the jobs are |
 | Environment | `internal/connectivity` | probes, hysteresis state machine, monitor goroutine | what the state is used for |
 | | `internal/netfault` | an `http.RoundTripper` that injects latency, loss and partitions | |
@@ -99,6 +100,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 | A job that changes data is not repeated after a crash | `interpret` saves an `executing` marker; a rerun that finds it goes to a human | handler tests |
 | The state machine does not flap | hysteresis, asymmetric thresholds (down faster than up) | `internal/connectivity` |
 | A slow-thinking answer is recorded once, is identical on every device, and a crash after saving never re-runs the model | `answer.recorded` op with the job's idempotency key; first answer in the canonical fold order wins; the handler looks the key up before asking a model | `sqlstore/answers_test.go`, `drain/think_test.go` |
+| **An AI never overwrites a person:** no model-side code can write an existing task; its updates and notes are suggestions stored beside the task, applied only by a person's explicit accept, which is refused if the task changed since | `internal/suggest` wraps the store handed to model code; `suggestion.made` never touches the task row; `Resolve` refuses stale accepts | `sqlstore/suggestions_test.go` (incl. `TestAHumanEditMadeOfflineSurvivesAnAIJobFinishingLater`, a 12-seed random test), `suggest/suggest_test.go`, `drain/interpret_safe_test.go` |
 | A slow job never starts beside fast work, nor two at once, nor on a busy CPU, and waiting costs no attempts | `Spec.Background`: the claim excludes the kind while the gate is closed | `drain/idle_test.go` |
 | The viewer cannot change the queue | read-only connection, no migrations | `TestReadOnlyViewSeesTheQueueAndCannotChangeIt` |
 | The screen never presents old data as live | snapshot age against the publisher's own interval | `internal/dash`, `internal/obs` |
@@ -127,6 +129,7 @@ Dependencies point downward; nothing lower knows about anything above it.
 - Counters are per process; the tiers panel in `top` shows only the latest `agent -route` run.
 - One writer per SQLite file. Two `drain` workers on one queue are safe (fencing) but publish under the same snapshot name.
 - The complexity gate is a closed vocabulary: it is explainable and measured on held-out cases, but it will miss phrasings it has not seen.
+- Suggestions (Day 23): staleness is judged on the device where a person accepts, from the edits it has received; an edit on an unsynced device is invisible until sync, after which the suggestion shows STALE. If two devices resolve one suggestion differently, the earlier resolution in the canonical order wins on both. Deleting a task keeps its suggestions in the log.
 - Tier 2 (Day 22) is a background job: a bigger local model (`-deep-model`) plus an optional OpenAI-compatible cloud client (`-cloud-url`, off by default; it sends task data off the device). Both are tested only against stand-in servers here. The idle gate reads CPU use from `/proc/stat` (fails open elsewhere).
 
 ## 9. Where to start reading
