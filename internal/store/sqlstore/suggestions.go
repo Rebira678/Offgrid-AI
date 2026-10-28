@@ -181,8 +181,9 @@ func (s *Store) Resolve(ctx context.Context, id string, accept bool) (task.Task,
 		if accept && sg.Stale {
 			return fmt.Errorf("%w: it was made when %s was %s/%s", task.ErrStale, sg.Task, sg.BaseStatus, sg.BasePriority)
 		}
-		if _, err := getTask(ctx, tx, sg.Task); err != nil {
-			return err
+		curTask, taskErr := getTask(ctx, tx, sg.Task)
+		if accept && taskErr != nil {
+			return taskErr
 		}
 		res := "dismissed"
 		if accept {
@@ -191,8 +192,16 @@ func (s *Store) Resolve(ctx context.Context, id string, accept bool) (task.Task,
 		if err := s.record(ctx, tx, KindSuggestionResolved, resolvedPayload{Node: node, Seq: seq, Resolution: res}); err != nil {
 			return err
 		}
-		out, err = getTask(ctx, tx, sg.Task)
-		return err
+		if accept {
+			out, err = getTask(ctx, tx, sg.Task)
+			return err
+		}
+		if taskErr == nil {
+			out = curTask
+		} else {
+			out = task.Task{ID: sg.Task}
+		}
+		return nil
 	})
 	return out, err
 }
