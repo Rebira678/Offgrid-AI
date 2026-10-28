@@ -214,8 +214,14 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 		thinkCfg.Cloud, thinkCfg.CloudModel = newCloudClient(*cloudURL, cloudKey), *cloudModel
 		thinkCfg.Online = func() bool { return online() }
 	}
+	interpret := qd.Interpret(a)
+	if sink, ok := store.(task.Suggester); ok {
+		// A queued message is read by a model long after it was typed. It may
+		// create tasks, but a change to an existing task is only a suggestion.
+		interpret = qd.InterpretSafely(qd.InterpretSafelyConfig{Agent: a, Store: store, Sink: sink, Clock: clk.Now, By: *model})
+	}
 	specs := map[string]qd.Spec{
-		qd.KindInterpret: qd.Interpret(a),
+		qd.KindInterpret: interpret,
 		qd.KindDeepThink: qd.Think(thinkCfg),
 	}
 
@@ -235,6 +241,9 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 	say("connectivity: %s\n", label)
 	say("concurrency %d, lease %s\n", *concurrency, *lease)
 	say("  interpret   reads messages with the local model %s\n", *model)
+	if _, ok := store.(task.Suggester); ok {
+		say("              it may create tasks; a change to an existing task becomes a suggestion (offgrid suggestions)\n")
+	}
 	if remote {
 		say("  deep_think  asks model %s on %s (needs the network: waits while offline)\n", dm, *deepHost)
 	} else {
