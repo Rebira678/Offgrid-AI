@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -91,5 +91,9 @@ converge-demo: build
 # STANDIN=0 uses your real Ollama with DEEP_MODEL (default qwen2.5:7b). BURN=0 skips the CPU burners.
 two-brains-demo: build
 	scripts/two-brains-demo.sh $(PAUSE)
+
+# Day 23: a person edits a task on the phone while an AI proposes a different change on the laptop; sync; the person's edit survives.
+ai-suggests-demo: build
+	scripts/ai-suggests-demo.sh $(PAUSE)
 
 
