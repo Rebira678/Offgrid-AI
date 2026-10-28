@@ -9,14 +9,15 @@ with no GPU and costs $0.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(919%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(960%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 22: Deliberate Reasoning (Tier 2), Idle Gating & Cloud Failover.**
+> Status: **Day 23: The AI Never Overwrites a Human (Safe Suggestions & Review).**
 > Tasks are logged, updated and reviewed entirely offline; the data survives restarts and `kill -9`;
 > hard requests wait in a durable queue. Tier 2 slow-thinking runs a larger 7-8B local model
 > only while the machine is quiet (`-idle-max-busy`), with optional cloud failover (`-cloud-url`).
-> Answers are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo`).
+> An AI never overwrites an existing task: changes become suggestions with base snapshots and stale detection; only a person accepts or dismisses them (`make ai-suggests-demo` / `offgrid suggestions -db FILE`).
+> Answers and suggestions are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo` / `make ai-suggests-demo`).
 > See [Honest limits](#honest-limits).
 
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
@@ -73,6 +74,7 @@ cover, and says so politely for the rest.
 | 20 | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
 | 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
 | 22 | Tier 2 Deliberate Reasoning: local 7-8B slow thinking gated by CPU idle meter, optional cloud failover, answers synced via op log | `make two-brains-demo` / `offgrid answers -db FILE` |
+| 23 | The AI never overwrites a human: proposals sit alongside tasks with stale detection; CLI accept/dismiss | `make ai-suggests-demo` / `offgrid suggestions -db FILE` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -102,16 +104,24 @@ Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.d
                         |   Dispose")   |         | (Quiet CPU / Net)  |
                         +---------------+         +--------------------+
                                 |                          |
+                       (Suggest Wrapper)                   |
+                                v                          |
+                        +---------------+                  |
+                        | Suggestions   |                  |
+                        | (Human Review)|                  |
+                        +---------------+                  |
+                                |                          |
                                 \                          /
                                  v                        v
                         +----------------------------------+
                         |     Event-Sourced SQLite Log     |
-                        |  (`ops`: tasks, notes, answers)  |
+                        | (`ops`: tasks, notes, answers,   |
+                        |         suggestions)             |
                         +----------------------------------+
                                         |
                                         v
                         +----------------------------------+
-                        |   Materialized Views (v3 DDL)    |
+                        |   Materialized Views (v4 DDL)    |
                         |   Disposable & 100% Rebuildable  |
                         +----------------------------------+
                                         |
@@ -168,7 +178,7 @@ How the parts fit, what is guaranteed and what tests enforce it, and what is not
 ## Layout
 
 ```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync, answers
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync, answers, suggestions
 internal/ollama/        HTTP client for Ollama: streaming, typed errors
 internal/bench/         benchmark method and report writers
 internal/sysinfo/       reads CPU and RAM so every result names its hardware
@@ -176,24 +186,25 @@ internal/intent/        the Command type and its validation
 internal/structured/    getting valid JSON out of a model, with retries
 internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, and fakes)
 internal/eval/          measures how reliably models produce valid commands
-internal/task/          the Task type, matching rules, the Store contract
+internal/task/          the Task type, matching rules, the Store and Suggester contracts
 internal/task/storetest shared contract tests every store must pass
+internal/suggest/       proposing wrapper: models propose changes, humans review and accept
 internal/tools/         the closed menu of tools and the registry
 internal/agent/         tiered loop: rules first, model second
-internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify, answers projection
+internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify, answers and suggestions projection
 internal/connectivity   state machine, probers and the monitor goroutine
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
 internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
 internal/idle           measures CPU busy share (/proc/stat) so slow jobs start only when the machine is quiet
-internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; slow-thinking (Tier 2) handlers
+internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; slow-thinking handlers, safe drain
 internal/obs            structured logs (slog), counters, snapshot files other processes can read
 internal/dash           the one-screen view: a pure render function plus a repaint loop
 internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
 internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
-                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
@@ -202,8 +213,8 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 22, `go test -v ./...` runs **919 test functions** (plus their subtests)
-in 23 packages: about 17,500 lines of Go and about 26,500 lines of tests. One
+As of Day 23, `go test -v ./...` runs **960+ test functions** (plus their subtests)
+in 24 packages: about 19,000 lines of Go and about 28,500 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 
@@ -213,9 +224,12 @@ go test -race ./...        # with the race detector
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
 make converge-demo         # runs multi-replica convergence demo
 make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
+make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
 ```
 
 ### Quality Guarantees
+- **AI Suggestion Isolation & Stale Protection:** Proving mathematically and empirically that an AI model wrapper (`suggest.Store`) and safe queue drain (`drain.InterpretSafely`) cannot overwrite existing tasks. Base snapshot comparison prevents accepting stale proposals if a human concurrently edited the targeted fields.
+- **Add-Wins Suggestion Lifecycle & Ring Sync:** Multi-replica convergence tests verify that suggestions, acceptances, and dismissals sync canonically over HLC timestamps across 3-node ring topologies, and SQLite rebuild from raw op log reconstructs suggestions with byte-for-byte state hash equality.
 - **Contract Testing (`storetest`):** Shared contract test suite runs identically against `MemStore` and `sqlstore.Store`, including `task.Remover` (`DeleteTask`, `RemoveNote`).
 - **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
 - **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
