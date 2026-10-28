@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -300,4 +301,160 @@ func TestSuggestionsEdgeTamperingAndRebuild(t *testing.T) {
 	if foundSug[0].ID != sug.ID || foundSug[0].Note != "" {
 		t.Fatalf("tampered note persisted after rebuild: %+v", foundSug[0])
 	}
+}
+
+func TestSuggestionsEdgeDismissSuggestionOnDeletedTask(t *testing.T) {
+	ctx := context.Background()
+	s, clk := freshStore(t)
+
+	// Step 1: Create task T1
+	t1, _, err := s.Create(ctx, task.NewTask{Title: "Wind turbine brake", Site: "Ridge-1", Priority: task.PriorityLow})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 2: AI proposes priority update
+	clk.tick(time.Minute)
+	hi := task.PriorityHigh
+	sug, created, err := s.Suggest(ctx, task.Draft{Task: t1.ID, Priority: &hi, By: "ai-rotor", Key: "k-brake"})
+	if err != nil || !created {
+		t.Fatalf("suggest failed: created=%v err=%v", created, err)
+	}
+
+	// Step 3: Human deletes T1
+	clk.tick(time.Minute)
+	if err := s.DeleteTask(ctx, t1.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 4: Accepting it must be refused with ErrNotFound
+	clk.tick(time.Minute)
+	_, err = s.Resolve(ctx, sug.ID, true)
+	if !errors.Is(err, task.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound when accepting proposal on deleted task, got: %v", err)
+	}
+
+	// Step 6: Dismissing it must SUCCEED cleanly
+	clk.tick(time.Minute)
+	taskRet, err := s.Resolve(ctx, sug.ID, false)
+	if err != nil {
+		t.Fatalf("dismissing suggestion on deleted task should succeed, got: %v", err)
+	}
+	if taskRet.ID != t1.ID {
+		t.Fatalf("expected returned task ID %s, got %s", t1.ID, taskRet.ID)
+	}
+
+	// Verify suggestion is no longer pending
+	pendingList, err := s.Suggestions(ctx, false)
+	if err != nil || len(pendingList) != 0 {
+		t.Fatalf("expected 0 pending suggestions after dismissal, got: %+v", pendingList)
+	}
+
+	mustVerify(t, s)
+}
+
+func TestSuggestionsEdgeConcurrentProposalsSameKeyIdempotency(t *testing.T) {
+	ctx := context.Background()
+	s, _ := freshStore(t)
+
+	t1, _, err := s.Create(ctx, task.NewTask{Title: "Solar inverter", Priority: task.PriorityMedium})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const goroutines = 10
+	type res struct {
+		sug     task.Suggestion
+		created bool
+		err     error
+	}
+	results := make([]res, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		idx := i
+		go func() {
+			defer wg.Done()
+			hi := task.PriorityHigh
+			sug, created, err := s.Suggest(ctx, task.Draft{
+				Task:     t1.ID,
+				Priority: &hi,
+				By:       "idempotent-worker",
+				Key:      "idempotent-key-42",
+			})
+			results[idx] = res{sug: sug, created: created, err: err}
+		}()
+	}
+	wg.Wait()
+
+	createdCount := 0
+	var firstID string
+	for _, r := range results {
+		if r.err != nil {
+			t.Fatalf("unexpected error in concurrent suggest: %v", r.err)
+		}
+		if r.created {
+			createdCount++
+			firstID = r.sug.ID
+		}
+	}
+
+	if createdCount != 1 {
+		t.Fatalf("expected exactly 1 proposal created, got %d", createdCount)
+	}
+
+	for _, r := range results {
+		if r.sug.ID != firstID {
+			t.Fatalf("mismatched suggestion ID returned: got %s, want %s", r.sug.ID, firstID)
+		}
+	}
+
+	mustVerify(t, s)
+}
+
+func TestSuggestionsEdgeDoubleResolutionOpReplayPurity(t *testing.T) {
+	ctx := context.Background()
+	lidia, beka, lclk, bclk := pair(t)
+
+	// Step 1: Create task on Lidia and sync
+	t1, _, err := lidia.Create(ctx, task.NewTask{Title: "Hydro sensor", Priority: task.PriorityLow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meet(t, lidia, beka)
+
+	// Step 2: Propose suggestion on Lidia and sync to Beka
+	lclk.tick(time.Minute)
+	hi := task.PriorityHigh
+	sug, _, err := lidia.Suggest(ctx, task.Draft{Task: t1.ID, Priority: &hi, By: "model-x", Key: "k-hydro"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meet(t, lidia, beka)
+
+	// Step 3: Concurrently while disconnected:
+	// Lidia accepts sug
+	lclk.tick(time.Minute)
+	if _, err := lidia.Resolve(ctx, sug.ID, true); err != nil {
+		t.Fatalf("lidia accept: %v", err)
+	}
+
+	// Beka dismisses sug
+	bclk.tick(2 * time.Minute)
+	if _, err := beka.Resolve(ctx, sug.ID, false); err != nil {
+		t.Fatalf("beka dismiss: %v", err)
+	}
+
+	// Step 4: Reconnect and meet in both directions
+	meet(t, lidia, beka)
+	meet(t, beka, lidia)
+
+	// State hashes must be 100% identical and verify clean
+	if hashOf(t, lidia) != hashOf(t, beka) {
+		t.Fatalf("hash mismatch on double resolution: %s != %s", hashOf(t, lidia), hashOf(t, beka))
+	}
+
+	mustVerify(t, lidia)
+	mustVerify(t, beka)
 }
