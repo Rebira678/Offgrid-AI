@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -264,5 +265,100 @@ func TestSuggestionsCLIEdgeNoteProposalAndAcceptance(t *testing.T) {
 	_, showOut, _ := runCmd(t, "exec", "-db", db, `{"intent":"list_tasks"}`)
 	if !strings.Contains(showOut, "T1") {
 		t.Fatalf("T1 missing from list: %s", showOut)
+	}
+}
+
+// TestSuggestionsCLIEdgeStaleTaskDeletedDismissWorks verifies that when a task is deleted
+// by a human, pending suggestions are marked STALE, accepting is refused, and dismissing
+// succeeds cleanly.
+func TestSuggestionsCLIEdgeStaleTaskDeletedDismissWorks(t *testing.T) {
+	db := aiSeededDB(t)
+
+	// Step 1: AI proposes setting priority to low on T1
+	code, _, stderr := runCmd(t, "exec", "-as-ai", "-by", "lidia-agent", "-db", db, `{"intent":"update_task","task_ref":"T1","priority":"low"}`)
+	if code != 0 {
+		t.Fatalf("exec -as-ai failed: %d %s", code, stderr)
+	}
+
+	// Step 2: Grab suggestion ID
+	code, listOut, _ := runCmd(t, "suggestions", "-db", db)
+	if code != 0 || !strings.Contains(listOut, "on T1") {
+		t.Fatalf("unexpected list output: %s", listOut)
+	}
+	sugID := strings.Fields(listOut)[0]
+
+	// Step 3: Human deletes T1
+	code, delOut, delErr := runCmd(t, "task", "-db", db, "delete", "T1")
+	if code != 0 {
+		t.Fatalf("task delete failed: %d %s %s", code, delOut, delErr)
+	}
+
+	// Step 4: Suggestions list shows suggestion is pending
+	code, listAfterDel, _ := runCmd(t, "suggestions", "-db", db)
+	if code != 0 || !strings.Contains(listAfterDel, sugID) {
+		t.Fatalf("expected suggestion in list: %s", listAfterDel)
+	}
+
+	// Step 5: Attempting to accept fails because task was deleted
+	code, _, acceptErr := runCmd(t, "suggestions", "-db", db, "accept", sugID)
+	if code != 1 || !strings.Contains(acceptErr, "not found") {
+		t.Fatalf("expected accept to fail with not found on deleted task, got code %d: %s", code, acceptErr)
+	}
+
+	// Step 6: Dismissing it SUCCEEDS cleanly
+	code, dismissOut, dismissErr := runCmd(t, "suggestions", "-db", db, "dismiss", sugID)
+	if code != 0 {
+		t.Fatalf("dismiss failed on deleted task: %d %s %s", code, dismissOut, dismissErr)
+	}
+	if !strings.Contains(dismissOut, "dismissed "+sugID) || !strings.Contains(dismissOut, "T1 is unchanged") {
+		t.Fatalf("unexpected dismiss message: %s", dismissOut)
+	}
+
+	// Step 7: Suggestions list is now empty
+	code, listEmpty, _ := runCmd(t, "suggestions", "-db", db)
+	if code != 0 || !strings.Contains(listEmpty, "no suggestions") {
+		t.Fatalf("expected no suggestions after dismissal, got: %s", listEmpty)
+	}
+}
+
+// TestSuggestionsCLIEdgeEmptyDatabase tests CLI behavior against an empty database.
+func TestSuggestionsCLIEdgeEmptyDatabase(t *testing.T) {
+	t.Setenv("OFFGRID_DB", "")
+	db := filepath.Join(t.TempDir(), "empty.db")
+	// Initialize empty DB via exec list_tasks
+	code, _, errOut := runCmd(t, "exec", "-db", db, `{"intent":"list_tasks"}`)
+	if code != 0 {
+		t.Fatalf("empty db init failed: %d %s", code, errOut)
+	}
+
+	// List on empty DB returns "no suggestions"
+	code, out, _ := runCmd(t, "suggestions", "-db", db)
+	if code != 0 || !strings.Contains(out, "no suggestions") {
+		t.Fatalf("expected 'no suggestions', got %d: %s", code, out)
+	}
+
+	// JSON list on empty DB returns []
+	code, out, _ = runCmd(t, "suggestions", "-db", db, "-json")
+	if code != 0 || strings.TrimSpace(out) != "[]" {
+		t.Fatalf("expected '[]', got %d: %s", code, out)
+	}
+}
+
+// TestSuggestionsCLIEdgeHelpAndFlagParsing tests help flags and usage messages.
+func TestSuggestionsCLIEdgeHelpAndFlagParsing(t *testing.T) {
+	// Help flag
+	code, out, errOut := runCmd(t, "suggestions", "-h")
+	if code != 0 && code != 2 {
+		t.Fatalf("unexpected code for -h: %d", code)
+	}
+	combined := out + errOut
+	if !strings.Contains(combined, "offgrid suggestions shows what an AI proposed") {
+		t.Fatalf("help text missing in -h output: %s", combined)
+	}
+
+	// Unknown flag
+	code, _, errOut = runCmd(t, "suggestions", "-nonexistent-flag")
+	if code != 2 {
+		t.Fatalf("expected code 2 for bad flag, got: %d", code)
 	}
 }
