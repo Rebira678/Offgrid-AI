@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"offgrid/internal/intent"
+	"offgrid/internal/suggest"
 	"offgrid/internal/task"
 	"offgrid/internal/tools"
 )
@@ -34,6 +35,8 @@ func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
 	nowFlag := fs.String("now", "", `pretend it is this moment, e.g. 2026-10-08T09:00 (default: the real time); makes demos repeatable`)
 	asJSON := fs.Bool("json", false, "print each result as a JSON line instead of text")
+	asAI := fs.Bool("as-ai", false, "run the commands the way a model's commands are run: new tasks are created, but a change to an EXISTING task becomes a suggestion you accept later (offgrid suggestions). Needs -db")
+	by := fs.String("by", "model", "with -as-ai: the name recorded as the proposer")
 	strict := fs.Bool("strict", false, "exit with status 1 if any command was refused (for scripts and CI)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -89,6 +92,26 @@ func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer closeStore()
 	reg := tools.NewRegistry(store, clk.Now)
 
+	if *asAI {
+		sink, ok := store.(task.Suggester)
+		if !ok {
+			fmt.Fprintln(stderr, "error: -as-ai keeps suggestions in the task database: use -db FILE")
+			return 2
+		}
+		seedReg := reg
+		reg = tools.NewRegistry(suggest.Store{Store: store, Sink: sink, By: *by}, clk.Now)
+		if *seed {
+			clk.override = now.AddDate(0, 0, -1)
+			err := seedTasks(ctx, seedReg)
+			clk.override = time.Time{}
+			if err != nil {
+				fmt.Fprintf(stderr, "error: seeding: %v\n", err)
+				return 1
+			}
+			*seed = false
+		}
+	}
+
 	if *seed {
 		clk.override = now.AddDate(0, 0, -1)
 		err := seedTasks(ctx, reg)
@@ -109,7 +132,7 @@ func cmdExec(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			continue
 		}
 		res, err := runLine(ctx, reg, line)
-		if err != nil {
+		if err != nil && !errors.As(err, new(*suggest.Suggested)) {
 			refused++
 		} else {
 			ok++
@@ -150,9 +173,12 @@ func runLine(ctx context.Context, reg *tools.Registry, line string) (tools.Resul
 
 func writeTextResult(w io.Writer, line string, res tools.Result, err error) {
 	fmt.Fprintf(w, "> %s\n", compact(line))
+	var sug *suggest.Suggested
 	switch {
 	case err == nil:
 		fmt.Fprintf(w, "  ok: %s\n", indent(res.Message))
+	case errors.As(err, &sug):
+		fmt.Fprintf(w, "  suggested, NOT applied: %s\n  a person decides: offgrid suggestions accept %s\n", suggest.Describe(sug.Suggestion), sug.Suggestion.ID)
 	case errors.Is(err, tools.ErrNoTool):
 		fmt.Fprintf(w, "  declined: %s\n", res.Message)
 	case errors.Is(err, task.ErrAmbiguous):
@@ -174,6 +200,9 @@ func writeJSONResult(w io.Writer, line string, res tools.Result, err error) {
 	}{Command: compact(line), OK: err == nil, Changed: res.Changed, Message: res.Message}
 	if err != nil {
 		out.Error = err.Error()
+		if errors.As(err, new(*suggest.Suggested)) {
+			out.OK = true // proposing is a success: the suggestion exists
+		}
 	}
 	b, _ := json.Marshal(out) // plain strings and bools cannot fail to encode
 	fmt.Fprintln(w, string(b))
