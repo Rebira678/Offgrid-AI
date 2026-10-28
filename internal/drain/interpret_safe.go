@@ -50,6 +50,9 @@ func InterpretSafely(cfg InterpretSafelyConfig) Spec {
 		if cfg.Agent == nil || cfg.Agent.Model == nil {
 			return "", agent.ErrNoModel
 		}
+		if cfg.Store == nil || cfg.Sink == nil {
+			return "", errors.New("drain: store and sink are required")
+		}
 		res, err := cfg.Agent.Model.Classify(ctx, text)
 		if err != nil {
 			if errors.Is(err, structured.ErrNoValidReply) {
