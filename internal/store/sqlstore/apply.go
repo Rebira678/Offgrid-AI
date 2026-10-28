@@ -2,7 +2,9 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,7 +17,7 @@ import (
 // projectionVersion identifies the shape of these tables and the meaning of
 // applyOp. Change either, bump the number, and every database rebuilds its view
 // the next time it is opened. There is never a data migration for derived data.
-const projectionVersion = "3"
+const projectionVersion = "4"
 
 const projectionDDL = `
 CREATE TABLE tasks (
@@ -65,6 +67,26 @@ CREATE TABLE answers (
 	node     TEXT    NOT NULL,
 	seq      INTEGER NOT NULL
 ) WITHOUT ROWID;
+-- AI proposals. They sit BESIDE the tasks: nothing here changes a task until a
+-- person's accept op is folded in.
+CREATE TABLE suggestions (
+	node          TEXT    NOT NULL,   -- identity of the op that made it
+	seq           INTEGER NOT NULL,
+	task_id       TEXT    NOT NULL,
+	status        TEXT,               -- proposed values; NULL = not proposed
+	priority      TEXT,
+	note          TEXT    NOT NULL DEFAULT '',
+	base_status   TEXT    NOT NULL,   -- what the task showed at the time
+	base_priority TEXT    NOT NULL,
+	by            TEXT    NOT NULL,
+	key           TEXT    NOT NULL DEFAULT '',
+	at            INTEGER NOT NULL,
+	state         TEXT    NOT NULL DEFAULT 'pending',
+	res_node      TEXT    NOT NULL DEFAULT '',   -- the op that resolved it
+	res_seq       INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (node, seq)
+) WITHOUT ROWID;
+CREATE INDEX suggestions_key ON suggestions (key);
 CREATE TABLE task_removals (
 	task_id TEXT    NOT NULL,
 	node    TEXT    NOT NULL,
@@ -76,7 +98,7 @@ CREATE TABLE task_removals (
 
 // resetProjection drops and recreates the materialized tables, empty.
 func resetProjection(ctx context.Context, x execer) error {
-	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS answers; DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
+	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS suggestions; DROP TABLE IF EXISTS answers; DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
 		return err
 	}
 	_, err := x.ExecContext(ctx, projectionDDL)
@@ -125,32 +147,19 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		if p.Status == nil && p.Priority == nil {
 			return bad("an update must change something")
 		}
-		sets := []string{"updated_at = ?"}
-		args := []any{ts}
 		if p.Status != nil {
 			if _, err := task.ParseStatus(string(*p.Status)); err != nil {
 				return bad("%v", err)
 			}
-			sets = append(sets, "status = ?", "done_at = ?")
-			doneAt := int64(0)
-			if *p.Status == task.StatusDone {
-				doneAt = ts
-			}
-			args = append(args, string(*p.Status), doneAt)
 		}
 		if p.Priority != nil {
 			if _, err := task.ParsePriority(string(*p.Priority)); err != nil {
 				return bad("%v", err)
 			}
-			sets = append(sets, "priority = ?")
-			args = append(args, string(*p.Priority))
 		}
-		args = append(args, p.ID)
-		res, err := x.ExecContext(ctx, `UPDATE tasks SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
-		if err != nil {
+		if n, err := setFields(ctx, x, p.ID, p.Status, p.Priority, ts); err != nil {
 			return err
-		}
-		if n, _ := res.RowsAffected(); n != 1 {
+		} else if n != 1 {
 			return bad("refers to task %q, which does not exist", p.ID)
 		}
 		if err := mark(ctx, x, p.ID, op); err != nil {
@@ -165,17 +174,10 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		if strings.TrimSpace(p.Text) == "" {
 			return bad("a note needs text")
 		}
-		res, err := x.ExecContext(ctx, `UPDATE tasks SET updated_at = ? WHERE id = ?`, ts, p.ID)
-		if err != nil {
+		if n, err := insertNote(ctx, x, p.ID, p.Text, ts, op); err != nil {
 			return err
-		}
-		if n, _ := res.RowsAffected(); n != 1 {
+		} else if n != 1 {
 			return bad("refers to task %q, which does not exist", p.ID)
-		}
-		if _, err := x.ExecContext(ctx, `INSERT INTO task_notes (task_id, n, text, at, node, seq)
-			VALUES (?, (SELECT COALESCE(MAX(n), 0) + 1 FROM task_notes WHERE task_id = ?), ?, ?, ?, ?)`,
-			p.ID, p.ID, p.Text, ts, op.NodeID, op.Seq); err != nil {
-			return err
 		}
 		if err := mark(ctx, x, p.ID, op); err != nil {
 			return err
@@ -242,6 +244,104 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		if _, err := x.ExecContext(ctx, `INSERT OR IGNORE INTO answers (key, question, text, model, source, at, node, seq)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, p.Key, p.Question, p.Text, p.Model, p.Source, ts, op.NodeID, op.Seq); err != nil {
 			return err
+		}
+
+	case KindSuggestionMade:
+		var p suggestionPayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad payload: %v", err)
+		}
+		if p.Task == "" || (p.Status == nil && p.Priority == nil && strings.TrimSpace(p.Note) == "") {
+			return bad("a suggestion needs a task and something to change")
+		}
+		if p.Status != nil {
+			if _, err := task.ParseStatus(string(*p.Status)); err != nil {
+				return bad("%v", err)
+			}
+		}
+		if p.Priority != nil {
+			if _, err := task.ParsePriority(string(*p.Priority)); err != nil {
+				return bad("%v", err)
+			}
+		}
+		if _, err := task.ParseStatus(string(p.BaseStatus)); err != nil {
+			return bad("base: %v", err)
+		}
+		if _, err := task.ParsePriority(string(p.BasePriority)); err != nil {
+			return bad("base: %v", err)
+		}
+		var exists int
+		if err := x.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE id = ?`, p.Task).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 1 {
+			return bad("suggests a change to task %q, which does not exist", p.Task)
+		}
+		var st, pr any
+		if p.Status != nil {
+			st = string(*p.Status)
+		}
+		if p.Priority != nil {
+			pr = string(*p.Priority)
+		}
+		// Deliberately NOT touching the tasks table: a suggestion is not an edit.
+		if _, err := x.ExecContext(ctx, `INSERT INTO suggestions
+			(node, seq, task_id, status, priority, note, base_status, base_priority, by, key, at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			op.NodeID, op.Seq, p.Task, st, pr, p.Note, string(p.BaseStatus), string(p.BasePriority), p.By, p.Key, ts); err != nil {
+			return bad("suggestion recorded twice: %v", err)
+		}
+
+	case KindSuggestionResolved:
+		var p resolvedPayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad payload: %v", err)
+		}
+		if !nodeIDRe.MatchString(p.Node) || p.Seq < 1 || (p.Resolution != "accepted" && p.Resolution != "dismissed") {
+			return bad("a resolution names a suggestion (node, seq) and is accepted or dismissed")
+		}
+		var taskID, state, note string
+		var st, pr sql.NullString
+		err := x.QueryRowContext(ctx, `SELECT task_id, state, status, priority, note FROM suggestions WHERE node = ? AND seq = ?`,
+			p.Node, p.Seq).Scan(&taskID, &state, &st, &pr, &note)
+		if errors.Is(err, sql.ErrNoRows) {
+			return bad("resolves suggestion %s/%d, which does not exist", p.Node, p.Seq)
+		}
+		if err != nil {
+			return err
+		}
+		if state != "pending" {
+			break // someone resolved it first, in the canonical order: that resolution stands
+		}
+		if _, err := x.ExecContext(ctx, `UPDATE suggestions SET state = ?, res_node = ?, res_seq = ? WHERE node = ? AND seq = ?`,
+			p.Resolution, op.NodeID, op.Seq, p.Node, p.Seq); err != nil {
+			return err
+		}
+		if p.Resolution == "accepted" {
+			var s *task.Status
+			var q *task.Priority
+			if st.Valid {
+				v := task.Status(st.String)
+				s = &v
+			}
+			if pr.Valid {
+				v := task.Priority(pr.String)
+				q = &v
+			}
+			if s != nil || q != nil {
+				if _, err := setFields(ctx, x, taskID, s, q, ts); err != nil {
+					return err
+				}
+			}
+			if strings.TrimSpace(note) != "" {
+				if _, err := insertNote(ctx, x, taskID, note, ts, op); err != nil {
+					return err
+				}
+			}
+			// Accepting is a person editing the task: it counts as an add for delete's add-wins.
+			if err := mark(ctx, x, taskID, op); err != nil {
+				return err
+			}
 		}
 
 	default:
@@ -328,4 +428,46 @@ func settleDeleted(ctx context.Context, x execer, id string) error {
 	}
 	_, err = x.ExecContext(ctx, `UPDATE tasks SET deleted = ? WHERE id = ?`, deleted, id)
 	return err
+}
+
+// setFields changes a task's status and/or priority at time ts and returns how
+// many rows matched (1, or 0 if the task does not exist). Shared by a person's
+// update and by accepting a suggestion, so both mean exactly the same thing.
+func setFields(ctx context.Context, x execer, id string, status *task.Status, priority *task.Priority, ts int64) (int64, error) {
+	sets := []string{"updated_at = ?"}
+	args := []any{ts}
+	if status != nil {
+		sets = append(sets, "status = ?", "done_at = ?")
+		doneAt := int64(0)
+		if *status == task.StatusDone {
+			doneAt = ts
+		}
+		args = append(args, string(*status), doneAt)
+	}
+	if priority != nil {
+		sets = append(sets, "priority = ?")
+		args = append(args, string(*priority))
+	}
+	args = append(args, id)
+	res, err := x.ExecContext(ctx, `UPDATE tasks SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// insertNote adds a note to a task, identified by the op that wrote it.
+func insertNote(ctx context.Context, x execer, id, text string, ts int64, op Op) (int64, error) {
+	res, err := x.ExecContext(ctx, `UPDATE tasks SET updated_at = ? WHERE id = ?`, ts, id)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	if n != 1 {
+		return n, nil
+	}
+	_, err = x.ExecContext(ctx, `INSERT INTO task_notes (task_id, n, text, at, node, seq)
+		VALUES (?, (SELECT COALESCE(MAX(n), 0) + 1 FROM task_notes WHERE task_id = ?), ?, ?, ?, ?)`,
+		id, id, text, ts, op.NodeID, op.Seq)
+	return 1, err
 }
