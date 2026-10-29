@@ -35,12 +35,12 @@ func TestShortIDExhaustiveEdgeCases(t *testing.T) {
 		{"T.laptop", "T.laptop"}, // missing number
 		{"#T1.laptop", "#T1"},
 		{"t1.laptop", "t1"},
-		{"1.laptop", "1.laptop"}, // missing T/t
+		{"1.laptop", "1.laptop"},     // missing T/t
 		{"T-1.laptop", "T-1.laptop"}, // hyphen not allowed in digits
-		{"T.laptop", "T.laptop"}, // missing digits
-		{"Ta.laptop", "Ta.laptop"}, // non-digit
+		{"T.laptop", "T.laptop"},     // missing digits
+		{"Ta.laptop", "Ta.laptop"},   // non-digit
 		{"T1x.laptop", "T1x.laptop"}, // mixed alphanumeric
-		{"X1.laptop", "X1.laptop"}, // non-T prefix
+		{"X1.laptop", "X1.laptop"},   // non-T prefix
 	}
 
 	for _, tc := range cases {
