@@ -34,7 +34,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.23.0-day23"
+const version = "0.24.0-day24"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -97,6 +97,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdAnswers(args[1:], stdout, stderr)
 	case "suggestions":
 		return cmdSuggestions(args[1:], stdout, stderr)
+	case "sim":
+		return cmdSim(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -132,6 +134,7 @@ Usage:
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
   offgrid top    -queue FILE                                          one screen: connection, queue, tiers (live)
   offgrid suggestions -db FILE [list|accept ID|dismiss ID]            what an AI proposed; only you apply it
+  offgrid sim    [-seeds N] [-seed S] [-replay FILE] [-j W]         random partitions, clock skew and crashes; every seed replays exactly
   offgrid answers -db FILE [-json]                                   what the slow brain (deep_think) concluded; syncs like tasks
   offgrid drain  -db FILE [-once] [-concurrency N] [-deep-host URL]   empty the queue: runs saved jobs, waits for the network
   offgrid fault  serve|set|show   break the network on purpose: -fault-latency/-drop/-partition/-file/-schedule on net and agent -route

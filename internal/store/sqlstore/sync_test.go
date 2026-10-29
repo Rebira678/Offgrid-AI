@@ -274,7 +274,7 @@ func TestConcurrentEditsOnTwoReplicasConvergeInEitherOrder(t *testing.T) {
 	create(t, a, "pump")
 	pull(t, b, a, 100)
 	pull(t, c, a, 100)
-	id := "T1"
+	id := "T1.node-a"
 	// while apart: a and b both edit the same task, b also adds a task, c is idle
 	aclk.tick(time.Minute)
 	setStatusOf(t, a, id, task.StatusDone)
@@ -348,14 +348,14 @@ func TestAnOpSortingBeforeWhatIsHeldRebuildsTheViewAndFlagsIt(t *testing.T) {
 	pull(t, b, a, 100)
 	// b edits at an earlier time than a's later edit, but a has not seen b's yet
 	bclk.tick(time.Minute)
-	setStatusOf(t, b, "T1", task.StatusInProgress)
+	setStatusOf(t, b, "T1.node-a", task.StatusInProgress)
 	aclk.tick(10 * time.Minute)
-	setStatusOf(t, a, "T1", task.StatusDone)
+	setStatusOf(t, a, "T1.node-a", task.StatusDone)
 	r := pull(t, a, b, 100)
 	if !r.Rebuilt {
 		t.Fatal("b's earlier edit sorts before a's later one: the view should have been rebuilt")
 	}
-	got, _ := a.Get(ctx, "T1")
+	got, _ := a.Get(ctx, "T1.node-a")
 	if got.Status != task.StatusDone {
 		t.Fatalf("status = %s: the later edit (a's) must win", got.Status)
 	}
@@ -370,12 +370,43 @@ func TestAnOpSortingBeforeWhatIsHeldRebuildsTheViewAndFlagsIt(t *testing.T) {
 	mustVerify(t, b)
 }
 
-func TestTwoReplicasThatCreatedTasksSeparatelyAreToldAboutTheIDCollision(t *testing.T) {
+// Day 24: the simulator found that two replicas which each created their
+// first task before ever meeting both chose "T1" and could never sync. IDs now
+// always carry the replica, so this is an ordinary merge.
+func TestTwoReplicasThatCreatedTheirFirstTasksSeparatelyStillSync(t *testing.T) {
+	a, _ := replicaAt(t, "node-a", epoch)
+	b, _ := replicaAt(t, "node-b", epoch)
+	ta := create(t, a, "pump")
+	tb := create(t, b, "something else")
+	if ta.ID == tb.ID {
+		t.Fatalf("both replicas named their first task %q", ta.ID)
+	}
+	meet(t, a, b)
+	if hashOf(t, a) != hashOf(t, b) {
+		t.Fatal("replicas differ after meeting")
+	}
+	if got := ids(t, a); len(got) != 2 {
+		t.Fatalf("tasks = %v, want both", got)
+	}
+	mustVerify(t, a)
+	mustVerify(t, b)
+}
+
+// Databases written before Day 24 hold plain IDs ("T1"). Two such replicas
+// that collided are still told so, and the refused batch leaves nothing behind.
+func TestLegacyPlainIDsThatCollideAreStillToldAboutIt(t *testing.T) {
 	ctx := context.Background()
 	a, _ := replicaAt(t, "node-a", epoch)
 	b, _ := replicaAt(t, "node-b", epoch)
-	create(t, a, "pump")
-	create(t, b, "something else") // both are now "T1"
+	mk := func(node, title string) []Op {
+		return []Op{{NodeID: node, Seq: 1, TS: epoch, Kind: KindTaskCreated, Payload: []byte(`{"id":"T1","title":"` + title + `","site":"","priority":"low"}`)}}
+	}
+	if _, err := a.ApplyRemote(ctx, mk("old-1", "pump")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ApplyRemote(ctx, mk("old-2", "something else")); err != nil {
+		t.Fatal(err)
+	}
 	h, n := hashOf(t, b), countOps(t, b)
 	ops, _, _ := a.OpsSince(ctx, Summary{}, 10)
 	_, err := b.ApplyRemote(ctx, ops)

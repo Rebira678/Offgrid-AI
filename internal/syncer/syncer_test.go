@@ -114,11 +114,11 @@ func TestEditsMadeWhileApartMergeInOneRound(t *testing.T) {
 	// both go offline and change things
 	done, prog := task.StatusDone, task.StatusInProgress
 	clk.t = clk.t.Add(time.Minute)
-	if _, _, err := a.Update(ctx, "T1", task.Changes{Status: &prog}); err != nil {
+	if _, _, err := a.Update(ctx, "T1.node-a", task.Changes{Status: &prog}); err != nil {
 		t.Fatal(err)
 	}
 	clk.t = clk.t.Add(time.Minute)
-	if _, _, err := b.Update(ctx, "T1", task.Changes{Status: &done}); err != nil {
+	if _, _, err := b.Update(ctx, "T1.node-a", task.Changes{Status: &done}); err != nil {
 		t.Fatal(err)
 	}
 	add(t, a, "from a")
@@ -129,7 +129,7 @@ func TestEditsMadeWhileApartMergeInOneRound(t *testing.T) {
 	if hash(t, a) != hash(t, b) {
 		t.Fatal("replicas differ after reconnecting")
 	}
-	got, _ := a.Get(ctx, "T1")
+	got, _ := a.Get(ctx, "T1.node-a")
 	if got.Status != task.StatusDone {
 		t.Fatalf("status = %s, want the later edit (done) to win", got.Status)
 	}
@@ -339,8 +339,18 @@ func TestIDCollisionAndForkAreReportedByCodeAndNothingIsKept(t *testing.T) {
 	ctx := context.Background()
 	clk := &fakeClock{t0}
 	a, b := newStore(t, "node-a", clk), newStore(t, "node-b", clk)
-	add(t, a, "pump")
-	add(t, b, "other")
+	// Databases from before Day 24 numbered a replica's first tasks "T1": two
+	// that each did so before meeting collide. New tasks can no longer do this,
+	// so the collision is built from the plain-ID ops such a database holds.
+	legacy := func(node, title string) []sqlstore.Op {
+		return []sqlstore.Op{{NodeID: node, Seq: 1, TS: t0, Kind: sqlstore.KindTaskCreated, Payload: []byte(`{"id":"T1","title":"` + title + `","site":"","priority":"low"}`)}}
+	}
+	if _, err := a.ApplyRemote(ctx, legacy("old-1", "pump")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ApplyRemote(ctx, legacy("old-2", "other")); err != nil {
+		t.Fatal(err)
+	}
 	cl, _ := serve(t, b, clk, key)
 	_, err := cl.Once(ctx, a)
 	var re *RemoteError

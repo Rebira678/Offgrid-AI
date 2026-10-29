@@ -24,9 +24,9 @@ func TestThreeReplicaRingConvergenceWithDeletes(t *testing.T) {
 	c := newStore(t, "node-c", clk)
 
 	// A creates seed tasks
-	add(t, a, "Task Alpha")
-	add(t, a, "Task Beta")
-	add(t, a, "Task Gamma")
+	taskAlpha := add(t, a, "Task Alpha")
+	taskBeta := add(t, a, "Task Beta")
+	taskGamma := add(t, a, "Task Gamma")
 
 	srvA := httptest.NewServer(Handler(a, ServerOptions{Key: key, Now: clk.now}))
 	defer srvA.Close()
@@ -52,23 +52,23 @@ func TestThreeReplicaRingConvergenceWithDeletes(t *testing.T) {
 	}
 
 	// Partition all nodes:
-	// A deletes T1 (Task Alpha)
+	// A deletes Task Alpha
 	clk.t = clk.t.Add(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, taskAlpha.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	// B concurrently updates T1 priority to High (unseen edit, resurrects T1)
+	// B concurrently updates Task Alpha priority to High (unseen edit, resurrects taskAlpha)
 	clk.t = clk.t.Add(time.Minute)
 	prio := task.PriorityHigh
-	if _, _, err := b.Update(ctx, "T1", task.Changes{Priority: &prio}); err != nil {
+	if _, _, err := b.Update(ctx, taskAlpha.ID, task.Changes{Priority: &prio}); err != nil {
 		t.Fatal(err)
 	}
-	b.AddNote(ctx, "T1", "critical fix needed")
+	b.AddNote(ctx, taskAlpha.ID, "critical fix needed")
 
-	// C deletes T2 (Task Beta) with no concurrent edits
+	// C deletes Task Beta with no concurrent edits
 	clk.t = clk.t.Add(time.Minute)
-	if err := c.DeleteTask(ctx, "T2"); err != nil {
+	if err := c.DeleteTask(ctx, taskBeta.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,25 +89,25 @@ func TestThreeReplicaRingConvergenceWithDeletes(t *testing.T) {
 	verify(t, c)
 
 	got := shown(t, a)
-	// T1 must exist (resurrected by B) with high priority and note
-	t1, ok := got["T1"]
+	// Task Alpha must exist (resurrected by B) with high priority and note
+	t1, ok := got[taskAlpha.ID]
 	if !ok {
-		t.Fatal("T1 was not resurrected by B's concurrent edit")
+		t.Fatal("taskAlpha was not resurrected by B's concurrent edit")
 	}
 	if t1.Priority != task.PriorityHigh {
-		t.Errorf("T1 priority = %v, want High", t1.Priority)
+		t.Errorf("taskAlpha priority = %v, want High", t1.Priority)
 	}
 	if len(t1.Notes) != 1 || t1.Notes[0].Text != "critical fix needed" {
-		t.Errorf("T1 notes = %+v, want ['critical fix needed']", t1.Notes)
+		t.Errorf("taskAlpha notes = %+v, want ['critical fix needed']", t1.Notes)
 	}
 
-	// T2 must be deleted (deleted by C, no concurrent edits)
-	if _, ok := got["T2"]; ok {
-		t.Error("T2 was deleted by C and should not be present")
+	// Task Beta must be deleted (deleted by C, no concurrent edits)
+	if _, ok := got[taskBeta.ID]; ok {
+		t.Error("taskBeta was deleted by C and should not be present")
 	}
 
-	// T3 must exist intact
-	if _, ok := got["T3"]; !ok {
+	// Task Gamma must exist intact
+	if _, ok := got[taskGamma.ID]; !ok {
 		t.Error("T3 should still exist")
 	}
 }

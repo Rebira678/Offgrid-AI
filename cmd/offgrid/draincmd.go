@@ -333,8 +333,9 @@ func taskContext(ctx context.Context, s task.Store) (string, error) {
 		return "(there are no tasks yet)", nil
 	}
 	var b strings.Builder
-	for _, t := range ts {
-		fmt.Fprintf(&b, "%s [%s, %s] site %s: %s (created %s)\n", t.ID, t.Priority, t.Status, t.Site, t.Title, t.CreatedAt.Format("2006-01-02"))
+	labels := task.ShortIDs(ts)
+	for i, t := range ts {
+		fmt.Fprintf(&b, "%s [%s, %s] site %s: %s (created %s)\n", labels[i], t.Priority, t.Status, t.Site, t.Title, t.CreatedAt.Format("2006-01-02"))
 		from := max(len(t.Notes)-3, 0)
 		for _, n := range t.Notes[from:] {
 			fmt.Fprintf(&b, "    note %s: %s\n", n.At.Format("2006-01-02"), n.Text)

@@ -27,7 +27,7 @@ func TestFourNodeSplitBrainLatticeConvergence(t *testing.T) {
 	d := newStore(t, "node-d", clk)
 
 	// A creates ancestor task T1
-	add(t, a, "Ancestor task T1")
+	t1 := add(t, a, "Ancestor task T1")
 
 	srvA := httptest.NewServer(Handler(a, ServerOptions{Key: key, Now: clk.now}))
 	defer srvA.Close()
@@ -61,7 +61,7 @@ func TestFourNodeSplitBrainLatticeConvergence(t *testing.T) {
 
 	// Cluster 1 edits:
 	clk.t = clk.t.Add(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, t1.ID); err != nil {
 		t.Fatal(err)
 	}
 	t2 := add(t, a, "Task Two from A")
@@ -78,10 +78,10 @@ func TestFourNodeSplitBrainLatticeConvergence(t *testing.T) {
 	clk.t = clk.t.Add(time.Minute)
 	prioHigh := task.PriorityHigh
 	stInProgress := task.StatusInProgress
-	if _, _, err := c.Update(ctx, "T1", task.Changes{Priority: &prioHigh, Status: &stInProgress}); err != nil {
+	if _, _, err := c.Update(ctx, t1.ID, task.Changes{Priority: &prioHigh, Status: &stInProgress}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := d.AddNote(ctx, "T1", "critical cluster 2 note"); err != nil {
+	if _, err := d.AddNote(ctx, t1.ID, "critical cluster 2 note"); err != nil {
 		t.Fatal(err)
 	}
 	t3 := add(t, d, "Task Three from D")
@@ -132,15 +132,15 @@ func TestFourNodeSplitBrainLatticeConvergence(t *testing.T) {
 
 	// Check domain invariant: T1 must be resurrected with C's and D's edits
 	allA := shown(t, a)
-	t1, ok := allA["T1"]
+	t1Got, ok := allA[t1.ID]
 	if !ok {
 		t.Fatal("T1 was not resurrected on converged cluster")
 	}
-	if t1.Status != task.StatusInProgress || t1.Priority != task.PriorityHigh {
-		t.Errorf("T1 status=%s, prio=%s; want in_progress/high", t1.Status, t1.Priority)
+	if t1Got.Status != task.StatusInProgress || t1Got.Priority != task.PriorityHigh {
+		t.Errorf("T1 status=%s, prio=%s; want in_progress/high", t1Got.Status, t1Got.Priority)
 	}
-	if len(t1.Notes) != 1 || t1.Notes[0].Text != "critical cluster 2 note" {
-		t.Errorf("T1 notes = %+v, want ['critical cluster 2 note']", t1.Notes)
+	if len(t1Got.Notes) != 1 || t1Got.Notes[0].Text != "critical cluster 2 note" {
+		t.Errorf("T1 notes = %+v, want ['critical cluster 2 note']", t1Got.Notes)
 	}
 
 	// Both newly created tasks exist

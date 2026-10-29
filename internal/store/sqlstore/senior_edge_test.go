@@ -133,18 +133,18 @@ func TestMultiCycleDeleteResurrectDeleteCycle(t *testing.T) {
 
 	// Cycle 1: A deletes T1, B concurrently edits T1 priority
 	aclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	bclk.tick(time.Minute)
 	prioHigh := task.PriorityHigh
-	if _, _, err := b.Update(ctx, "T1", task.Changes{Priority: &prioHigh}); err != nil {
+	if _, _, err := b.Update(ctx, "T1.node-a", task.Changes{Priority: &prioHigh}); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil || tk.Priority != task.PriorityHigh {
 			t.Fatalf("%s: cycle 1 resurrection failed: tk=%+v, err=%v", s.node, tk, err)
 		}
@@ -152,13 +152,13 @@ func TestMultiCycleDeleteResurrectDeleteCycle(t *testing.T) {
 
 	// Cycle 2: Now that both know T1 is alive with PriorityHigh, B deletes T1 cleanly.
 	bclk.tick(2 * time.Minute)
-	if err := b.DeleteTask(ctx, "T1"); err != nil {
+	if err := b.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		if _, err := s.Get(ctx, "T1"); !errors.Is(err, task.ErrNotFound) {
+		if _, err := s.Get(ctx, "T1.node-a"); !errors.Is(err, task.ErrNotFound) {
 			t.Fatalf("%s: cycle 2 clean delete failed: expected not found, got %v", s.node, err)
 		}
 	}
@@ -181,12 +181,12 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Both A and B add the exact same note text concurrently
 	aclk.tick(time.Minute)
-	if _, err := a.AddNote(ctx, "T1", "inspect valves"); err != nil {
+	if _, err := a.AddNote(ctx, "T1.node-a", "inspect valves"); err != nil {
 		t.Fatal(err)
 	}
 
 	bclk.tick(time.Minute)
-	if _, err := b.AddNote(ctx, "T1", "inspect valves"); err != nil {
+	if _, err := b.AddNote(ctx, "T1.node-a", "inspect valves"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -194,7 +194,7 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Both replicas must now hold TWO notes with the same text
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -208,7 +208,7 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Replica A removes the first note (its note)
 	aclk.tick(time.Minute)
-	if _, err := a.RemoveNote(ctx, "T1", 1); err != nil {
+	if _, err := a.RemoveNote(ctx, "T1.node-a", 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -216,7 +216,7 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Exactly ONE note survives on both replicas (B's note)
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +227,7 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Now B removes the remaining note
 	bclk.tick(time.Minute)
-	if _, err := b.RemoveNote(ctx, "T1", 1); err != nil {
+	if _, err := b.RemoveNote(ctx, "T1.node-a", 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -235,7 +235,7 @@ func TestORSetIdenticalNoteDisambiguation(t *testing.T) {
 
 	// Zero notes remain
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatal(err)
 		}

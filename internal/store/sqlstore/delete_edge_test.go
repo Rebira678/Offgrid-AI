@@ -20,13 +20,13 @@ func TestResurrectionByConcurrentNoteAddition(t *testing.T) {
 
 	// Offline: A deletes T1
 	aclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Offline: B concurrently adds a note to T1 without seeing A's delete
 	bclk.tick(time.Minute)
-	if _, err := b.AddNote(ctx, "T1", "critical safety note"); err != nil {
+	if _, err := b.AddNote(ctx, "T1.node-a", "critical safety note"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,15 +37,15 @@ func TestResurrectionByConcurrentNoteAddition(t *testing.T) {
 
 	// B sees T1 as alive with 1 note
 	bTasks := ids(t, b)
-	if len(bTasks) != 1 || bTasks[0] != "T1" {
-		t.Fatalf("replica B tasks = %v, want [T1]", bTasks)
+	if len(bTasks) != 1 || bTasks[0] != "T1.node-a" {
+		t.Fatalf("replica B tasks = %v, want [T1.node-a]", bTasks)
 	}
 
 	// Reconnect and sync
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatalf("%s: expected T1 to be resurrected, got err: %v", s.node, err)
 		}
@@ -64,21 +64,21 @@ func TestResurrectionByConcurrentStatusUpdate(t *testing.T) {
 
 	// A deletes T1
 	aclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
 	// B concurrently changes status
 	bclk.tick(time.Minute)
 	newStatus := task.StatusInProgress
-	if _, _, err := b.Update(ctx, "T1", task.Changes{Status: &newStatus}); err != nil {
+	if _, _, err := b.Update(ctx, "T1.node-a", task.Changes{Status: &newStatus}); err != nil {
 		t.Fatal(err)
 	}
 
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatalf("%s: expected T1 to survive, got %v", s.node, err)
 		}
@@ -95,20 +95,20 @@ func TestResurrectionByConcurrentPriorityUpdate(t *testing.T) {
 	a, b, aclk, bclk := pair(t)
 
 	aclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
 	bclk.tick(time.Minute)
 	newPrio := task.PriorityLow
-	if _, _, err := b.Update(ctx, "T1", task.Changes{Priority: &newPrio}); err != nil {
+	if _, _, err := b.Update(ctx, "T1.node-a", task.Changes{Priority: &newPrio}); err != nil {
 		t.Fatal(err)
 	}
 
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil {
 			t.Fatalf("%s: expected T1 to survive, got %v", s.node, err)
 		}
@@ -126,12 +126,12 @@ func TestDualConcurrentDeletes(t *testing.T) {
 	a, b, aclk, bclk := pair(t)
 
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
 	bclk.tick(time.Minute)
-	if err := b.DeleteTask(ctx, "T1"); err != nil {
+	if err := b.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -141,7 +141,7 @@ func TestDualConcurrentDeletes(t *testing.T) {
 		if got := ids(t, s); len(got) != 0 {
 			t.Fatalf("%s: tasks = %v, want empty", s.node, got)
 		}
-		if _, err := s.Get(ctx, "T1"); !errors.Is(err, task.ErrNotFound) {
+		if _, err := s.Get(ctx, "T1.node-a"); !errors.Is(err, task.ErrNotFound) {
 			t.Fatalf("%s: expected ErrNotFound for T1, got %v", s.node, err)
 		}
 	}
@@ -154,10 +154,10 @@ func TestRedundantDeleteRefusal(t *testing.T) {
 	a, _, aclk, _ := pair(t)
 
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DeleteTask(ctx, "T1"); !errors.Is(err, task.ErrNotFound) {
+	if err := a.DeleteTask(ctx, "T1.node-a"); !errors.Is(err, task.ErrNotFound) {
 		t.Fatalf("second delete: expected ErrNotFound, got %v", err)
 	}
 }
@@ -171,7 +171,7 @@ func TestBidirectionalConcurrentNoteRemovals(t *testing.T) {
 
 	// Add three notes to T1
 	for _, text := range []string{"first note", "second note", "third note"} {
-		if _, err := a.AddNote(ctx, "T1", text); err != nil {
+		if _, err := a.AddNote(ctx, "T1.node-a", text); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -181,20 +181,20 @@ func TestBidirectionalConcurrentNoteRemovals(t *testing.T) {
 	// Partition:
 	// A removes note 1 ("first note")
 	aclk.tick(time.Minute)
-	if _, err := a.RemoveNote(ctx, "T1", 1); err != nil {
+	if _, err := a.RemoveNote(ctx, "T1.node-a", 1); err != nil {
 		t.Fatal(err)
 	}
 
 	// B removes note 2 ("second note")
 	bclk.tick(time.Minute)
-	if _, err := b.RemoveNote(ctx, "T1", 2); err != nil {
+	if _, err := b.RemoveNote(ctx, "T1.node-a", 2); err != nil {
 		t.Fatal(err)
 	}
 
 	meet(t, a, b)
 
 	for _, s := range []*Store{a, b} {
-		notes := shownNotes(t, s, "T1")
+		notes := shownNotes(t, s, "T1.node-a")
 		if len(notes) != 1 || notes[0] != "third note" {
 			t.Fatalf("%s: expected remaining note ['third note'], got %v", s.node, notes)
 		}
@@ -209,7 +209,7 @@ func TestDeleteAndRecreateSameTitle(t *testing.T) {
 	a, b, aclk, _ := pair(t)
 
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -221,8 +221,8 @@ func TestDeleteAndRecreateSameTitle(t *testing.T) {
 	if !isNew {
 		t.Fatal("expected isNew=true for recreated task with same title")
 	}
-	if created.ID == "T1" {
-		t.Fatalf("expected new task ID (e.g. T2), got reused ID %s", created.ID)
+	if created.ID == "T1.node-a" {
+		t.Fatalf("expected new task ID (e.g. T2.node-a), got reused ID %s", created.ID)
 	}
 
 	meet(t, a, b)
@@ -249,7 +249,7 @@ func TestDeleteMarkPruningAndVerification(t *testing.T) {
 	// Delete even tasks
 	for i := 0; i < 10; i += 2 {
 		aclk.tick(time.Second)
-		id := fmt.Sprintf("T%d", i+1)
+		id := fmt.Sprintf("T%d.node-a", i+1)
 		if err := a.DeleteTask(ctx, id); err != nil {
 			t.Fatalf("delete %s: %v", id, err)
 		}

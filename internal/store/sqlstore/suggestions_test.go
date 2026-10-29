@@ -37,13 +37,13 @@ func TestASuggestionChangesNothingInTheTask(t *testing.T) {
 	a, aclk := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
 	aclk.tick(time.Minute)
-	before, _ := a.Get(ctx, "T1")
+	before, _ := a.Get(ctx, "T1.node-a")
 	opsBefore, _ := a.Ops(ctx, 0, 100)
-	sg, created, err := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), Note: " check the seal ", By: "qwen2.5:7b", Key: "job-1"})
+	sg, created, err := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), Note: " check the seal ", By: "qwen2.5:7b", Key: "job-1"})
 	if err != nil || !created {
 		t.Fatalf("%v %v", err, created)
 	}
-	after, _ := a.Get(ctx, "T1")
+	after, _ := a.Get(ctx, "T1.node-a")
 	if fmt.Sprint(before) != fmt.Sprint(after) {
 		t.Fatalf("the task changed:\nbefore %+v\nafter  %+v", before, after)
 	}
@@ -61,7 +61,7 @@ func TestSuggestingTwiceWithTheSameKeyKeepsOne(t *testing.T) {
 	ctx := context.Background()
 	a, _ := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
-	d := task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), By: "m", Key: "k"}
+	d := task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), By: "m", Key: "k"}
 	first, c1, _ := a.Suggest(ctx, d)
 	again, c2, err := a.Suggest(ctx, d)
 	if err != nil || !c1 || c2 || again.ID != first.ID || len(pending(t, a)) != 1 {
@@ -80,13 +80,13 @@ func TestSuggestRefusesNothingAndUnknownTasks(t *testing.T) {
 	ctx := context.Background()
 	a, _ := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
-	if _, _, err := a.Suggest(ctx, task.Draft{Task: "T1", Note: "   "}); !errors.Is(err, task.ErrNothingToSuggest) {
+	if _, _, err := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Note: "   "}); !errors.Is(err, task.ErrNothingToSuggest) {
 		t.Fatalf("%v", err)
 	}
 	if _, _, err := a.Suggest(ctx, task.Draft{Task: "T9", Priority: prio(task.PriorityLow)}); !errors.Is(err, task.ErrNotFound) {
 		t.Fatalf("%v", err)
 	}
-	if _, _, err := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio("urgent")}); err == nil {
+	if _, _, err := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio("urgent")}); err == nil {
 		t.Fatal("an invalid priority was recorded")
 	}
 	if len(pending(t, a)) != 0 {
@@ -98,7 +98,7 @@ func TestAcceptingAFreshSuggestionAppliesItOnceAndDismissingChangesNothing(t *te
 	ctx := context.Background()
 	a, aclk := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
-	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Status: stat(task.StatusDone), Priority: prio(task.PriorityHigh), Note: "seal replaced", By: "m"})
+	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Status: stat(task.StatusDone), Priority: prio(task.PriorityHigh), Note: "seal replaced", By: "m"})
 	aclk.tick(time.Minute)
 	tk, err := a.Resolve(ctx, sg.ID, true)
 	if err != nil {
@@ -119,9 +119,9 @@ func TestAcceptingAFreshSuggestionAppliesItOnceAndDismissingChangesNothing(t *te
 	}
 
 	create(t, a, "valve")
-	sg2, _, _ := a.Suggest(ctx, task.Draft{Task: "T2", Priority: prio(task.PriorityLow), By: "m"})
+	sg2, _, _ := a.Suggest(ctx, task.Draft{Task: "T2.node-a", Priority: prio(task.PriorityLow), By: "m"})
 	h := hashOf(t, a)
-	before, _ := a.Get(ctx, "T2")
+	before, _ := a.Get(ctx, "T2.node-a")
 	tk, err = a.Resolve(ctx, sg2.ID, false)
 	if err != nil || fmt.Sprint(tk) != fmt.Sprint(before) {
 		t.Fatalf("dismiss changed the task: %v\n%+v\n%+v", err, before, tk)
@@ -146,20 +146,20 @@ func TestResolveRefusesBadIDs(t *testing.T) {
 	}
 }
 
-// Test: a human edit made offline survives an AI job that finishes later.
+// The roadmap's test: a human edit made offline survives an AI job that finishes later.
 func TestAHumanEditMadeOfflineSurvivesAnAIJobFinishingLater(t *testing.T) {
 	ctx := context.Background()
 	a, b, aclk, bclk := pair(t) // a: the person's phone. b: the laptop whose AI job runs.
 	aclk.tick(time.Minute)
-	setPriority(t, a, "T1", task.PriorityHigh) // the person, offline
+	setPriority(t, a, "T1.node-a", task.PriorityHigh) // the person, offline
 	bclk.tick(5 * time.Minute)
-	sg, _, err := b.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityLow), By: "qwen2.5:7b"}) // finishes later, knows nothing
+	sg, _, err := b.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityLow), By: "qwen2.5:7b"}) // finishes later, knows nothing
 	if err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
 	for _, s := range []*Store{a, b} {
-		if got := prioOf(t, s, "T1"); got != task.PriorityHigh {
+		if got := prioOf(t, s, "T1.node-a"); got != task.PriorityHigh {
 			t.Fatalf("%s: the AI overwrote a human: priority is %s", s.node, got)
 		}
 		l := pending(t, s)
@@ -169,7 +169,7 @@ func TestAHumanEditMadeOfflineSurvivesAnAIJobFinishingLater(t *testing.T) {
 		if _, err := s.Resolve(ctx, sg.ID, true); !errors.Is(err, task.ErrStale) {
 			t.Fatalf("%s: accepting a stale suggestion: %v", s.node, err)
 		}
-		if got := prioOf(t, s, "T1"); got != task.PriorityHigh {
+		if got := prioOf(t, s, "T1.node-a"); got != task.PriorityHigh {
 			t.Fatalf("%s: a refused accept still changed the task", s.node)
 		}
 	}
@@ -178,7 +178,7 @@ func TestAHumanEditMadeOfflineSurvivesAnAIJobFinishingLater(t *testing.T) {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
-	if len(pending(t, b)) != 0 || prioOf(t, b, "T1") != task.PriorityHigh {
+	if len(pending(t, b)) != 0 || prioOf(t, b, "T1.node-a") != task.PriorityHigh {
 		t.Fatal("after dismissing, devices disagree")
 	}
 }
@@ -187,16 +187,16 @@ func TestASuggestionMadeBeforeAHumanEditIsStaleToo(t *testing.T) {
 	ctx := context.Background()
 	a, aclk := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
-	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityLow), By: "m"})
+	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityLow), By: "m"})
 	aclk.tick(time.Minute)
-	setPriority(t, a, "T1", task.PriorityHigh)
+	setPriority(t, a, "T1.node-a", task.PriorityHigh)
 	if _, err := a.Resolve(ctx, sg.ID, true); !errors.Is(err, task.ErrStale) {
 		t.Fatalf("%v", err)
 	}
 	// a field the suggestion does not touch does not make it stale
-	sg2, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Note: "just a note", By: "m"})
+	sg2, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Note: "just a note", By: "m"})
 	aclk.tick(time.Minute)
-	setPriority(t, a, "T1", task.PriorityLow)
+	setPriority(t, a, "T1.node-a", task.PriorityLow)
 	if l := pending(t, a); len(l) != 2 || l[0].Stale == false || l[1].Stale {
 		t.Fatalf("%+v", l)
 	}
@@ -208,14 +208,14 @@ func TestASuggestionMadeBeforeAHumanEditIsStaleToo(t *testing.T) {
 func TestAcceptingOnOneDeviceReachesTheOther(t *testing.T) {
 	ctx := context.Background()
 	a, b, aclk, _ := pair(t)
-	sg, _, _ := b.Suggest(ctx, task.Draft{Task: "T1", Status: stat(task.StatusInProgress), Note: "started", By: "m"})
+	sg, _, _ := b.Suggest(ctx, task.Draft{Task: "T1.node-a", Status: stat(task.StatusInProgress), Note: "started", By: "m"})
 	meet(t, a, b)
 	aclk.tick(time.Minute)
 	if _, err := a.Resolve(ctx, sg.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
-	tk, _ := b.Get(ctx, "T1")
+	tk, _ := b.Get(ctx, "T1.node-a")
 	if tk.Status != task.StatusInProgress || len(tk.Notes) != 1 {
 		t.Fatalf("%+v", tk)
 	}
@@ -229,7 +229,7 @@ func TestTwoDevicesResolvingTheSameSuggestionDifferentlyAgree(t *testing.T) {
 	ctx := context.Background()
 	for _, acceptFirst := range []bool{true, false} {
 		a, b, aclk, bclk := pair(t)
-		sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), By: "m"})
+		sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), By: "m"})
 		pull(t, b, a, 100)
 		first, second := a, b
 		fc, sc := aclk, bclk
@@ -247,7 +247,7 @@ func TestTwoDevicesResolvingTheSameSuggestionDifferentlyAgree(t *testing.T) {
 		meet(t, a, b)
 		for _, s := range []*Store{a, b} {
 			all, _ := s.Suggestions(ctx, true)
-			if len(all) != 1 || all[0].State != task.SuggestionAccepted || prioOf(t, s, "T1") != task.PriorityHigh {
+			if len(all) != 1 || all[0].State != task.SuggestionAccepted || prioOf(t, s, "T1.node-a") != task.PriorityHigh {
 				t.Fatalf("acceptFirst=%v %s: the earlier resolution must stand: %+v", acceptFirst, s.node, all)
 			}
 		}
@@ -258,9 +258,9 @@ func TestSuggestionsSurviveARebuildAndAnOutOfOrderArrival(t *testing.T) {
 	ctx := context.Background()
 	a, b, aclk, bclk := pair(t)
 	aclk.tick(time.Minute)
-	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), By: "m"})
+	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), By: "m"})
 	bclk.tick(time.Second) // b's edit sorts BEFORE a's suggestion
-	setPriority(t, b, "T1", task.PriorityLow)
+	setPriority(t, b, "T1.node-a", task.PriorityLow)
 	pull(t, a, b, 100) // an older op arrives: forces a refold
 	h := hashOf(t, a)
 	if _, err := a.Rebuild(ctx); err != nil || hashOf(t, a) != h {
@@ -276,8 +276,8 @@ func TestAnAcceptedSuggestionOnADeletedTaskIsRefused(t *testing.T) {
 	ctx := context.Background()
 	a, _ := replicaAt(t, "node-a", epoch)
 	create(t, a, "pump")
-	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), By: "m"})
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), By: "m"})
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Resolve(ctx, sg.ID, true); !errors.Is(err, task.ErrNotFound) {
@@ -359,19 +359,19 @@ func TestAcceptingASuggestionCountsAsAnEditSoAConcurrentDeleteDoesNotKillTheTask
 	ctx := context.Background()
 	a, b, aclk, bclk := pair(t)
 	aclk.tick(time.Minute)
-	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1", Priority: prio(task.PriorityHigh), By: "m"})
+	sg, _, _ := a.Suggest(ctx, task.Draft{Task: "T1.node-a", Priority: prio(task.PriorityHigh), By: "m"})
 	pull(t, b, a, 100)
 	bclk.tick(5 * time.Minute)
 	if _, err := b.Resolve(ctx, sg.ID, true); err != nil { // a person accepts on b ...
 		t.Fatal(err)
 	}
 	aclk.tick(6 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil { // ... while another person deletes on a, not having seen that
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil { // ... while another person deletes on a, not having seen that
 		t.Fatal(err)
 	}
 	meet(t, a, b)
 	for _, s := range []*Store{a, b} {
-		if got := prioOf(t, s, "T1"); got != task.PriorityHigh {
+		if got := prioOf(t, s, "T1.node-a"); got != task.PriorityHigh {
 			t.Fatalf("%s: an accepted edit the deleter had not seen must keep the task alive, got %q", s.node, got)
 		}
 	}
@@ -380,12 +380,12 @@ func TestAcceptingASuggestionCountsAsAnEditSoAConcurrentDeleteDoesNotKillTheTask
 func TestMalformedIncomingSuggestionOpsAreRefusedAndKeepNothing(t *testing.T) {
 	ctx := context.Background()
 	for name, op := range map[string]Op{
-		"suggests nothing":       {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1","base_status":"open","base_priority":"medium","by":"m"}`)},
-		"a blank note":           {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1","note":"  ","base_status":"open","base_priority":"medium","by":"m"}`)},
-		"bad priority":           {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1","priority":"urgent","base_status":"open","base_priority":"medium","by":"m"}`)},
-		"bad base":               {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1","priority":"low","base_status":"??","base_priority":"medium","by":"m"}`)},
+		"suggests nothing":       {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1.node-a","base_status":"open","base_priority":"medium","by":"m"}`)},
+		"a blank note":           {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1.node-a","note":"  ","base_status":"open","base_priority":"medium","by":"m"}`)},
+		"bad priority":           {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1.node-a","priority":"urgent","base_status":"open","base_priority":"medium","by":"m"}`)},
+		"bad base":               {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1.node-a","priority":"low","base_status":"??","base_priority":"medium","by":"m"}`)},
 		"unknown task":           {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T404","priority":"low","base_status":"open","base_priority":"medium","by":"m"}`)},
-		"unknown field":          {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1","priority":"low","base_status":"open","base_priority":"medium","by":"m","apply":true}`)},
+		"unknown field":          {NodeID: "node-z", Seq: 2, Kind: KindSuggestionMade, Payload: []byte(`{"task":"T1.node-a","priority":"low","base_status":"open","base_priority":"medium","by":"m","apply":true}`)},
 		"resolves a ghost":       {NodeID: "node-z", Seq: 2, Kind: KindSuggestionResolved, Payload: []byte(`{"node":"node-q","seq":9,"resolution":"accepted"}`)},
 		"unknown resolution":     {NodeID: "node-z", Seq: 2, Kind: KindSuggestionResolved, Payload: []byte(`{"node":"node-q","seq":9,"resolution":"maybe"}`)},
 		"resolution without seq": {NodeID: "node-z", Seq: 2, Kind: KindSuggestionResolved, Payload: []byte(`{"node":"node-q","seq":0,"resolution":"accepted"}`)},

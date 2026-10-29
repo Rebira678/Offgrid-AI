@@ -87,7 +87,7 @@ func cmdSuggestions(args []string, stdout, stderr io.Writer) int {
 		if sub == "accept" {
 			fmt.Fprintf(stdout, "accepted %s: %s\n", id, describeTask(t))
 		} else {
-			fmt.Fprintf(stdout, "dismissed %s: %s is unchanged\n", id, t.ID)
+			fmt.Fprintf(stdout, "dismissed %s: %s is unchanged\n", id, task.ShortID(t.ID))
 		}
 		return 0
 	case errors.Is(err, task.ErrStale):
@@ -103,7 +103,7 @@ func cmdSuggestions(args []string, stdout, stderr io.Writer) int {
 }
 
 func describeTask(t task.Task) string {
-	return fmt.Sprintf("%s [%s, %s] %s, %d notes", t.ID, t.Priority, t.Status, t.Title, len(t.Notes))
+	return fmt.Sprintf("%s [%s, %s] %s, %d notes", task.ShortID(t.ID), t.Priority, t.Status, t.Title, len(t.Notes))
 }
 
 func printSuggestions(w io.Writer, list []task.Suggestion, asJSON bool) int {

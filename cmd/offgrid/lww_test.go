@@ -66,7 +66,19 @@ func TestStoreFieldsListsOneRegisterPerFieldWithItsWinningStampAndNode(t *testin
 	if len(got) != 4 {
 		t.Fatalf("want 4 registers (title, site, priority, status), got %d:\n%s", len(got), out)
 	}
-	pri, title := got["task/T1/priority"], got["task/T1/title"]
+	// IDs carry the replica ("T1.n-1a2b3c"), which the CLI picks at random.
+	var pri, title map[string]any
+	for k, m := range got {
+		switch {
+		case strings.HasPrefix(k, "task/T1.") && strings.HasSuffix(k, "/priority"):
+			pri = m
+		case strings.HasPrefix(k, "task/T1.") && strings.HasSuffix(k, "/title"):
+			title = m
+		}
+	}
+	if pri == nil || title == nil {
+		t.Fatalf("no T1 priority/title register in:\n%s", out)
+	}
 	if pri["value"] != "high" || pri["node"] == "" || title["value"] != "Leaking pump" {
 		t.Errorf("registers: %v %v", pri, title)
 	}

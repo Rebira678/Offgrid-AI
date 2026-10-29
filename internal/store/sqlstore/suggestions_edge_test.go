@@ -260,10 +260,10 @@ func TestSuggestionsEdgeThreeNodeSplitBrainConvergence(t *testing.T) {
 func TestSuggestionsEdgeTamperingAndRebuild(t *testing.T) {
 	ctx := context.Background()
 	s, _ := replicaAt(t, "node-lidia", epoch)
-	create(t, s, "Generator rotor")
+	tk := create(t, s, "Generator rotor")
 
 	hi := task.PriorityHigh
-	sug, _, err := s.Suggest(ctx, task.Draft{Task: "T1", Priority: &hi, By: "qwen", Key: "key-tamper"})
+	sug, _, err := s.Suggest(ctx, task.Draft{Task: tk.ID, Priority: &hi, By: "qwen", Key: "key-tamper"})
 	if err != nil {
 		t.Fatal(err)
 	}

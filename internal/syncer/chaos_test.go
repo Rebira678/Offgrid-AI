@@ -93,7 +93,7 @@ func TestCheckpoint2TwoReplicasEditOfflineAndConverge(t *testing.T) {
 	for _, title := range []string{"Leaking pump", "Replace filter", "Check valve"} {
 		add(t, a, title)
 	}
-	if _, err := a.AddNote(ctx, "T1", "seal cracked"); err != nil {
+	if _, err := a.AddNote(ctx, "T1.node-a", "seal cracked"); err != nil {
 		t.Fatal(err)
 	}
 	var sw netfault.Switch
@@ -135,25 +135,25 @@ func TestCheckpoint2TwoReplicasEditOfflineAndConverge(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	setStatus(a, "T1", task.StatusDone)
-	a.AddNote(ctx, "T1", "replaced the seal")
-	if err := a.DeleteTask(ctx, "T2"); err != nil {
+	setStatus(a, "T1.node-a", task.StatusDone)
+	a.AddNote(ctx, "T1.node-a", "replaced the seal")
+	if err := a.DeleteTask(ctx, "T2.node-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.DeleteTask(ctx, "T3"); err != nil {
+	if err := a.DeleteTask(ctx, "T3.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	fuel := add(t, a, "Fuel line")
 
 	// B edits the same task, later in time, and more.
 	clk.t = clk.t.Add(time.Minute)
-	setStatus(b, "T1", task.StatusInProgress)
-	setPrio(b, "T1", task.PriorityLow)
-	b.AddNote(ctx, "T1", "waiting for parts")
-	if _, err := b.RemoveNote(ctx, "T1", 1); err != nil { // "seal cracked"
+	setStatus(b, "T1.node-a", task.StatusInProgress)
+	setPrio(b, "T1.node-a", task.PriorityLow)
+	b.AddNote(ctx, "T1.node-a", "waiting for parts")
+	if _, err := b.RemoveNote(ctx, "T1.node-a", 1); err != nil { // "seal cracked"
 		t.Fatal(err)
 	}
-	setPrio(b, "T2", task.PriorityHigh) // A deleted T2 and has not seen this
+	setPrio(b, "T2.node-a", task.PriorityHigh) // A deleted T2 and has not seen this
 	gasket := add(t, b, "Order gasket")
 
 	if inStep(t, a, b) || hash(t, a) == hash(t, b) {
@@ -179,7 +179,7 @@ func TestCheckpoint2TwoReplicasEditOfflineAndConverge(t *testing.T) {
 	verify(t, b)
 
 	got := shown(t, b)
-	t1 := got["T1"]
+	t1 := got["T1.node-a"]
 	if t1.Status != task.StatusInProgress || t1.Priority != task.PriorityLow {
 		t.Errorf("T1 = %s/%s, want in_progress/low (B's later edits, each field on its own)", t1.Status, t1.Priority)
 	}
@@ -190,10 +190,10 @@ func TestCheckpoint2TwoReplicasEditOfflineAndConverge(t *testing.T) {
 	if strings.Join(texts, "|") != "replaced the seal|waiting for parts" {
 		t.Errorf("T1 notes = %q, want both new notes and not the removed one", texts)
 	}
-	if t2, ok := got["T2"]; !ok || t2.Priority != task.PriorityHigh {
+	if t2, ok := got["T2.node-a"]; !ok || t2.Priority != task.PriorityHigh {
 		t.Errorf("T2 = %+v, %v: A deleted it but B edited it unseen, so it must stay with B's edit", t2, ok)
 	}
-	if _, ok := got["T3"]; ok {
+	if _, ok := got["T3.node-a"]; ok {
 		t.Error("T3 was deleted by A and touched by nobody: it must be gone")
 	}
 	if _, ok := got[fuel.ID]; !ok {

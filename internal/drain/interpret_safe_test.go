@@ -43,7 +43,7 @@ func (r *safeRig) run(key, text string, prog Progress) (string, error) {
 }
 
 func (r *safeRig) task() task.Task {
-	t, _ := r.st.Get(bg, "T1")
+	t, _ := r.st.Get(bg, "T1.laptop")
 	return t
 }
 
@@ -179,7 +179,7 @@ func TestAHumanEditSurvivesAnAIJobThatFinishesAfterIt(t *testing.T) {
 	}
 	// While the job waits (offline), a person edits the task.
 	hi := task.PriorityHigh
-	if _, _, err := r.st.Update(bg, "T1", task.Changes{Priority: &hi}); err != nil {
+	if _, _, err := r.st.Update(bg, "T1.laptop", task.Changes{Priority: &hi}); err != nil {
 		t.Fatal(err)
 	}
 	e.start(Config{Specs: map[string]Spec{KindInterpret: r.spec}})
@@ -193,7 +193,7 @@ func TestAHumanEditSurvivesAnAIJobThatFinishesAfterIt(t *testing.T) {
 		t.Fatalf("%+v", l)
 	}
 	med := task.PriorityMedium
-	if _, _, err := r.st.Update(bg, "T1", task.Changes{Priority: &med}); err != nil {
+	if _, _, err := r.st.Update(bg, "T1.laptop", task.Changes{Priority: &med}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.st.Resolve(bg, l[0].ID, true); !errors.Is(err, task.ErrStale) {

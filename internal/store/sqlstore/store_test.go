@@ -28,7 +28,7 @@ func TestSQLiteStoreMeetsTheStoreContract(t *testing.T) {
 
 func sameTask(a, b task.Task) string {
 	switch {
-	case a.ID != b.ID, a.Title != b.Title, a.Site != b.Site, a.Priority != b.Priority, a.Status != b.Status:
+	case strings.TrimSuffix(a.ID, ".node-a") != strings.TrimSuffix(b.ID, ".node-a"), a.Title != b.Title, a.Site != b.Site, a.Priority != b.Priority, a.Status != b.Status:
 		return fmt.Sprintf("fields differ:\n  mem %+v\n  sql %+v", a, b)
 	case !a.CreatedAt.Equal(b.CreatedAt), !a.UpdatedAt.Equal(b.UpdatedAt):
 		return fmt.Sprintf("times differ: mem created %v updated %v, sql created %v updated %v", a.CreatedAt, a.UpdatedAt, b.CreatedAt, b.UpdatedAt)
@@ -132,8 +132,8 @@ func TestStateSurvivesCloseAndReopen(t *testing.T) {
 	}
 	// New work continues the numbering and the sequence.
 	c, created, err := s2.Create(ctx, task.NewTask{Title: "Third", Priority: task.PriorityLow})
-	if err != nil || !created || c.ID != "T3" {
-		t.Fatalf("third task = %+v created %v err %v; want T3", c, created, err)
+	if err != nil || !created || c.ID != "T3.node-a" {
+		t.Fatalf("third task = %+v created %v err %v; want T3.node-a", c, created, err)
 	}
 	if s2.NodeID() != "node-a" {
 		t.Errorf("node id = %q after reopen", s2.NodeID())
@@ -149,7 +149,7 @@ func TestStateSurvivesCloseAndReopen(t *testing.T) {
 func TestInMemoryDatabaseWorks(t *testing.T) {
 	s := open(t, ":memory:", Options{})
 	got, created, err := s.Create(context.Background(), task.NewTask{Title: "x", Priority: task.PriorityLow})
-	if err != nil || !created || got.ID != "T1" {
+	if err != nil || !created || !strings.HasPrefix(got.ID, "T1.") {
 		t.Fatalf("got %+v created %v err %v", got, created, err)
 	}
 }
@@ -181,10 +181,10 @@ func TestEachWriteAppendsExactlyOneFactAndNoChangeAppendsNothing(t *testing.T) {
 	if strings.Join(kinds, ",") != strings.Join(want, ",") {
 		t.Fatalf("ops = %v, want %v", kinds, want)
 	}
-	if got := string(ops[0].Payload); got != `{"id":"T1","title":"a","site":"","priority":"low"}` {
+	if got := string(ops[0].Payload); got != `{"id":"T1.node-a","title":"a","site":"","priority":"low"}` {
 		t.Errorf("created payload = %s: the id must be IN the op", got)
 	}
-	if got := string(ops[1].Payload); got != `{"id":"T1","status":"done"}` {
+	if got := string(ops[1].Payload); got != `{"id":"T1.node-a","status":"done"}` {
 		t.Errorf("updated payload = %s: only the changed field belongs in it", got)
 	}
 }
@@ -194,7 +194,7 @@ func TestOpsRecordTheTimeAndTheReplica(t *testing.T) {
 	ctx := context.Background()
 	s.Create(ctx, task.NewTask{Title: "a", Priority: task.PriorityLow})
 	clk.tick(2*time.Hour + 5*time.Second)
-	s.AddNote(ctx, "T1", "n")
+	s.AddNote(ctx, "T1.node-a", "n")
 	ops, _ := s.Ops(ctx, 0, 10)
 	if len(ops) != 2 || !ops[0].TS.Equal(epoch) || !ops[1].TS.Equal(epoch.Add(2*time.Hour+5*time.Second)) {
 		t.Fatalf("ops = %+v", ops)
@@ -289,8 +289,8 @@ func TestAFailedWriteLeavesNeitherTheOpNorTheEffect(t *testing.T) {
 
 	s.db.ExecContext(ctx, `DROP TRIGGER sabotage`)
 	got, created, err := s.Create(ctx, task.NewTask{Title: "fine", Priority: task.PriorityLow})
-	if err != nil || !created || got.ID != "T1" {
-		t.Fatalf("after the failure: %+v created %v err %v; the ID must still be T1", got, created, err)
+	if err != nil || !created || got.ID != "T1.node-a" {
+		t.Fatalf("after the failure: %+v created %v err %v; the ID must still be T1.node-a", got, created, err)
 	}
 	ops, _ := s.Ops(ctx, 0, 10)
 	if len(ops) != 1 || ops[0].Seq != 1 || ops[0].Pos != 1 {
@@ -386,9 +386,9 @@ func TestVerifyAcceptsAHealthyStoreAndCatchesATamperedView(t *testing.T) {
 	}
 
 	for name, q := range map[string]string{
-		"status edited by hand":  `UPDATE tasks SET status = CASE status WHEN 'done' THEN 'open' ELSE 'done' END WHERE id = 'T1'`,
-		"title edited by hand":   `UPDATE tasks SET title = 'tampered' WHERE id = 'T1'`,
-		"a task deleted by hand": `DELETE FROM tasks WHERE id = 'T1'`,
+		"status edited by hand":  `UPDATE tasks SET status = CASE status WHEN 'done' THEN 'open' ELSE 'done' END WHERE id = 'T1.node-a'`,
+		"title edited by hand":   `UPDATE tasks SET title = 'tampered' WHERE id = 'T1.node-a'`,
+		"a task deleted by hand": `DELETE FROM tasks WHERE id = 'T1.node-a'`,
 		"a ghost task inserted":  `INSERT INTO tasks (id, n, title, title_key, site, site_key, priority, status, created_at, updated_at) VALUES ('T999', 999, 'ghost', 'ghost', '', '', 'low', 'open', 1, 1)`,
 		"a note removed":         `DELETE FROM task_notes WHERE (task_id, n) IN (SELECT task_id, n FROM task_notes LIMIT 1)`,
 	} {
@@ -421,7 +421,7 @@ func TestVerifyDoesNotTouchTheLiveView(t *testing.T) {
 	workload(t, s, clk, 5, 100)
 	h0, _ := snapshot(t, s)
 	ops0 := countOps(t, s)
-	s.db.Exec(`UPDATE tasks SET status = CASE status WHEN 'done' THEN 'open' ELSE 'done' END WHERE id = 'T1'`) // make it diverge
+	s.db.Exec(`UPDATE tasks SET status = CASE status WHEN 'done' THEN 'open' ELSE 'done' END WHERE id = 'T1.node-a'`) // make it diverge
 	h1, _ := s.StateHash(context.Background())
 	s.Verify(context.Background())
 	if h2, _ := s.StateHash(context.Background()); h2 != h1 {
@@ -554,11 +554,11 @@ func TestACorruptLogIsRefusedLoudlyAndNothingIsHalfRebuilt(t *testing.T) {
 		"unknown kind":                   `('x', 1, 4000000000000000000, 'task.exploded', '{}')`,
 		"update of a missing task":       `('x', 1, 4000000000000000000, 'task.updated', '{"id":"T404","status":"done"}')`,
 		"note on a missing task":         `('x', 1, 4000000000000000000, 'task.note_added', '{"id":"T404","text":"hi"}')`,
-		"created twice":                  `('x', 1, 4000000000000000000, 'task.created', '{"id":"T1","title":"dup","site":"","priority":"low"}')`,
+		"created twice":                  `('x', 1, 4000000000000000000, 'task.created', '{"id":"T1.node-a","title":"dup","site":"","priority":"low"}')`,
 		"unknown payload field":          `('x', 1, 4000000000000000000, 'task.created', '{"id":"Z","title":"t","site":"","priority":"low","surprise":1}')`,
 		"invalid priority":               `('x', 1, 4000000000000000000, 'task.created', '{"id":"Z","title":"t","site":"","priority":"urgent"}')`,
-		"an update that changes nothing": `('x', 1, 4000000000000000000, 'task.updated', '{"id":"T1"}')`,
-		"empty note":                     `('x', 1, 4000000000000000000, 'task.note_added', '{"id":"T1","text":"  "}')`,
+		"an update that changes nothing": `('x', 1, 4000000000000000000, 'task.updated', '{"id":"T1.node-a"}')`,
+		"empty note":                     `('x', 1, 4000000000000000000, 'task.note_added', '{"id":"T1.node-a","text":"  "}')`,
 		"payload is not an object":       `('x', 1, 4000000000000000000, 'task.created', '[1,2]')`,
 	}
 	// The damaged op gets a timestamp after the real one: the view is folded in
@@ -590,7 +590,7 @@ func TestAGapInAReplicasSequenceIsDetected(t *testing.T) {
 	ctx := context.Background()
 	s.Create(ctx, task.NewTask{Title: "a", Priority: task.PriorityLow})
 	// replica y has op 2 but never had op 1: something was lost.
-	s.db.Exec(`INSERT INTO ops (node_id, seq, ts, kind, payload) VALUES ('y', 2, 0, 'task.note_added', '{"id":"T1","text":"n"}')`)
+	s.db.Exec(`INSERT INTO ops (node_id, seq, ts, kind, payload) VALUES ('y', 2, 0, 'task.note_added', '{"id":"T1.node-a","text":"n"}')`)
 	_, err := s.Verify(ctx)
 	if !errors.Is(err, ErrCorruptLog) || !strings.Contains(err.Error(), `"y"`) {
 		t.Fatalf("err = %v, want a sequence-gap report naming replica y", err)
@@ -657,7 +657,7 @@ func TestTimeZonesDoNotLeakIntoTheStoredState(t *testing.T) {
 	b := open(t, newDB(t), Options{NodeID: "n", Now: clkB.now})
 	for _, s := range []*Store{a, b} {
 		s.Create(context.Background(), task.NewTask{Title: "x", Priority: task.PriorityLow})
-		s.AddNote(context.Background(), "T1", "n")
+		s.AddNote(context.Background(), "T1.node-a", "n")
 	}
 	ha, _ := a.StateHash(context.Background())
 	hb, _ := b.StateHash(context.Background())
@@ -671,7 +671,7 @@ func TestStateHashIsDeterministicAndSensitive(t *testing.T) {
 		s, _ := freshStore(t)
 		ctx := context.Background()
 		s.Create(ctx, task.NewTask{Title: "x", Priority: task.PriorityLow})
-		s.AddNote(ctx, "T1", note)
+		s.AddNote(ctx, "T1.node-a", note)
 		h, _ := s.StateHash(ctx)
 		return h
 	}

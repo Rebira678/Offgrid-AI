@@ -99,12 +99,13 @@ type AmbiguousError struct {
 
 func (e *AmbiguousError) Error() string {
 	s := fmt.Sprintf("%q matches %d tasks:", e.Ref, len(e.Candidates))
+	labels := ShortIDs(e.Candidates)
 	for i, t := range e.Candidates {
 		sep := " "
 		if i > 0 {
 			sep = ", "
 		}
-		s += fmt.Sprintf("%s%s %q", sep, t.ID, t.Title)
+		s += fmt.Sprintf("%s%s %q", sep, labels[i], t.Title)
 	}
 	return s + "; say which one, using its ID"
 }

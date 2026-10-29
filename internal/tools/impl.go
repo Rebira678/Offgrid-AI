@@ -163,8 +163,9 @@ func doList(ctx context.Context, e env, a ListTasksArgs) (Result, error) {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s:", plural(len(tasks), "task", "tasks"))
-	for _, t := range tasks {
-		b.WriteString("\n  " + describe(t))
+	labels := task.ShortIDs(tasks)
+	for i, t := range tasks {
+		b.WriteString("\n  " + describeAs(labels[i], t))
 	}
 	return Result{Message: b.String(), Tasks: tasks}, nil
 }
@@ -210,7 +211,7 @@ func doNote(ctx context.Context, e env, a AddNoteArgs) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Message: fmt.Sprintf("Added a note to %s (%s now has %s)", t.ID, t.ID, plural(len(t.Notes), "note", "notes")),
+	return Result{Message: fmt.Sprintf("Added a note to %s (%s now has %s)", task.ShortID(t.ID), task.ShortID(t.ID), plural(len(t.Notes), "note", "notes")),
 		Changed: true, Task: &t}, nil
 }
 

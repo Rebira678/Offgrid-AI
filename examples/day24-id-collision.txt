@@ -1,0 +1,7 @@
+# The schedule `offgrid sim` shrank the first failure to (from 80 actions to 3).
+# Two replicas that have never met each create a task, then one pulls from the other.
+# Before Day 24 both tasks were called T1 and the sync was refused forever.
+# Now: offgrid sim -replay examples/day24-id-collision.txt   -> PASS
+create r2 n=724258
+create r1 n=184033
+sync r2-r1 n=232

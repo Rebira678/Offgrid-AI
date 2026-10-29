@@ -140,3 +140,35 @@ func idShaped(ref string) (string, bool) {
 func fold(s string) string {
 	return strings.Join(strings.FieldsFunc(strings.ToLower(s), unicode.IsSpace), " ")
 }
+
+// ShortID is the form of an ID a person reads and types: "T3.laptop" is shown
+// as "T3". Since Day 24 every new task's ID carries the replica that made it
+// (so two devices can never pick the same one), and the replica is noise on a
+// screen that shows one device's tasks. Resolve accepts the short form whenever
+// it names exactly one task, so what is shown can be typed back. IDs of any
+// other shape (older databases' plain "T3") come back unchanged.
+func ShortID(id string) string {
+	if _, ok := qualifiedID(id); ok {
+		return id[:strings.IndexByte(id, '.')]
+	}
+	return id
+}
+
+// ShortIDs returns the short form of each task's ID, except where two tasks in
+// the list would show the same one (T3 made on the laptop and T3 made on the
+// phone): those keep their full ID, so the list never shows two identical
+// labels for different tasks.
+func ShortIDs(ts []Task) []string {
+	seen := map[string]int{}
+	for _, t := range ts {
+		seen[ShortID(t.ID)]++
+	}
+	out := make([]string, len(ts))
+	for i, t := range ts {
+		out[i] = ShortID(t.ID)
+		if seen[out[i]] > 1 {
+			out[i] = t.ID
+		}
+	}
+	return out
+}

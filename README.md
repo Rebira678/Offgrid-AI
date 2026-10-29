@@ -213,14 +213,16 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 23, `go test -v ./...` runs **980+ test functions** (plus their subtests)
-in 24 packages: about 19,000 lines of Go and about 28,500 lines of tests. One
+As of Day 24, `go test -v ./...` runs **1,300+ test functions** (plus their subtests)
+in 25 packages: about 20,500 lines of Go and about 30,000 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
 
 ```bash
 make check                 # vet + gofmt + tests
 go test -race ./...        # with the race detector
+make sim                   # 1,000 random failure schedules (SEEDS=3000 make sim)
+make sim-quick             # quick 100-schedule simulation run
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
 make converge-demo         # runs multi-replica convergence demo
 make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
@@ -228,6 +230,7 @@ make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
 ```
 
 ### Quality Guarantees
+- **Deterministic Simulation Engine & Chaos Sweeps:** 1,000+ seeded failure schedules throw network partitions, severe clock skew (±90m), process crashes and restarts, dropped/duplicated/delayed/truncated/reversed sync replies, and gap injections at 3 real SQLite replicas. Assertions mathematically guarantee causal HLC monotonicity, atomic refusal, state hash convergence, and log oracle validation (recomputing deletes and suggestion resolutions from raw ops). A delta shrinker reduces failing 80-action traces to minimal reproducible test cases.
 - **AI Suggestion Isolation & Stale Protection:** Proving mathematically and empirically that an AI model wrapper (`suggest.Store`) and safe queue drain (`drain.InterpretSafely`) cannot overwrite existing tasks. Base snapshot comparison prevents accepting stale proposals if a human concurrently edited the targeted fields.
 - **Add-Wins Suggestion Lifecycle & Ring Sync:** Multi-replica convergence tests verify that suggestions, acceptances, and dismissals sync canonically over HLC timestamps across 3-node ring topologies, and SQLite rebuild from raw op log reconstructs suggestions with byte-for-byte state hash equality.
 - **Contract Testing (`storetest`):** Shared contract test suite runs identically against `MemStore` and `sqlstore.Store`, including `task.Remover` (`DeleteTask`, `RemoveNote`).
@@ -257,8 +260,17 @@ make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
 - **Deleting is not final against unseen edits:** an edit made by a replica that
   had not seen the delete brings the task back (add-wins). Only the command
   line deletes; the language model cannot.
-- **Two replicas that each created tasks before ever syncing** both own a `T1`;
-  the first sync is refused with a clear error and changes nothing.
+- **Task IDs carry the device that made them (Day 24).** `T3.laptop`; screens
+  show `T3` and `T3` still finds it when exactly one task has that number. This
+  fixed a bug the simulator found: two devices that each created a first task
+  before meeting both chose `T1` and could never sync. Databases written before
+  Day 24 still hold plain IDs; two such databases that collided are still refused
+  with a clear error, and nothing is changed.
+- **The simulation checks convergence and two recomputed rules** (delete vs edit,
+  first resolution of a suggestion), not every meaning. A store that converged
+  on a wrong answer the oracles do not recompute would pass. It models neither a
+  disk that loses committed writes, nor a replica restored from an old backup
+  (that forks the log, which sync refuses on purpose), nor a hostile peer.
 - **The log only grows.** No compaction of old ops or tombstones.
 - **Model quality is measured separately** (`offgrid bench`, `offgrid eval`);
   the benchmark table above is filled from measurements on this machine.

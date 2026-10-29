@@ -95,8 +95,12 @@ func when(s string, p *problems) string {
 }
 
 // describe is the one-line form of a task used in every message.
-func describe(t task.Task) string {
-	s := fmt.Sprintf("%s [%s, %s] %s", t.ID, t.Priority, t.Status, t.Title)
+func describe(t task.Task) string { return describeAs(task.ShortID(t.ID), t) }
+
+// describeAs is describe with the ID label chosen by the caller (a list picks
+// labels so that two tasks never show the same one).
+func describeAs(label string, t task.Task) string {
+	s := fmt.Sprintf("%s [%s, %s] %s", label, t.Priority, t.Status, t.Title)
 	if t.Site != "" {
 		s += fmt.Sprintf(" (site %s)", t.Site)
 	}

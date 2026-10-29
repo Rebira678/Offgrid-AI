@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo
+.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -95,5 +95,14 @@ two-brains-demo: build
 # Day 23: a person edits a task on the phone while an AI proposes a different change on the laptop; sync; the person's edit survives.
 ai-suggests-demo: build
 	scripts/ai-suggests-demo.sh $(PAUSE)
+
+# Day 24: deterministic simulation. Each seed is one random failure schedule (partitions, clock skew,
+# crashes, lossy sync) against the real store. Replay a failing seed with: bin/offgrid sim -seed N
+SEEDS ?= 1000
+sim: build
+	bin/offgrid sim -seeds $(SEEDS)
+
+sim-quick: build
+	bin/offgrid sim -seeds 100
 
 

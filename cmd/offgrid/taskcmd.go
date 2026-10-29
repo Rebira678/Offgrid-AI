@@ -75,12 +75,13 @@ func cmdTask(args []string, stdout, stderr io.Writer) int {
 		if len(all) == 0 {
 			fmt.Fprintln(stdout, "(no tasks)")
 		}
-		for _, t := range all {
+		labels := task.ShortIDs(all)
+		for i, t := range all {
 			site := ""
 			if t.Site != "" {
 				site = "  site " + t.Site
 			}
-			fmt.Fprintf(stdout, "%-18s %-11s %-6s %s%s\n", t.ID, t.Status, t.Priority, t.Title, site)
+			fmt.Fprintf(stdout, "%-18s %-11s %-6s %s%s\n", labels[i], t.Status, t.Priority, t.Title, site)
 			for i, n := range t.Notes {
 				fmt.Fprintf(stdout, "    %d. %s\n", i+1, n.Text)
 			}
@@ -105,7 +106,7 @@ func cmdTask(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "error:", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "deleted %s %q\n", t.ID, t.Title)
+		fmt.Fprintf(stdout, "deleted %s %q\n", task.ShortID(t.ID), t.Title)
 		return 0
 	case "remove-note":
 		if len(rest) != 3 {
@@ -125,7 +126,7 @@ func cmdTask(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "error:", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "removed note %d of %s\n", n, t.ID)
+		fmt.Fprintf(stdout, "removed note %d of %s\n", n, task.ShortID(t.ID))
 		return 0
 	}
 	fmt.Fprintf(stderr, "error: unknown task command %q (list, delete or remove-note)\n", rest[0])

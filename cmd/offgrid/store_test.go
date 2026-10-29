@@ -140,7 +140,7 @@ func TestStoreRebuildRepairsADeletedView(t *testing.T) {
 
 	// An edited row, though, is something Open cannot notice. Verify can.
 	raw, _ = sql.Open("sqlite3", db)
-	raw.Exec(`UPDATE tasks SET title = 'tampered' WHERE id = 'T1'`)
+	raw.Exec(`UPDATE tasks SET title = 'tampered' WHERE id LIKE 'T1.%'`)
 	raw.Close()
 	code, _, errOut := runCLI(t, "", "store", "-db", db, "verify")
 	if code != 1 || !strings.Contains(errOut, "MISMATCH") || !strings.Contains(errOut, "rebuild") {

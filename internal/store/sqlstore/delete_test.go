@@ -66,10 +66,10 @@ func TestADeleteTheOtherSideHadSeenStaysDeletedOnBoth(t *testing.T) {
 	ctx := context.Background()
 	a, b, aclk, bclk := pair(t)
 	bclk.tick(time.Minute)
-	setStatusOf(t, b, "T1", task.StatusInProgress)
+	setStatusOf(t, b, "T1.node-a", task.StatusInProgress)
 	pull(t, a, b, 100) // a has seen b's edit
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
@@ -83,12 +83,12 @@ func TestEditingATaskWhileAnotherReplicaDeletesItKeepsTheTask(t *testing.T) {
 	a, b, aclk, bclk := pair(t)
 	// offline: a deletes T1; b, not knowing, edits it AND adds a note
 	aclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	bclk.tick(time.Minute) // b's edit is EARLIER than a's delete: timestamps alone would lose it
-	setStatusOf(t, b, "T1", task.StatusDone)
-	if _, err := b.AddNote(ctx, "T1", "still needed"); err != nil {
+	setStatusOf(t, b, "T1.node-a", task.StatusDone)
+	if _, err := b.AddNote(ctx, "T1.node-a", "still needed"); err != nil {
 		t.Fatal(err)
 	}
 	if len(ids(t, a)) != 0 {
@@ -96,7 +96,7 @@ func TestEditingATaskWhileAnotherReplicaDeletesItKeepsTheTask(t *testing.T) {
 	}
 	meet(t, a, b)
 	for _, s := range []*Store{a, b} {
-		tk, err := s.Get(ctx, "T1")
+		tk, err := s.Get(ctx, "T1.node-a")
 		if err != nil || tk.Status != task.StatusDone || len(tk.Notes) != 1 {
 			t.Fatalf("%s: T1 = %+v, %v; want it alive with b's edit and note", s.node, tk, err)
 		}
@@ -107,18 +107,18 @@ func TestADeleteThatMissedAnEditLosesToItButADeleteThatSawEverythingWins(t *test
 	ctx := context.Background()
 	a, b, aclk, bclk := pair(t)
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	bclk.tick(time.Minute)
-	setStatusOf(t, b, "T1", task.StatusDone)
+	setStatusOf(t, b, "T1.node-a", task.StatusDone)
 	meet(t, a, b) // alive again: b's edit was unseen
 	if len(ids(t, a)) != 1 {
 		t.Fatal("T1 should be alive after meeting")
 	}
 	// now a deletes again, this time having seen everything
 	aclk.tick(time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
@@ -132,10 +132,10 @@ func TestTwoReplicasDeletingTheSameTaskIsFine(t *testing.T) {
 	a, b, aclk, bclk := pair(t)
 	aclk.tick(time.Minute)
 	bclk.tick(2 * time.Minute)
-	if err := a.DeleteTask(ctx, "T1"); err != nil {
+	if err := a.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.DeleteTask(ctx, "T1"); err != nil {
+	if err := b.DeleteTask(ctx, "T1.node-a"); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
@@ -147,7 +147,7 @@ func TestTwoReplicasDeletingTheSameTaskIsFine(t *testing.T) {
 	pull(t, c, a, 100)
 	cclk.tick(time.Hour)
 	_ = c.Clock()
-	if _, _, err := c.Update(ctx, "T1", task.Changes{Status: ptr(task.StatusDone)}); err == nil {
+	if _, _, err := c.Update(ctx, "T1.node-a", task.Changes{Status: ptr(task.StatusDone)}); err == nil {
 		t.Fatal("c holds the deletes, so T1 is gone for it and cannot be updated")
 	}
 }
@@ -159,29 +159,29 @@ func TestRemovingANoteRemovesOnlyThatNoteEvenIfAnotherIsAddedAtTheSameTime(t *te
 	a, b, aclk, bclk := pair(t)
 	for _, n := range []string{"first", "second", "third"} {
 		aclk.tick(time.Second)
-		if _, err := a.AddNote(ctx, "T1", n); err != nil {
+		if _, err := a.AddNote(ctx, "T1.node-a", n); err != nil {
 			t.Fatal(err)
 		}
 	}
 	pull(t, b, a, 100)
 	aclk.tick(time.Minute)
-	if _, err := a.RemoveNote(ctx, "T1", 2); err != nil { // "second"
+	if _, err := a.RemoveNote(ctx, "T1.node-a", 2); err != nil { // "second"
 		t.Fatal(err)
 	}
 	bclk.tick(time.Minute)
-	if _, err := b.AddNote(ctx, "T1", "from b"); err != nil {
+	if _, err := b.AddNote(ctx, "T1.node-a", "from b"); err != nil {
 		t.Fatal(err)
 	}
 	meet(t, a, b)
 	want := "first,third,from b"
-	if got := strings.Join(shownNotes(t, a, "T1"), ","); got != want {
+	if got := strings.Join(shownNotes(t, a, "T1.node-a"), ","); got != want {
 		t.Fatalf("notes = %q, want %q", got, want)
 	}
 	// the same text added again later is a new note and is shown
 	aclk.tick(time.Minute)
-	a.AddNote(ctx, "T1", "second")
+	a.AddNote(ctx, "T1.node-a", "second")
 	meet(t, a, b)
-	if got := strings.Join(shownNotes(t, b, "T1"), ","); got != want+",second" {
+	if got := strings.Join(shownNotes(t, b, "T1.node-a"), ","); got != want+",second" {
 		t.Fatalf("notes = %q", got)
 	}
 }
@@ -190,12 +190,12 @@ func TestBothReplicasRemovingTheSameNoteIsFine(t *testing.T) {
 	ctx := context.Background()
 	a, b, aclk, _ := pair(t)
 	aclk.tick(time.Second)
-	a.AddNote(ctx, "T1", "only")
+	a.AddNote(ctx, "T1.node-a", "only")
 	pull(t, b, a, 100)
-	a.RemoveNote(ctx, "T1", 1)
-	b.RemoveNote(ctx, "T1", 1)
+	a.RemoveNote(ctx, "T1.node-a", 1)
+	b.RemoveNote(ctx, "T1.node-a", 1)
 	meet(t, a, b)
-	if n := shownNotes(t, a, "T1"); len(n) != 0 {
+	if n := shownNotes(t, a, "T1.node-a"); len(n) != 0 {
 		t.Fatalf("notes = %v, want none", n)
 	}
 }
@@ -223,9 +223,9 @@ func TestIncomingRemovalsThatPointAtNothingAreRefused(t *testing.T) {
 	}
 	// a note removal whose note exists on the task but under another task id
 	a, _, _, _ := pair(t)
-	a.AddNote(ctx, "T1", "x")
+	a.AddNote(ctx, "T1.node-a", "x")
 	create(t, a, "other")
-	op := []Op{{NodeID: "node-z", Seq: 1, TS: epoch.Add(time.Hour), Kind: KindNoteRemoved, Payload: []byte(`{"id":"T2","node":"node-a","seq":2}`)}}
+	op := []Op{{NodeID: "node-z", Seq: 1, TS: epoch.Add(time.Hour), Kind: KindNoteRemoved, Payload: []byte(`{"id":"T2.node-a","node":"node-a","seq":2}`)}}
 	if _, err := a.ApplyRemote(ctx, op); !errors.Is(err, ErrBadOp) {
 		t.Fatalf("removing task T1's note through task T2: %v, want ErrBadOp", err)
 	}
@@ -241,10 +241,10 @@ func TestTheOldProjectionIsRebuiltOnOpenAndDeletesSurviveARebuild(t *testing.T) 
 	}
 	create(t, s, "pump")
 	create(t, s, "filter")
-	s.AddNote(ctx, "T1", "a")
-	s.AddNote(ctx, "T1", "b")
-	s.RemoveNote(ctx, "T1", 1)
-	s.DeleteTask(ctx, "T2")
+	s.AddNote(ctx, "T1.node-a", "a")
+	s.AddNote(ctx, "T1.node-a", "b")
+	s.RemoveNote(ctx, "T1.node-a", 1)
+	s.DeleteTask(ctx, "T2.node-a")
 	h := hashOf(t, s)
 	// pretend an older program built the view
 	if err := setMeta(ctx, s.db, "projection_version", "1"); err != nil {
@@ -255,7 +255,7 @@ func TestTheOldProjectionIsRebuiltOnOpenAndDeletesSurviveARebuild(t *testing.T) 
 	if hashOf(t, s2) != h {
 		t.Fatal("the rebuilt view differs")
 	}
-	if got := ids(t, s2); len(got) != 1 || got[0] != "T1" || strings.Join(shownNotes(t, s2, "T1"), ",") != "b" {
+	if got := ids(t, s2); len(got) != 1 || got[0] != "T1.node-a" || strings.Join(shownNotes(t, s2, "T1.node-a"), ",") != "b" {
 		t.Fatalf("after reopening: tasks %v", got)
 	}
 	mustVerify(t, s2)
