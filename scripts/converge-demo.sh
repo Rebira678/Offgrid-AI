@@ -23,7 +23,7 @@ trap cleanup EXIT
 a() { OFFGRID_NODE=node-a "$BIN" "$@"; }
 b() { OFFGRID_NODE=node-b "$BIN" "$@"; }
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; sleep "$PAUSE"; }
-hash_of() { "$BIN" sync summary -db "$1" | sed -n 's/^state hash: *//p'; }
+hash_of() { local n=""; [ "$1" = "$A" ] && n="node-a"; [ "$1" = "$B" ] && n="node-b"; OFFGRID_NODE=$n "$BIN" sync summary -db "$1" | sed -n 's/^state hash: *//p'; }
 list_of() { OFFGRID_NODE=$2 "$BIN" task -db "$1" list | grep -v '^state hash'; }
 
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$KEY"
