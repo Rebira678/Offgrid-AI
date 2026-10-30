@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -201,6 +202,7 @@ func cmdBench(args []string, stdout, stderr io.Writer) int {
 	quick := fs.Bool("quick", false, "short prompt only (faster, skips the prompt-processing test)")
 	mdPath := fs.String("md", "", "also write the Markdown table to this file")
 	jsonPath := fs.String("json", "", "also write the results as JSON to this file")
+	readme := fs.String("readme", "", "rewrite the block between "+benchStart+" and "+benchEnd+" in this file (only if every model succeeded)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -284,6 +286,18 @@ func cmdBench(args []string, stdout, stderr io.Writer) int {
 		if r.Error != "" {
 			return 1 // the table already lists which model failed and why
 		}
+	}
+	if *readme != "" {
+		var md bytes.Buffer
+		if err := bench.WriteMarkdown(&md, meta, rows); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		if err := updateBlock(*readme, benchStart, benchEnd, md.String()); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stderr, "updated %s\n", *readme)
 	}
 	return 0
 }
