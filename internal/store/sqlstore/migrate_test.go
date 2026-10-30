@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -152,5 +153,54 @@ func TestTheDatabaseIsInWALModeWithFullSynchronous(t *testing.T) {
 	s.db.QueryRow(`PRAGMA synchronous`).Scan(&sync)
 	if sync != 2 {
 		t.Errorf("synchronous = %d, want 2 (FULL)", sync)
+	}
+}
+
+// TestConcurrentMigrationsOnSameDatabaseConvergeCleanly ensures that multiple
+// processes or goroutines attempting to migrate a brand new SQLite database file
+// concurrently do not fail with "table already exists" and all cleanly converge.
+func TestConcurrentMigrationsOnSameDatabaseConvergeCleanly(t *testing.T) {
+	path := newDB(t)
+	const workers = 8
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			db, err := sql.Open(driverName, dsn(path))
+			if err != nil {
+				errs <- err
+				return
+			}
+			db.SetMaxOpenConns(1)
+			defer db.Close()
+			if err := migrate(context.Background(), db, migrations); err != nil {
+				errs <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent migration failed: %v", err)
+		}
+	}
+
+	db, err := sql.Open(driverName, dsn(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	v, err := schemaVersion(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != len(migrations) {
+		t.Errorf("version = %d, want %d", v, len(migrations))
 	}
 }
