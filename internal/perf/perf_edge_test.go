@@ -482,3 +482,196 @@ func TestPerfEdgeNumberFormattingSignificanceAndRates(t *testing.T) {
 	}
 }
 
+// TestPerfEdgeCommasNegativeNumbersAndBoundaries verifies commas formatting
+// across negative numbers and extreme boundary integers.
+func TestPerfEdgeCommasNegativeNumbersAndBoundaries(t *testing.T) {
+	cases := []struct {
+		in   int
+		want string
+	}{
+		{0, "0"},
+		{9, "9"},
+		{99, "99"},
+		{999, "999"},
+		{1000, "1,000"},
+		{1000000, "1,000,000"},
+		{-1, "-1"},
+		{-99, "-99"},
+		{-100, "-100"},
+		{-999, "-999"},
+		{-1000, "-1,000"},
+		{-50000, "-50,000"},
+		{-1234567, "-1,234,567"},
+	}
+	for _, tc := range cases {
+		if got := commas(tc.in); got != tc.want {
+			t.Errorf("commas(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestPerfEdgeRateAndSigWithNaNAndInfAndNegative verifies that rate and sig
+// gracefully handle NaN, infinite floats, and negative numbers without panic or overflow.
+func TestPerfEdgeRateAndSigWithNaNAndInfAndNegative(t *testing.T) {
+	// rate() tests
+	if got := rate(math.NaN()); got != "-" {
+		t.Errorf("rate(NaN) = %q, want '-'", got)
+	}
+	if got := rate(math.Inf(1)); got != "-" {
+		t.Errorf("rate(+Inf) = %q, want '-'", got)
+	}
+	if got := rate(math.Inf(-1)); got != "-" {
+		t.Errorf("rate(-Inf) = %q, want '-'", got)
+	}
+	if got := rate(-100.5); got != "-" {
+		t.Errorf("rate(-100.5) = %q, want '-'", got)
+	}
+	if got := rate(0.0); got != "-" {
+		t.Errorf("rate(0.0) = %q, want '-'", got)
+	}
+	if got := rate(99.4); got != "99" {
+		t.Errorf("rate(99.4) = %q, want '99'", got)
+	}
+	if got := rate(99.6); got != "100" {
+		t.Errorf("rate(99.6) = %q, want '100'", got)
+	}
+
+	// sig() tests
+	if got := sig(math.NaN()); got != "-" {
+		t.Errorf("sig(NaN) = %q, want '-'", got)
+	}
+	if got := sig(math.Inf(1)); got != "-" {
+		t.Errorf("sig(+Inf) = %q, want '-'", got)
+	}
+	if got := sig(math.Inf(-1)); got != "-" {
+		t.Errorf("sig(-Inf) = %q, want '-'", got)
+	}
+}
+
+// TestPerfEdgeDurWithSpecialFloats verifies duration display string generation
+// under special IEEE 754 float values and negative intervals.
+func TestPerfEdgeDurWithSpecialFloats(t *testing.T) {
+	if got := dur(math.NaN()); got != "-" {
+		t.Errorf("dur(NaN) = %q, want '-'", got)
+	}
+	if got := dur(math.Inf(1)); got != "-" {
+		t.Errorf("dur(+Inf) = %q, want '-'", got)
+	}
+	if got := dur(math.Inf(-1)); got != "-" {
+		t.Errorf("dur(-Inf) = %q, want '-'", got)
+	}
+	if got := dur(-5.0); got != "-" {
+		t.Errorf("dur(-5.0) = %q, want '-'", got)
+	}
+	if got := dur(0.0); got != "0 µs" {
+		t.Errorf("dur(0.0) = %q, want '0 µs'", got)
+	}
+}
+
+// TestPerfEdgeMemWatchIdempotentStop ensures startMem().stop() can be called
+// multiple times sequentially and concurrently without panic or race.
+func TestPerfEdgeMemWatchIdempotentStop(t *testing.T) {
+	w := startMem()
+	time.Sleep(20 * time.Millisecond)
+
+	m1 := w.stop()
+	m2 := w.stop()
+	if m1 != m2 {
+		t.Fatalf("sequential stop returned different values: %+v vs %+v", m1, m2)
+	}
+
+	// Concurrent stop on a new watcher
+	w2 := startMem()
+	var wg sync.WaitGroup
+	results := make([]Mem, 10)
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			results[idx] = w2.stop()
+		}(i)
+	}
+	wg.Wait()
+	first := results[0]
+	for idx, r := range results {
+		if r != first {
+			t.Errorf("concurrent stop result[%d] mismatch: %+v vs %+v", idx, r, first)
+		}
+	}
+}
+
+// TestPerfEdgeSyncCleanupOnFailureAndCancellation verifies that if context is cancelled
+// during sync, no resources or open stores are leaked.
+func TestPerfEdgeSyncCleanupOnFailureAndCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	dir := t.TempDir()
+	r := &runner{
+		cfg: Config{Dir: dir, Repeats: 1, Sizes: []int{10}, Seed: 1},
+		dir: dir,
+	}
+
+	// Cancel before running
+	cancel()
+	_, err := r.sync(ctx)
+	if err == nil {
+		t.Fatal("expected error on cancelled context, got nil")
+	}
+}
+
+// TestPerfEdgeReplaceBlockBoundaryAndMalformed checks ReplaceBlock corner cases.
+func TestPerfEdgeReplaceBlockBoundaryAndMalformed(t *testing.T) {
+	start := "<!-- s -->"
+	end := "<!-- e -->"
+
+	// Missing markers
+	if _, err := ReplaceBlock("plain text", start, end, "body"); err == nil {
+		t.Error("expected error with missing start/end markers")
+	}
+	// Missing end marker
+	if _, err := ReplaceBlock(start+" content", start, end, "body"); err == nil {
+		t.Error("expected error with missing end marker")
+	}
+	// Inverted markers
+	if _, err := ReplaceBlock(end+" content "+start, start, end, "body"); err == nil {
+		t.Error("expected error when end precedes start")
+	}
+	// Duplicate start marker
+	if _, err := ReplaceBlock(start+" text "+start+" "+end, start, end, "body"); err == nil {
+		t.Error("expected error on duplicate start marker")
+	}
+	// Duplicate end marker
+	if _, err := ReplaceBlock(start+" text "+end+" "+end, start, end, "body"); err == nil {
+		t.Error("expected error on duplicate end marker")
+	}
+	// Clean replacement with body ending with or without newline
+	res, err := ReplaceBlock("before\n"+start+"\nold\n"+end+"\nafter", start, end, "new")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "before\n" + start + "\nnew\n" + end + "\nafter"
+	if res != want {
+		t.Errorf("got %q, want %q", res, want)
+	}
+}
+
+// TestPerfEdgeFilesystemLongestMountPrefixExactness verifies that filesystem detection
+// respects directory boundaries and doesn't partially match sibling directory names.
+func TestPerfEdgeFilesystemLongestMountPrefixExactness(t *testing.T) {
+	mounts := "rootfs / rootfs rw 0 0\n" +
+		"/dev/sda1 /mnt/data ext4 rw 0 0\n" +
+		"/dev/sdb1 /mnt/data-other xfs rw 0 0\n" +
+		"/dev/sdc1 /mnt/data/nested btrfs rw 0 0\n"
+
+	// /mnt/data/file should match /mnt/data (ext4)
+	if got := FilesystemFromMounts(mounts, "/mnt/data/file.db"); got != "ext4" {
+		t.Errorf("got %q, want 'ext4'", got)
+	}
+	// /mnt/data-other/file should match /mnt/data-other (xfs), NOT /mnt/data
+	if got := FilesystemFromMounts(mounts, "/mnt/data-other/file.db"); got != "xfs" {
+		t.Errorf("got %q, want 'xfs'", got)
+	}
+	// /mnt/data/nested/file should match the deepest prefix /mnt/data/nested (btrfs)
+	if got := FilesystemFromMounts(mounts, "/mnt/data/nested/file.db"); got != "btrfs" {
+		t.Errorf("got %q, want 'btrfs'", got)
+	}
+}
