@@ -201,3 +201,124 @@ func TestPerfCLIEdgeArtifactParityAndValidation(t *testing.T) {
 			Seed     int64 `json:"seed"`
 			Repeats  int   `json:"repeats"`
 			Hardware struct {
+				Threads int `json:"threads"`
+			} `json:"hardware"`
+		} `json:"meta"`
+		Store []struct {
+			Name string `json:"name"`
+			Ops  int    `json:"ops"`
+		} `json:"store"`
+		Sync []struct {
+			Mode string `json:"mode"`
+			Ops  int    `json:"ops"`
+		} `json:"sync"`
+		Queue []struct {
+			Jobs        int `json:"jobs"`
+			Concurrency int `json:"concurrency"`
+		} `json:"queue"`
+	}
+	if err := json.Unmarshal(jsonBytes, &rep); err != nil {
+		t.Fatalf("parsing jsonFile: %v", err)
+	}
+	if rep.Meta.Seed != 1 || rep.Meta.Repeats != 1 || rep.Meta.Hardware.Threads < 1 {
+		t.Fatalf("unexpected meta in jsonFile: %+v", rep.Meta)
+	}
+	if len(rep.Store) != 5 { // 1 append + 2 sizes * 2 (open, rebuild)
+		t.Fatalf("expected 5 store rows, got %d", len(rep.Store))
+	}
+	if len(rep.Sync) != 6 { // 2 sizes * 3 sync modes
+		t.Fatalf("expected 6 sync rows, got %d", len(rep.Sync))
+	}
+	if len(rep.Queue) != 1 { // 1 job size * 1 concurrency
+		t.Fatalf("expected 1 queue row, got %d", len(rep.Queue))
+	}
+
+	// 3. Verify SVG file is valid XML
+	svgBytes, err := os.ReadFile(svgFile)
+	if err != nil {
+		t.Fatalf("reading svgFile: %v", err)
+	}
+	dec := xml.NewDecoder(bytes.NewReader(svgBytes))
+	for {
+		_, err := dec.Token()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			t.Fatalf("svgFile is not valid XML: %v", err)
+		}
+	}
+}
+
+// TestPerfCLIEdgeUpdateBlockPermissionsAndFailureCleanup checks that updateBlock
+// preserves file permissions (e.g. 0600) and cleans up temporary files on failure.
+func TestPerfCLIEdgeUpdateBlockPermissionsAndFailureCleanup(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "README.md")
+	content := "header\n" + perfStart + "\nold\n" + perfEnd + "\nfooter\n"
+	if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Update block
+	if err := updateBlock(target, perfStart, perfEnd, "new body\n"); err != nil {
+		t.Fatalf("updateBlock failed: %v", err)
+	}
+
+	// Verify permissions preserved
+	st, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Mode().Perm() != 0o600 {
+		t.Errorf("expected permissions 0600, got %v", st.Mode().Perm())
+	}
+
+	// Verify no tmp files remained
+	tmpFiles, _ := filepath.Glob(filepath.Join(dir, "*.tmp"))
+	if len(tmpFiles) > 0 {
+		t.Errorf("tmp files left behind: %v", tmpFiles)
+	}
+
+	// Attempt update on a file with broken markers
+	broken := filepath.Join(dir, "BROKEN.md")
+	if err := os.WriteFile(broken, []byte("broken without markers"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateBlock(broken, perfStart, perfEnd, "body"); err == nil {
+		t.Fatal("expected error on broken markers, got nil")
+	}
+	tmpFiles, _ = filepath.Glob(filepath.Join(dir, "*.tmp"))
+	if len(tmpFiles) > 0 {
+		t.Errorf("tmp files left behind after failure: %v", tmpFiles)
+	}
+}
+
+// TestPerfCLIEdgeNestedOutputDirectoryCreation verifies that passing paths
+// in non-existent nested subdirectories to -md, -json, and -svg works seamlessly.
+func TestPerfCLIEdgeNestedOutputDirectoryCreation(t *testing.T) {
+	dir := t.TempDir()
+	mdFile := filepath.Join(dir, "nested", "reports", "perf.md")
+	jsonFile := filepath.Join(dir, "nested", "data", "perf.json")
+	svgFile := filepath.Join(dir, "nested", "charts", "perf.svg")
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"perf",
+		"-quick",
+		"-md", mdFile,
+		"-json", jsonFile,
+		"-svg", svgFile,
+	}
+	code := run(args, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("cmdPerf exited %d:\n%s", code, stderr.String())
+	}
+
+	// Verify all files were created in their nested directories
+	for _, f := range []string{mdFile, jsonFile, svgFile} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("file was not created in nested dir: %s (%v)", f, err)
+		}
+	}
+}
