@@ -152,3 +152,42 @@ func TestMissingModelsTreatsLatestAsDefault(t *testing.T) {
 		t.Errorf("missing = %v, want [llama3.2:1b]", got)
 	}
 }
+
+func TestBenchRewritesTheReadmeBlockOnlyWhenEveryModelSucceeded(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "README.md")
+	before := "intro\n" + benchStart + "\nOLD TABLE\n" + benchEnd + "\noutro\n"
+	os.WriteFile(f, []byte(before), 0o644)
+
+	srv := fakeOllama(t, "tiny:1b")
+	var out, errOut bytes.Buffer
+	if code := run([]string{"bench", "-host", srv.URL, "-models", "tiny:1b", "-runs", "1", "-quick", "-readme", f}, &out, &errOut); code != 0 {
+		t.Fatalf("exit %d\n%s", code, errOut.String())
+	}
+	got, _ := os.ReadFile(f)
+	if !strings.HasPrefix(string(got), "intro\n"+benchStart+"\n**Hardware:**") || !strings.HasSuffix(string(got), benchEnd+"\noutro\n") ||
+		strings.Contains(string(got), "OLD TABLE") || !strings.Contains(string(got), "20.0") {
+		t.Fatalf("README after:\n%s", got)
+	}
+
+	// a model that fails must not replace the good table with a broken one
+	os.WriteFile(f, []byte(before), 0o644)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/version":
+			fmt.Fprint(w, `{"version":"9.9.9-test"}`)
+		case "/api/tags":
+			fmt.Fprint(w, `{"models":[{"name":"tiny:1b","size":1,"details":{}}]}`)
+		default:
+			http.Error(w, "boom", http.StatusInternalServerError)
+		}
+	}))
+	defer bad.Close()
+	out.Reset()
+	errOut.Reset()
+	if code := run([]string{"bench", "-host", bad.URL, "-models", "tiny:1b", "-runs", "1", "-quick", "-readme", f}, &out, &errOut); code == 0 {
+		t.Fatal("a failing model gave exit 0")
+	}
+	if b, _ := os.ReadFile(f); string(b) != before {
+		t.Fatalf("README changed after a failed benchmark:\n%s", b)
+	}
+}
