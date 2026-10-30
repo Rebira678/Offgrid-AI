@@ -175,6 +175,52 @@ make bench-store
 | **HLC Timestamp Issue** (`BenchmarkNow`) | 1 op | **55.4 ns** (~18,000,000 ops/s) | Thread-safe, monotonic, causal timestamp issuance (0 allocs). |
 | **CRDT Merge (Small)** (`BenchmarkMergeSmall`) | 4 fields | **345 ns** (~2,900,000 merges/s) | Pure semilattice join over per-field registers. |
 
+### 3. System Costs & Resource Footprint (`make bench-system` / `offgrid perf`)
+
+**System costs** (no model involved; `make bench` regenerates this block, and its Hardware line says which machine produced it):
+
+<!-- perf:start -->
+**Hardware:** Intel(R) Xeon(R) Processor @ 2.80GHz, 2 threads, 7.8 GiB RAM, Ubuntu 24.04.5 LTS  
+**Run:** 2026-10-30, go1.24.7, median of 3 runs (min to max in brackets), seed 1, files in `/tmp/offgrid-perf-2610062450` (ext4). No model is involved in these numbers.
+
+**Store** (one SQLite file, `synchronous=FULL`: every write is on disk when it returns):
+
+| What | Ops | Time (s) | Ops/s | File (MiB) | Peak Go heap (MiB) | Peak RSS (MiB) |
+|---|---|---|---|---|---|---|
+| append (one durable write per op) | 1,000 | 1.16 [1.09 to 1.23] | 860 | 0.3 | 3.6 | 19 |
+| open an existing log | 100 | 0.0010 [0.0010 to 0.0017] | - | 0.1 | 0.5 | 19 |
+| rebuild the view from the log | 100 | 0.025 [0.023 to 0.025] | 4,057 | 0.1 | 1.0 | 18 |
+| open an existing log | 1,000 | 0.0015 [0.0009 to 0.0016] | - | 0.3 | 0.5 | 19 |
+| rebuild the view from the log | 1,000 | 0.186 [0.186 to 0.207] | 5,374 | 0.3 | 3.7 | 20 |
+| open an existing log | 10,000 | 0.0014 [0.0009 to 0.0014] | - | 2.3 | 0.6 | 20 |
+| rebuild the view from the log | 10,000 | 1.47 [1.41 to 1.55] | 6,813 | 2.3 | 4.2 | 23 |
+
+**Sync** (the replica that catches up must end with the same state hash as its source, or the run fails):
+
+| What | Ops | Time (s) | Ops/s | HTTP requests | Peak Go heap (MiB) | Peak RSS (MiB) |
+|---|---|---|---|---|---|---|
+| new replica, in process | 100 | 0.015 [0.014 to 0.017] | 6,661 | - | 1.2 | 20 |
+| new replica, HTTP on localhost | 100 | 0.025 [0.024 to 0.058] | 4,056 | 2 | 1.4 | 19 |
+| 10 new ops on a 100-op log, HTTP | 10 | 0.0044 [0.0034 to 0.0052] | 2,255 | 2 | 0.8 | 20 |
+| new replica, in process | 1,000 | 0.186 [0.174 to 0.224] | 5,380 | - | 3.5 | 21 |
+| new replica, HTTP on localhost | 1,000 | 0.198 [0.187 to 0.214] | 5,039 | 3 | 3.6 | 21 |
+| 10 new ops on a 1,000-op log, HTTP | 10 | 0.0064 [0.0046 to 0.0081] | 1,565 | 2 | 0.7 | 21 |
+| new replica, in process | 10,000 | 2.14 [1.96 to 2.21] | 4,665 | - | 3.8 | 24 |
+| new replica, HTTP on localhost | 10,000 | 2.19 [2.01 to 2.61] | 4,561 | 21 | 3.7 | 25 |
+| 10 new ops on a 10,000-op log, HTTP | 10 | 0.020 [0.017 to 0.027] | 509 | 2 | 0.8 | 24 |
+
+**Queue** (jobs that do nothing, so this is the queue's own cost: claim, run, complete, each a durable write):
+
+| Jobs | At a time | Enqueue (s) | Drain (s) | Jobs/s drained | Peak Go heap (MiB) | Peak RSS (MiB) |
+|---|---|---|---|---|---|---|
+| 100 | 1 | 0.093 [0.085 to 0.094] | 0.192 [0.180 to 0.201] | 522 | 2.2 | 21 |
+| 100 | 4 | 0.088 [0.072 to 0.091] | 0.158 [0.147 to 0.176] | 635 | 2.3 | 21 |
+| 1,000 | 1 | 0.658 [0.627 to 0.720] | 1.53 [1.52 to 1.67] | 652 | 3.6 | 23 |
+| 1,000 | 4 | 0.723 [0.696 to 0.750] | 1.76 [1.56 to 1.83] | 568 | 3.6 | 22 |
+
+Peak RSS is the largest resident memory of the whole process during that row (counter reset before each row). Peak Go heap is sampled every 10 ms, so a very short spike can be missed. Sync over HTTP runs on one machine: it measures protocol, signing and storage cost, not a WiFi link.
+<!-- perf:end -->
+
 ---
 
 ## Architecture
