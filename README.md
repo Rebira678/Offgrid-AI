@@ -12,12 +12,14 @@ with no GPU and costs $0.
 [![Tests](https://img.shields.io/badge/Tests-Passing%20(980%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 23: The AI Never Overwrites a Human (Safe Suggestions & Review).**
+> Status: **Day 25: Benchmarks Anyone Can Reproduce (Store, Sync, Queue & Memory Footprint).**
 > Tasks are logged, updated and reviewed entirely offline; the data survives restarts and `kill -9`;
 > hard requests wait in a durable queue. Tier 2 slow-thinking runs a larger 7-8B local model
 > only while the machine is quiet (`-idle-max-busy`), with optional cloud failover (`-cloud-url`).
 > An AI never overwrites an existing task: changes become suggestions with base snapshots and stale detection; only a person accepts or dismisses them (`make ai-suggests-demo` / `offgrid suggestions -db FILE`).
 > Answers and suggestions are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo` / `make ai-suggests-demo`).
+> Chaos simulation verifies convergence across 1,000+ random schedules (`make sim`).
+> System costs and resource usage are measured and verified with reproducible benchmarks (`make bench-system` / `make bench`).
 > See [Honest limits](#honest-limits).
 
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
@@ -75,6 +77,8 @@ cover, and says so politely for the rest.
 | 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
 | 22 | Tier 2 Deliberate Reasoning: local 7-8B slow thinking gated by CPU idle meter, optional cloud failover, answers synced via op log | `make two-brains-demo` / `offgrid answers -db FILE` |
 | 23 | The AI never overwrites a human: proposals sit alongside tasks with stale detection; CLI accept/dismiss | `make ai-suggests-demo` / `offgrid suggestions -db FILE` |
+| 24 | Deterministic simulation testing: 1,000+ random failure schedules, log oracle, schedule shrinker | `make sim` / `make sim-quick` / `offgrid sim` |
+| 25 | Benchmarks anyone can reproduce: store, sync and queue times, and memory | `make bench-system` / `make bench` / `offgrid perf -quick` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -141,8 +145,11 @@ Measured with `offgrid bench` (medians of 3 runs after a warm-up) and `make benc
 ### 1. Local Language Model Inference (`offgrid bench`)
 
 ```bash
-make bench     # writes docs/benchmarks.md and docs/benchmarks.json
+make bench-models     # or: make bench (runs system + models)
 ```
+
+<!-- bench:start -->
+**Hardware:** HP EliteBook 845 G8, AMD Ryzen 5 PRO 5650U (6 cores / 12 threads), 16 GB RAM, consumer SSD, no GPU used for inference. Zorin OS 18.1.
 
 | Model | Prompt Type | Load Time | Time to First Token | Generation Rate | Prompt Processing |
 |---|---|---|---|---|---|
@@ -150,6 +157,7 @@ make bench     # writes docs/benchmarks.md and docs/benchmarks.json
 | **Llama 3.2 (1B)** | Long (1,176 tok) | 3.3 s | 23.7 s | **13.9 tok/s** | 49.7 tok/s |
 | **Llama 3.2 (3B)** | Short (60 tok) | 0.0 s | **1.0 s** | **9.9 tok/s** | 61.5 tok/s |
 | **Llama 3.2 (3B)** | Long (1,176 tok) | 0.0 s | 16.5 s | **9.0 tok/s** | 71.8 tok/s |
+<!-- bench:end -->
 
 ### 2. Storage & CRDT Replay Throughput (`make bench-store`)
 
@@ -203,6 +211,8 @@ internal/dash           the one-screen view: a pure render function plus a repai
 internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
 internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
+internal/sim            deterministic simulation testing: random failure schedules, log oracle, schedule shrinker
+internal/perf           reproducible benchmarks: store, sync, queue and memory footprint; Markdown, JSON and SVG reports
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
                         release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh
 examples/               sample command and message files
@@ -287,6 +297,3 @@ make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
 
 ---
 
-## Roadmap
-
-The 30-day plan is in the roadmap file; each day has a guide in `docs/`.
