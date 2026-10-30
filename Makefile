@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -19,9 +19,27 @@ fmt:
 models: build
 	./bin/offgrid models
 
-# Full benchmark: writes docs/benchmarks.md and docs/benchmarks.json
-bench: build
-	./bin/offgrid bench -md docs/benchmarks.md -json docs/benchmarks.json
+# Day 25: every benchmark, written to docs/ and into the README blocks between the bench:/perf: markers.
+#   bench-system: store, sync (100 / 1,000 / 10,000 ops), queue drain and memory. No model. About 2 minutes.
+#   bench-models: tokens/sec per model through Ollama. Skipped, with a message, when no Ollama server answers.
+# Put the database files on the disk you care about with DIR=... (default: a temp directory).
+MODELS ?= llama3.2:1b,llama3.2:3b
+DIR ?=
+bench: bench-system bench-models
+
+bench-system: build
+	./bin/offgrid perf $(if $(DIR),-dir $(DIR),) -md docs/perf.md -json docs/perf.json -svg docs/day-25-benchmarks.svg -readme README.md
+
+bench-models: build
+	@if ./bin/offgrid models >/dev/null 2>&1; then \
+		./bin/offgrid bench -models $(MODELS) -md docs/benchmarks.md -json docs/benchmarks.json -readme README.md; \
+	else \
+		echo "bench-models: no Ollama server answered, so tokens/sec was NOT measured (start Ollama and rerun: make bench-models)"; \
+	fi
+
+# A 15-second pass (noisier numbers, nothing written to README).
+bench-quick: build
+	./bin/offgrid perf -quick
 
 # Everything a contributor should run before pushing.
 check: vet
