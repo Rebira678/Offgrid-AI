@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 )
 
 // Migrations change the SOURCE OF TRUTH: the ops log and the small meta table.
@@ -62,10 +64,7 @@ var ErrNewerSchema = errors.New("database was created by a newer version of Offg
 
 // migrate brings db up to the latest version in list.
 func migrate(ctx context.Context, db *sql.DB, list []migration) error {
-	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
-		version INTEGER PRIMARY KEY,
-		name    TEXT NOT NULL
-	)`); err != nil {
+	if err := createSchemaMigrations(ctx, db); err != nil {
 		return fmt.Errorf("sqlstore: create schema_migrations: %w", err)
 	}
 	var current int
@@ -90,6 +89,28 @@ func migrate(ctx context.Context, db *sql.DB, list []migration) error {
 	return nil
 }
 
+func createSchemaMigrations(ctx context.Context, db *sql.DB) error {
+	var err error
+	for i := 0; i < 20; i++ {
+		_, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY,
+			name    TEXT NOT NULL
+		)`)
+		if err == nil {
+			return nil
+		}
+		if !strings.Contains(err.Error(), "database is locked") && !strings.Contains(err.Error(), "busy") {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(10*(i+1)) * time.Millisecond):
+		}
+	}
+	return err
+}
+
 // applyMigration runs one migration and its bookkeeping row in one transaction:
 // either both happen or neither does.
 func applyMigration(ctx context.Context, db *sql.DB, m migration) (err error) {
@@ -99,9 +120,18 @@ func applyMigration(ctx context.Context, db *sql.DB, m migration) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 		}
 	}()
+	// Double-check inside the write transaction: another process might have applied
+	// this migration while we waited for the immediate lock.
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.Version).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return tx.Rollback()
+	}
 	if _, err = tx.ExecContext(ctx, m.SQL); err != nil {
 		return err
 	}
