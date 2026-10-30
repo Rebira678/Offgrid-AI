@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -342,6 +343,11 @@ func missingModels(installed []ollama.Model, wanted []string) []string {
 }
 
 func writeFile(path string, write func(io.Writer) error) (err error) {
+	if d := filepath.Dir(path); d != "" && d != "." {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err
