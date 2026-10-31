@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -122,5 +122,16 @@ sim: build
 
 sim-quick: build
 	bin/offgrid sim -seeds 100
+
+# Day 26: the dashboard, on real data (a laptop and a phone that sync, an AI suggestion a person contradicted,
+# a drain worker behind a scripted outage). SECS=60 keeps it up for a minute; PORT=8787 by default.
+# The network is simulated and the model is a stand-in; the data and the dashboard are real.
+web-demo: build
+	scripts/web-demo.sh $(SECS)
+
+# Same demo with no browser: fetches the page's data and fails if it is wrong.
+web-check: build
+	CHECK=1 scripts/web-demo.sh
+
 
 
