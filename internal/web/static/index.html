@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offgrid</title>
+<link rel="stylesheet" href="style.css?v=nobox">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Crect x='2' y='2' width='6.5' height='6.5' rx='1.5' fill='white'/%3E%3Crect x='11.5' y='2' width='6.5' height='6.5' rx='1.5' fill='white' fill-opacity='0.25'/%3E%3Crect x='2' y='11.5' width='6.5' height='6.5' rx='1.5' fill='white' fill-opacity='0.25'/%3E%3Crect x='11.5' y='11.5' width='6.5' height='6.5' rx='1.5' fill='%2310b981'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="navbar">
+  <div class="nav-brand-section">
+    <div class="brand">
+      <svg class="brand-logo" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="2" y="2" width="6.5" height="6.5" rx="1.5" fill="#ffffff"/>
+        <rect x="11.5" y="2" width="6.5" height="6.5" rx="1.5" fill="#ffffff" fill-opacity="0.25"/>
+        <rect x="2" y="11.5" width="6.5" height="6.5" rx="1.5" fill="#ffffff" fill-opacity="0.25"/>
+        <rect x="11.5" y="11.5" width="6.5" height="6.5" rx="1.5" fill="#10b981"/>
+      </svg>
+      <span class="brand-title">Offgrid</span>
+    </div>
+    <span class="nav-divider"></span>
+    <span class="replica-chip"><span class="replica-dot"></span><span id="node" class="replica-name">—</span></span>
+  </div>
+  <div class="nav-status-section">
+    <span id="pill" class="pill unknown" role="status">connecting…</span>
+    <span id="clock" class="clock-chip mono"></span>
+  </div>
+</header>
+<nav class="tab-bar" aria-label="Main Navigation">
+  <div class="tab-list" id="tab-list" role="tablist">
+    <button class="tab-btn active" role="tab" data-tab="overview" aria-selected="true" id="tab-overview">Overview</button>
+    <button class="tab-btn" role="tab" data-tab="tasks" aria-selected="false" id="tab-tasks">Tasks <span class="tab-count" id="count-tasks">—</span></button>
+    <button class="tab-btn" role="tab" data-tab="suggestions" aria-selected="false" id="tab-suggestions">AI Proposals <span class="tab-count" id="count-suggestions">—</span></button>
+    <button class="tab-btn" role="tab" data-tab="replicas" aria-selected="false" id="tab-replicas">Replication <span class="tab-count" id="count-replicas">—</span></button>
+    <button class="tab-btn" role="tab" data-tab="diagnostics" aria-selected="false" id="tab-diagnostics">Diagnostics</button>
+  </div>
+</nav>
+<div id="banner" class="banner" role="alert" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<main id="main" aria-busy="true">
+  <p class="muted">Loading workspace…</p>
+</main>
+<footer class="app-footer">
+  <div class="footer-content muted">
+    <span>Local-First CRDT Engine // Offline By Default // Zero Telemetry</span>
+    <span id="mode" class="mode-pill"></span>
+  </div>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
