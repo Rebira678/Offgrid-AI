@@ -12,14 +12,13 @@ with no GPU and costs $0.
 [![Tests](https://img.shields.io/badge/Tests-Passing%20(980%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> Status: **Day 25: Benchmarks Anyone Can Reproduce (Store, Sync, Queue & Memory Footprint).**
+> Status: **Day 26: The Dashboard, from the Single Binary (Checkpoint 3, Feature Freeze).**
 > Tasks are logged, updated and reviewed entirely offline; the data survives restarts and `kill -9`;
 > hard requests wait in a durable queue. Tier 2 slow-thinking runs a larger 7-8B local model
 > only while the machine is quiet (`-idle-max-busy`), with optional cloud failover (`-cloud-url`).
 > An AI never overwrites an existing task: changes become suggestions with base snapshots and stale detection; only a person accepts or dismisses them (`make ai-suggests-demo` / `offgrid suggestions -db FILE`).
 > Answers and suggestions are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo` / `make ai-suggests-demo`).
-> Chaos simulation verifies convergence across 1,000+ random schedules (`make sim`).
-> System costs and resource usage are measured and verified with reproducible benchmarks (`make bench-system` / `make bench`).
+> The embedded web dashboard runs directly from the single binary with zero npm, CDN, or network dependencies (`make web-demo` / `offgrid web -db FILE`).
 > See [Honest limits](#honest-limits).
 
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
@@ -79,6 +78,7 @@ cover, and says so politely for the rest.
 | 23 | The AI never overwrites a human: proposals sit alongside tasks with stale detection; CLI accept/dismiss | `make ai-suggests-demo` / `offgrid suggestions -db FILE` |
 | 24 | Deterministic simulation testing: 1,000+ random failure schedules, log oracle, schedule shrinker | `make sim` / `make sim-quick` / `offgrid sim` |
 | 25 | Benchmarks anyone can reproduce: store, sync and queue times, and memory | `make bench-system` / `make bench` / `offgrid perf -quick` |
+| 26 | **Checkpoint 3:** The web dashboard from the single binary; localhost security, stale suggestions, live replica & queue status | `make web-demo` / `make web-check` / `offgrid web -db FILE` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -181,42 +181,42 @@ make bench-store
 
 <!-- perf:start -->
 **Hardware:** AMD Ryzen 5 PRO 5650U with Radeon Graphics, 12 threads, 14.9 GiB RAM, Zorin OS 18.1  
-**Run:** 2026-10-30, go1.26.5, median of 3 runs (min to max in brackets), seed 1, files in `/tmp/offgrid-perf-1056186326` (ext4), CPU governor `performance`. No model is involved in these numbers.
+**Run:** 2026-10-30, go1.26.5, median of 3 runs (min to max in brackets), seed 1, files in `/tmp/offgrid-perf-1295714907` (ext4), CPU governor `performance`. No model is involved in these numbers.
 
 **Store** (one SQLite file, `synchronous=FULL`: every write is on disk when it returns):
 
 | What | Ops | Time (s) | Ops/s | File (MiB) | Peak Go heap (MiB) | Peak RSS (MiB) |
 |---|---|---|---|---|---|---|
-| append (one durable write per op) | 1,000 | 1.04 [1.04 to 1.05] | 964 | 0.3 | 3.5 | 21 |
-| open an existing log | 100 | 0.0007 [0.0006 to 0.0013] | - | 0.1 | 0.9 | 21 |
-| rebuild the view from the log | 100 | 0.010 [0.0098 to 0.011] | 9,617 | 0.1 | 1.4 | 20 |
-| open an existing log | 1,000 | 0.0007 [0.0007 to 0.0009] | - | 0.3 | 0.9 | 22 |
-| rebuild the view from the log | 1,000 | 0.073 [0.069 to 0.074] | 13,766 | 0.3 | 3.2 | 23 |
-| open an existing log | 10,000 | 0.0008 [0.0007 to 0.0011] | - | 2.3 | 1.0 | 24 |
-| rebuild the view from the log | 10,000 | 0.748 [0.727 to 0.776] | 13,375 | 2.3 | 4.8 | 28 |
+| append (one durable write per op) | 1,000 | 0.999 [0.996 to 1.00] | 1,001 | 0.3 | 3.6 | 21 |
+| open an existing log | 100 | 0.0009 [0.0007 to 0.0011] | - | 0.1 | 0.9 | 21 |
+| rebuild the view from the log | 100 | 0.0094 [0.0087 to 0.010] | 10,653 | 0.1 | 1.4 | 20 |
+| open an existing log | 1,000 | 0.0007 [0.0007 to 0.0010] | - | 0.3 | 0.9 | 23 |
+| rebuild the view from the log | 1,000 | 0.074 [0.071 to 0.076] | 13,480 | 0.3 | 3.2 | 24 |
+| open an existing log | 10,000 | 0.0007 [0.0007 to 0.0009] | - | 2.3 | 1.0 | 24 |
+| rebuild the view from the log | 10,000 | 0.663 [0.658 to 0.691] | 15,080 | 2.3 | 5.2 | 27 |
 
 **Sync** (the replica that catches up must end with the same state hash as its source, or the run fails):
 
 | What | Ops | Time (s) | Ops/s | HTTP requests | Peak Go heap (MiB) | Peak RSS (MiB) |
 |---|---|---|---|---|---|---|
-| new replica, in process | 100 | 0.0092 [0.0076 to 0.010] | 10,873 | - | 1.6 | 24 |
-| new replica, HTTP on localhost | 100 | 0.0098 [0.0097 to 0.012] | 10,200 | 2 | 1.9 | 23 |
-| 10 new ops on a 100-op log, HTTP | 10 | 0.0032 [0.0028 to 0.0032] | 3,166 | 2 | 1.2 | 24 |
-| new replica, in process | 1,000 | 0.084 [0.079 to 0.087] | 11,945 | - | 3.6 | 25 |
-| new replica, HTTP on localhost | 1,000 | 0.083 [0.083 to 0.086] | 11,978 | 3 | 3.6 | 26 |
-| 10 new ops on a 1,000-op log, HTTP | 10 | 0.0037 [0.0034 to 0.0037] | 2,706 | 2 | 1.2 | 25 |
-| new replica, in process | 10,000 | 0.943 [0.937 to 0.994] | 10,604 | - | 3.7 | 29 |
-| new replica, HTTP on localhost | 10,000 | 0.976 [0.972 to 0.996] | 10,247 | 21 | 4.1 | 29 |
-| 10 new ops on a 10,000-op log, HTTP | 10 | 0.0091 [0.0088 to 0.013] | 1,095 | 2 | 1.2 | 27 |
+| new replica, in process | 100 | 0.0084 [0.0080 to 0.0085] | 11,850 | - | 1.6 | 23 |
+| new replica, HTTP on localhost | 100 | 0.011 [0.0096 to 0.011] | 9,467 | 2 | 1.9 | 22 |
+| 10 new ops on a 100-op log, HTTP | 10 | 0.0027 [0.0027 to 0.0034] | 3,664 | 2 | 1.3 | 23 |
+| new replica, in process | 1,000 | 0.078 [0.074 to 0.083] | 12,834 | - | 3.6 | 25 |
+| new replica, HTTP on localhost | 1,000 | 0.079 [0.077 to 0.080] | 12,735 | 3 | 3.5 | 25 |
+| 10 new ops on a 1,000-op log, HTTP | 10 | 0.0032 [0.0030 to 0.0033] | 3,170 | 2 | 1.2 | 24 |
+| new replica, in process | 10,000 | 0.838 [0.832 to 0.848] | 11,937 | - | 3.6 | 28 |
+| new replica, HTTP on localhost | 10,000 | 0.888 [0.887 to 0.893] | 11,258 | 21 | 3.7 | 28 |
+| 10 new ops on a 10,000-op log, HTTP | 10 | 0.0089 [0.0082 to 0.012] | 1,126 | 2 | 1.2 | 27 |
 
 **Queue** (jobs that do nothing, so this is the queue's own cost: claim, run, complete, each a durable write):
 
 | Jobs | At a time | Enqueue (s) | Drain (s) | Jobs/s drained | Peak Go heap (MiB) | Peak RSS (MiB) |
 |---|---|---|---|---|---|---|
-| 100 | 1 | 0.084 [0.083 to 0.084] | 0.186 [0.181 to 0.193] | 537 | 2.7 | 26 |
-| 100 | 4 | 0.090 [0.089 to 0.098] | 0.182 [0.179 to 0.193] | 549 | 2.7 | 26 |
-| 1,000 | 1 | 0.781 [0.779 to 1.62] | 1.74 [1.73 to 8.14] | 575 | 3.6 | 28 |
-| 1,000 | 4 | 3.90 [3.86 to 4.11] | 8.14 [8.13 to 8.18] | 123 | 3.1 | 28 |
+| 100 | 1 | 0.087 [0.081 to 0.087] | 0.186 [0.181 to 0.197] | 539 | 2.7 | 25 |
+| 100 | 4 | 0.089 [0.084 to 0.091] | 0.182 [0.181 to 0.193] | 550 | 2.7 | 25 |
+| 1,000 | 1 | 0.763 [0.759 to 0.766] | 1.70 [1.70 to 5.21] | 588 | 3.5 | 27 |
+| 1,000 | 4 | 4.00 [4.00 to 4.03] | 8.19 [8.18 to 8.23] | 122 | 3.2 | 26 |
 
 Peak RSS is the largest resident memory of the whole process during that row (counter reset before each row). Peak Go heap is sampled every 10 ms, so a very short spike can be missed. Sync over HTTP runs on one machine: it measures protocol, signing and storage cost, not a WiFi link.
 <!-- perf:end -->
