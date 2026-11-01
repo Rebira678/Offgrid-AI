@@ -105,12 +105,14 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 			continue
 		}
 		rows, err := s.db.QueryContext(ctx,
-			`SELECT pos, node_id, seq, ts, counter, kind, payload FROM ops WHERE node_id = ? AND seq > ? ORDER BY seq LIMIT ?`,
+			`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, '')
+			 FROM ops o LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
+			 WHERE o.node_id = ? AND o.seq > ? ORDER BY o.seq LIMIT ?`,
 			node, have[node], limit+1)
 		if err != nil {
 			return nil, false, err
 		}
-		got, err := scanOps(rows)
+		got, err := scanOpRows(rows, true)
 		if err != nil {
 			return nil, false, err
 		}
@@ -130,14 +132,22 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 	return ops, false, nil
 }
 
-func scanOps(rows *sql.Rows) ([]Op, error) {
+func scanOps(rows *sql.Rows) ([]Op, error) { return scanOpRows(rows, false) }
+
+// scanOpRows reads ops from rows of pos, node, seq, ts, counter, kind, payload,
+// and also hash when withHash is set.
+func scanOpRows(rows *sql.Rows, withHash bool) ([]Op, error) {
 	defer rows.Close()
 	var out []Op
 	for rows.Next() {
 		var op Op
 		var ts int64
 		var payload string
-		if err := rows.Scan(&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload); err != nil {
+		dst := []any{&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload}
+		if withHash {
+			dst = append(dst, &op.Hash)
+		}
+		if err := rows.Scan(dst...); err != nil {
 			return nil, err
 		}
 		op.TS = fromNanos(ts)
@@ -272,6 +282,15 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 			if !sameOp(held, op) {
 				return res, fmt.Errorf("%w: %s/%d is held with different content", ErrFork, op.NodeID, op.Seq)
 			}
+			if op.Hash != "" {
+				var mine string
+				if err = tx.QueryRowContext(ctx, `SELECT hash FROM op_chain WHERE node_id = ? AND seq = ?`, op.NodeID, op.Seq).Scan(&mine); err != nil {
+					return res, err
+				}
+				if mine != op.Hash {
+					return res, fmt.Errorf("%w: %s/%d has the same content here and there, but its hash differs: an earlier op of %s differs between the two replicas", ErrChain, op.NodeID, op.Seq, op.NodeID)
+				}
+			}
 			res.Duplicates++
 			continue
 		}
@@ -329,6 +348,15 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 			return res, err
 		}
 		fresh[i].Payload = json.RawMessage(compact.Bytes())
+		claimed := fresh[i].Hash
+		var mine string
+		if mine, err = chainAppend(ctx, tx, fresh[i]); err != nil {
+			return res, err
+		}
+		if claimed != "" && claimed != mine {
+			return res, fmt.Errorf("%w: %s/%d arrived with hash %.12s but this replica computes %.12s from its own copy of the earlier ops", ErrChain, fresh[i].NodeID, fresh[i].Seq, claimed, mine)
+		}
+		fresh[i].Hash = mine
 	}
 	sort.Slice(fresh, func(i, j int) bool { return keyOf(fresh[i]).less(keyOf(fresh[j])) })
 	res.Applied = len(fresh)
