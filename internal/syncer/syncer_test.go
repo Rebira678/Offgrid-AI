@@ -524,3 +524,44 @@ func TestAPeerOnAnotherProtocolVersionIsRefused(t *testing.T) {
 		t.Fatalf("err = %v, want ErrProtocol", err)
 	}
 }
+
+func TestTheHashChainTravelsAndAHistoryThatDisagreesIsRefusedWith409Chain(t *testing.T) {
+	ctx := context.Background()
+	clk := &fakeClock{t0}
+	a, b := newStore(t, "node-a", clk), newStore(t, "node-b", clk)
+	add(t, a, "first")
+	clk.t = clk.t.Add(time.Second)
+	add(t, a, "second")
+
+	// The hash is on the wire, and a normal round leaves both replicas on the same chain.
+	ops, _, _ := a.OpsSince(ctx, sqlstore.Summary{}, 10)
+	wire := ToWire(ops)
+	if wire[0].Hash == "" || FromWire(wire)[1].Hash != ops[1].Hash {
+		t.Fatalf("the hash does not travel: %+v", wire)
+	}
+	cl, srv := serve(t, b, clk, key)
+	if _, err := cl.Once(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	ha, _ := a.Heads(ctx)
+	hb, _ := b.Heads(ctx)
+	if fmt.Sprint(ha) != fmt.Sprint(hb) || len(ha) != 1 {
+		t.Fatalf("heads differ after a clean round: %v %v", ha, hb)
+	}
+
+	// A third op arrives claiming a past b does not share.
+	clk.t = clk.t.Add(time.Second)
+	add(t, a, "third")
+	next, _, _ := a.OpsSince(ctx, sqlstore.Summary{"node-a": 2}, 10)
+	next[0].Hash = strings.Repeat("f", 64)
+	body, _ := json.Marshal(PushRequest{Ops: ToWire(next)})
+	code, resp := raw(t, srv, "POST", PathPush, signed("POST", PathPush, "node-a", t0, string(body)), string(body))
+	var e ErrorResponse
+	json.Unmarshal([]byte(resp), &e)
+	if code != 409 || e.Code != "chain" || CodeChain == CodeFork {
+		t.Fatalf("%d %q, want 409 chain", code, resp)
+	}
+	if s, _ := b.Summary(ctx); s["node-a"] != 2 {
+		t.Errorf("the refused push left b at %v", s)
+	}
+}
