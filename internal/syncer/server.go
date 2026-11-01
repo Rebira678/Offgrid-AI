@@ -167,6 +167,8 @@ func classify(err error) (int, string) {
 		return http.StatusConflict, CodeGap
 	case errors.Is(err, sqlstore.ErrFork):
 		return http.StatusConflict, CodeFork
+	case errors.Is(err, sqlstore.ErrChain):
+		return http.StatusConflict, CodeChain
 	case errors.Is(err, sqlstore.ErrIDCollision):
 		return http.StatusConflict, CodeIDCollision
 	case errors.Is(err, sqlstore.ErrClockDrift):
