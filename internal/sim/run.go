@@ -624,6 +624,21 @@ func (w *world) settle() *Failure {
 			return &Failure{"diverged", fmt.Sprintf("same ops %v, different state: r0 %s, r%d %s", sums[0], hashes[0][:12], i, hashes[i][:12])}
 		}
 	}
+	// The hash chain is a fact about each op, not about a replica, so after
+	// every fault the chains must end in the very same heads everywhere.
+	heads := make([]string, n)
+	for i, s := range w.st {
+		hs, err := s.Heads(ctx)
+		if err != nil {
+			return &Failure{"settle", err.Error()}
+		}
+		heads[i] = fmt.Sprint(hs)
+	}
+	for i := 1; i < n; i++ {
+		if heads[i] != heads[0] {
+			return &Failure{"chain", fmt.Sprintf("same ops, different hash chain heads: r0 %s, r%d %s", heads[0], i, heads[i])}
+		}
+	}
 	for i, s := range w.st {
 		rep, err := s.Verify(ctx)
 		if err != nil {
