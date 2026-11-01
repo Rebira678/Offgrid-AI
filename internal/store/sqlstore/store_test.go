@@ -485,6 +485,12 @@ func TestOpenAppliesOpsTheViewHasNotSeen(t *testing.T) {
 		('node-b', 2, ?, 'task.note_added', '{"id":"B1","text":"hello from b"}')`, epoch.UnixNano(), epoch.UnixNano()); err != nil {
 		t.Fatal(err)
 	}
+	foreign, _ := s.Ops(context.Background(), 1, 10) // chain them as sync would have
+	for _, op := range foreign {
+		if _, err := chainAppend(context.Background(), s.db, op); err != nil {
+			t.Fatal(err)
+		}
+	}
 	s.Close()
 
 	s2 := open(t, path, Options{Now: clk.now})
@@ -568,6 +574,12 @@ func TestACorruptLogIsRefusedLoudlyAndNothingIsHalfRebuilt(t *testing.T) {
 		s.Create(ctx, task.NewTask{Title: "good task", Priority: task.PriorityLow})
 		before, _ := snapshot(t, s)
 		if _, err := s.db.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, kind, payload) VALUES `+values); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		// A damaged op that is nonetheless properly chained: this test is about the
+		// replay refusing it. (An op with no chain entry is the chain check's case.)
+		damaged, _ := s.Ops(ctx, 1, 10)
+		if _, err := chainAppend(ctx, s.db, damaged[0]); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 
