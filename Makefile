@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -133,5 +133,6 @@ web-demo: build
 web-check: build
 	CHECK=1 scripts/web-demo.sh
 
-
-
+# Day 27: edit the log by hand and watch it get caught (a careless edit, then a careful one). Needs python3.
+tamper-demo: build
+	scripts/tamper-demo.sh $(PAUSE)
