@@ -29,7 +29,7 @@ func TestProjectionV1ToV2AutomaticMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, raw, migrations); err != nil {
+	if err := migrate(ctx, raw, migrations[:3]); err != nil {
 		t.Fatal(err)
 	}
 
