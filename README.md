@@ -79,6 +79,7 @@ cover, and says so politely for the rest.
 | 24 | Deterministic simulation testing: 1,000+ random failure schedules, log oracle, schedule shrinker | `make sim` / `make sim-quick` / `offgrid sim` |
 | 25 | Benchmarks anyone can reproduce: store, sync and queue times, and memory | `make bench-system` / `make bench` / `offgrid perf -quick` |
 | 26 | **Checkpoint 3:** The web dashboard from the single binary; localhost security, stale suggestions, live replica & queue status | `make web-demo` / `make web-check` / `offgrid web -db FILE` |
+| 27 | Tamper-evident log: SHA-256 hash chain per replica; verify checks it, sync refuses an op built on an edited history | `make tamper-demo` / `offgrid store -db FILE verify` / `head` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -260,7 +261,7 @@ internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-
 internal/sim            deterministic simulation testing: random failure schedules, log oracle, schedule shrinker
 internal/perf           reproducible benchmarks: store, sync, queue and memory footprint; Markdown, JSON and SVG reports
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
-                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh, web-demo.sh, tamper-demo.sh
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
@@ -283,6 +284,7 @@ scripts/prove-merge.sh     # the merge laws, and the broken merges they must cat
 make converge-demo         # runs multi-replica convergence demo
 make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
 make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
+make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
 ```
 
 ### Quality Guarantees
@@ -302,6 +304,7 @@ make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
 - **UTF-8 Boundary Safety:** Truncation guards ensure multi-byte UTF-8 runes (Japanese, Amharic, Emoji) crossing the 8KB limit are never bisected, preventing JSON encoding or SQLite projection errors.
 - **Race Detection:** Clean under `go test -race ./...`.
 - **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
+- **Cryptographic Tamper-Evident Hash Chain (Day 27):** SHA-256 chain per replica with SQLite trigger protection (`op_chain`). `offgrid store verify` detects altered or reordered ops, `-anchor` compares heads against external checkpoints, and remote sync refuses an op built on an edited history with HTTP 409 conflict code `chain` (`make tamper-demo`).
 - **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
 
 ---
@@ -327,6 +330,20 @@ make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
   on a wrong answer the oracles do not recompute would pass. It models neither a
   disk that loses committed writes, nor a replica restored from an old backup
   (that forks the log, which sync refuses on purpose), nor a hostile peer.
+- **The dashboard (Day 26) is for this machine only.** It has no login and no
+  encryption, so it refuses any address but 127.0.0.1, ::1 or localhost, and any
+  request whose Host is not one of those (DNS rebinding) or that comes from
+  another site. Anyone who can use a browser on your computer can use it: accept
+  and dismiss included (`-read-only` removes those).
+- **Tamper-evident, not tamper-proof (Day 27).** Editing, deleting or reordering
+  an op without rewriting what follows makes `offgrid store verify` fail and name
+  the op. Someone who can write the file can also recompute every later hash and
+  rebuild the view; that passes `verify` on its own. It is caught by a head you
+  saved elsewhere (`store head`, then `verify -anchor FILE`) or the next time that
+  replica syncs with one that kept the real history. Without one of those, a
+  full rewrite is invisible. Databases from before Day 27 are chained when first
+  opened, so edits made before then cannot be seen. The chain is not
+  authentication: it does not say who made an op, and HMAC sync is still a shared key.
 - **The log only grows.** No compaction of old ops or tombstones.
 - **Model quality is measured separately** (`offgrid bench`, `offgrid eval`);
   the benchmark table above is filled from measurements on this machine.
