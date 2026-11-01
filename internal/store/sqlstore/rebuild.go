@@ -162,6 +162,8 @@ var ErrDiverged = errors.New("the materialized view does not match the op log")
 
 // VerifyReport says what Verify checked.
 type VerifyReport struct {
+	ChainHeads []Head // the newest hash-chain entry of every replica, once the chain has been recomputed
+	ChainRetro int    // ops chained when the database was upgraded, not when written (see ChainReport)
 	Ops        int
 	LiveHash   string // hash of the view in the database
 	ReplayHash string // hash of the view recomputed from the log in a scratch database
@@ -177,6 +179,13 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 	if err := s.checkSequences(ctx); err != nil {
 		return rep, err
 	}
+	// The hash chain first: if an op was edited, say so, instead of reporting
+	// the view differences that follow from it.
+	chain, err := s.VerifyChain(ctx)
+	if err != nil {
+		return rep, err
+	}
+	rep.ChainHeads, rep.ChainRetro = chain.Heads, chain.Retro
 	scratch, err := sql.Open(driverName, dsn(":memory:"))
 	if err != nil {
 		return rep, err
