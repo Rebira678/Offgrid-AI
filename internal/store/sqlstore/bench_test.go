@@ -106,3 +106,20 @@ func BenchmarkFields(b *testing.B) {
 }
 
 func newBenchDB(b *testing.B) string { return b.TempDir() + "/bench.db" }
+
+// BenchmarkVerifyChain: the cost of recomputing every hash in a 10,000-op log.
+func BenchmarkVerifyChain10k(b *testing.B) {
+	ctx := context.Background()
+	s, err := Open(ctx, b.TempDir()+"/bench.db", Options{NodeID: "bench"})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	fill(b, s, 10000)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := s.VerifyChain(ctx); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
