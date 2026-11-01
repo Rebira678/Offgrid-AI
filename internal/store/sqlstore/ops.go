@@ -51,6 +51,10 @@ type Op struct {
 	Counter uint32          `json:"hlc_counter"` // its logical part; (TS, Counter) is the timestamp
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"` // everything apply needs; see below
+	// Hash is the op's place in its replica's hash chain (see chain.go). It is
+	// filled in when ops are read to be sent or shown; an op built by hand may
+	// leave it empty, and ApplyRemote then chains the op without a cross-check.
+	Hash string `json:"hash,omitempty"`
 }
 
 // Payloads carry every decision made at write time. That is the rule that makes
@@ -180,7 +184,9 @@ func fromNanos(n int64) time.Time {
 // loadOps reads up to limit ops with pos > after, in log order.
 func loadOps(ctx context.Context, x execer, after int64, limit int) ([]Op, error) {
 	rows, err := x.QueryContext(ctx,
-		`SELECT pos, node_id, seq, ts, counter, kind, payload FROM ops WHERE pos > ? ORDER BY pos LIMIT ?`, after, limit)
+		`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, '')
+		 FROM ops o LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
+		 WHERE o.pos > ? ORDER BY o.pos LIMIT ?`, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +196,7 @@ func loadOps(ctx context.Context, x execer, after int64, limit int) ([]Op, error
 		var op Op
 		var ts int64
 		var payload string
-		if err := rows.Scan(&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload); err != nil {
+		if err := rows.Scan(&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload, &op.Hash); err != nil {
 			return nil, err
 		}
 		op.TS = fromNanos(ts)
