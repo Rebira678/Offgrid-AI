@@ -68,11 +68,11 @@ func main() {
 	tFilter := findTask("Replace water filter")
 	if tFilter != nil {
 		sug, created, err := st.Suggest(ctx, task.Draft{
-			Task:     tFilter.ID,
-			Status:   stat(task.StatusInProgress),
-			Note:     "Spare filter cartridge arrived at Site 2 gate. Ready to begin replacement.",
-			By:       "llama3.2:3b",
-			Key:      "prop-filter-replace",
+			Task:   tFilter.ID,
+			Status: stat(task.StatusInProgress),
+			Note:   "Spare filter cartridge arrived at Site 2 gate. Ready to begin replacement.",
+			By:     "llama3.2:3b",
+			Key:    "prop-filter-replace",
 		})
 		if err != nil {
 			fmt.Printf("filter suggest err: %v\n", err)
