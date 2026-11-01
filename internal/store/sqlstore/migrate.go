@@ -56,6 +56,23 @@ ALTER TABLE ops ADD COLUMN counter INTEGER NOT NULL DEFAULT 0 CHECK (counter >= 
 -- On start-up the store restores its clock from the newest timestamp.
 CREATE INDEX ops_hlc ON ops (ts, counter);
 `},
+	{4, "tamper-evident log: a hash chain per replica, beside the ops", `
+-- One row per op: its hash and the hash of the same replica's previous op. Kept in
+-- its own table so the ops table never changes shape and old logs migrate without
+-- a rewrite. Rows are added with the op and never changed or removed. Ops that
+-- already exist are chained by the program when it opens the database.
+CREATE TABLE op_chain (
+	node_id TEXT    NOT NULL,
+	seq     INTEGER NOT NULL CHECK (seq >= 1),
+	prev    TEXT    NOT NULL,
+	hash    TEXT    NOT NULL,
+	PRIMARY KEY (node_id, seq)
+) WITHOUT ROWID;
+CREATE TRIGGER op_chain_append_only_update BEFORE UPDATE ON op_chain
+BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: updates are not allowed'); END;
+CREATE TRIGGER op_chain_append_only_delete BEFORE DELETE ON op_chain
+BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: deletes are not allowed'); END;
+`},
 }
 
 // ErrNewerSchema means the database was written by a newer Offgrid than this
