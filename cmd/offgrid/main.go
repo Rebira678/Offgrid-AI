@@ -36,7 +36,7 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.26.0-day26"
+const version = "0.27.0-day27"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -131,7 +131,7 @@ Usage:
   offgrid tools                                     list the tools a model can ask for
   offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
   offgrid agent  -route [-queue FILE] [-net auto|online|offline] ...      hard messages wait in the durable queue
-  offgrid store  -db FILE info|verify|rebuild|ops|fields   inspect the SQLite task store
+  offgrid store  -db FILE info|verify [-anchor F]|head|rebuild|ops|fields   inspect the task store; verify checks the hash chain
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
   offgrid task   -db FILE list|delete REF|remove-note REF N          show and delete tasks (no model involved)
   offgrid sync   serve|once|summary -db FILE ...                       exchange tasks with another replica over HTTP (HMAC-signed)
