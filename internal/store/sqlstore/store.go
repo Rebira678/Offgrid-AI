@@ -99,8 +99,20 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 	if err := s.db.PingContext(ctx); err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
 	}
+	// A database that has no hash chain yet gets one now, from the ops as they
+	// stand. Only then: a chain that goes missing later must be reported by
+	// Verify, never quietly rebuilt from the ops it was meant to protect.
+	var hadChain int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_chain'`).Scan(&hadChain); err != nil {
+		return fmt.Errorf("sqlstore: %w", err)
+	}
 	if err := migrate(ctx, s.db, migrations); err != nil {
 		return err
+	}
+	if hadChain == 0 {
+		if err := s.backfillChain(ctx); err != nil {
+			return err
+		}
 	}
 	node, err := s.settleNodeID(ctx, opt.NodeID)
 	if err != nil {
@@ -297,6 +309,9 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 		return err
 	}
 	op := Op{Pos: pos, NodeID: s.node, Seq: seq, TS: stamp.Time(), Counter: stamp.Counter, Kind: kind, Payload: raw}
+	if _, err := chainAppend(ctx, tx, op); err != nil {
+		return err
+	}
 	if err := applyOp(ctx, tx, op); err != nil {
 		return err
 	}
