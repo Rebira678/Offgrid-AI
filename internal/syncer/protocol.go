@@ -58,13 +58,14 @@ type WireOp struct {
 	Counter uint32          `json:"counter"`
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
+	Hash    string          `json:"hash,omitempty"` // the op's hash-chain entry; the receiver checks it against its own
 }
 
 // ToWire converts store ops for sending.
 func ToWire(ops []sqlstore.Op) []WireOp {
 	out := make([]WireOp, len(ops))
 	for i, op := range ops {
-		out[i] = WireOp{op.NodeID, op.Seq, op.TS.UnixNano(), op.Counter, op.Kind, op.Payload}
+		out[i] = WireOp{op.NodeID, op.Seq, op.TS.UnixNano(), op.Counter, op.Kind, op.Payload, op.Hash}
 	}
 	return out
 }
@@ -73,7 +74,7 @@ func ToWire(ops []sqlstore.Op) []WireOp {
 func FromWire(ops []WireOp) []sqlstore.Op {
 	out := make([]sqlstore.Op, len(ops))
 	for i, w := range ops {
-		out[i] = sqlstore.Op{NodeID: w.Node, Seq: w.Seq, TS: time.Unix(0, w.TS).UTC(), Counter: w.Counter, Kind: w.Kind, Payload: w.Payload}
+		out[i] = sqlstore.Op{NodeID: w.Node, Seq: w.Seq, TS: time.Unix(0, w.TS).UTC(), Counter: w.Counter, Kind: w.Kind, Payload: w.Payload, Hash: w.Hash}
 	}
 	return out
 }
@@ -123,6 +124,7 @@ const (
 	CodeBadRequest   = "bad_request"
 	CodeGap          = "gap"
 	CodeFork         = "fork"
+	CodeChain        = "chain"
 	CodeBadOp        = "bad_op"
 	CodeIDCollision  = "id_collision"
 	CodeClockDrift   = "clock_drift"
