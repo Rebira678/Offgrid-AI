@@ -78,7 +78,7 @@ func cmdSim(args []string, stdout, stderr io.Writer) int {
 		t.Edits, t.Syncs, t.Dropped, t.Duplicated, t.Delayed, t.Truncated, t.Reversed, t.Gapped, t.Partitions, t.Blocked)
 	fmt.Fprintf(stdout, "        %d clock skews (%d syncs refused as too far ahead), %d crashes and restarts, %d refolds of a view\n", t.Skews, t.DriftRefusals, t.Crashes, t.Rebuilds)
 	fmt.Fprintf(stdout, "checked: every new edit sorts after what its replica had seen; a refused batch changes nothing; at the end the same ops and the same state everywhere,\n")
-	fmt.Fprintf(stdout, "         each view == a replay of its own log, rebuild changes nothing, a fresh replica fed the ops in another order agrees,\n")
+	fmt.Fprintf(stdout, "         each view == a replay of its own log, every hash chain verifies and ends in the same heads, rebuild changes nothing, a fresh replica fed the ops in another order agrees,\n")
 	fmt.Fprintf(stdout, "         and delete-vs-edit and suggestion outcomes match a recomputation from the raw log\n")
 	if len(sum.Failed) == 0 {
 		fmt.Fprintf(stdout, "PASS: %d of %d schedules converged (%.1fs, %d ops converged in total)\n", sum.Runs, sum.Runs, sum.Elapsed.Seconds(), sum.Ops)
