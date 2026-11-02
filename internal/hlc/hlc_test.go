@@ -375,9 +375,9 @@ func TestRemoteBehindNeverMovesTheClockBack(t *testing.T) {
 
 func TestRestoreSurvivesARestartWithAClockThatIsBehind(t *testing.T) {
 	c, f := newClock(2000)
-	last := c.Now()
+	_ = c.Now()
 	f.Set(2001)
-	last = c.Now()
+	last := c.Now()
 
 	// the process restarts and the battery-dead clock now says 1500
 	c2, _ := newClock(1500)

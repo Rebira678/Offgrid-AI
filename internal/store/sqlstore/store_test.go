@@ -687,7 +687,7 @@ func TestStateHashIsDeterministicAndSensitive(t *testing.T) {
 		h, _ := s.StateHash(ctx)
 		return h
 	}
-	if run("same") != run("same") {
+	if run("same") != run("same") { //nolint:staticcheck // the point: two runs of one history must agree
 		t.Error("the same history gave different hashes")
 	}
 	if run("one") == run("two") {

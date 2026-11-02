@@ -71,7 +71,7 @@ func TestExecAsAIProposesInsteadOfChangingAndASuggestionCanBeAccepted(t *testing
 	if code, out, _ = runCmd(t, "suggestions", "-db", db); code != 0 || !strings.Contains(out, "no suggestions") {
 		t.Fatalf("%s", out)
 	}
-	if code, out, _ = runCmd(t, "suggestions", "-db", db, "-all"); !strings.Contains(out, "[accepted]") {
+	if _, out, _ = runCmd(t, "suggestions", "-db", db, "-all"); !strings.Contains(out, "[accepted]") {
 		t.Fatalf("%s", out)
 	}
 	if code, _, e = runCmd(t, "suggestions", "-db", db, "accept", id); code != 1 || !strings.Contains(e, "already accepted or dismissed") {
@@ -91,7 +91,7 @@ func TestAnAIStillCreatesNewTasksDirectlyAndNeedsADatabase(t *testing.T) {
 	if code, _, e := runCmd(t, "exec", "-as-ai", `{"intent":"list_tasks"}`); code != 2 || !strings.Contains(e, "-db") {
 		t.Fatalf("%d %s", code, e)
 	}
-	code, out, _ = runCmd(t, "exec", "-as-ai", "-json", "-db", db, `{"intent":"add_note","task_ref":"T2","note":"x"}`)
+	_, out, _ = runCmd(t, "exec", "-as-ai", "-json", "-db", db, `{"intent":"add_note","task_ref":"T2","note":"x"}`)
 	var r struct {
 		OK      bool
 		Changed bool
