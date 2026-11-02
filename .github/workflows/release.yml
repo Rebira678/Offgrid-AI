@@ -1,0 +1,82 @@
+# Day 28. Push a tag like v0.28.0 and this builds the Linux binaries, tests them,
+# and publishes a GitHub release with checksums. Nothing is published from a branch.
+#
+#   git tag -a v0.28.0 -m "v0.28.0" && git push origin v0.28.0
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build linux/${{ matrix.arch }}
+    # Each architecture builds on its own kind of machine: sqlite needs cgo, and this avoids a cross compiler.
+    # 22.04 on purpose: a binary links to the glibc it was built with, so an older build runs on more systems (glibc 2.35+).
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - {arch: amd64, runner: ubuntu-22.04}
+          - {arch: arm64, runner: ubuntu-22.04-arm}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: tests
+        run: go test -count=1 ./...
+
+      - name: build
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          ver="${tag#v}"
+          name="offgrid-${tag}-linux-${{ matrix.arch }}"
+          mkdir -p "dist/${name}"
+          go build -trimpath -ldflags "-s -w -X main.version=${ver}" -o "dist/${name}/offgrid" ./cmd/offgrid
+          # the binary must say the version of the tag it was built from
+          test "$("dist/${name}/offgrid" version)" = "offgrid ${ver}"
+          cp LICENSE README.md "dist/${name}/"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offgrid-linux-${{ matrix.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write   # the only job allowed to create a release
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: checksums
+        working-directory: dist
+        run: sha256sum *.tar.gz | tee SHA256SUMS
+
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/SHA256SUMS \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
