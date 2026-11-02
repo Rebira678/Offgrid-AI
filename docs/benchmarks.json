@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "date": "2026-10-07",
+    "ollama_version": "0.40.0",
+    "hardware": {
+      "cpu": "AMD Ryzen 5 PRO 5650U with Radeon Graphics",
+      "threads": 12,
+      "mem_gib": 14.934768676757812,
+      "os": "Zorin OS 18.1"
+    },
+    "runs_per_cell": 3
+  },
+  "rows": [
+    {
+      "model": "llama3.2:1b",
+      "prompt": "short",
+      "runs": 3,
+      "load_seconds": 3.328650251,
+      "ttft_seconds": 0.687246394,
+      "gen_tokens_per_sec": 16.048556512584476,
+      "prompt_tokens_per_sec": 87.97692658472106,
+      "prompt_tokens": 60,
+      "gen_tokens": 10
+    },
+    {
+      "model": "llama3.2:1b",
+      "prompt": "long",
+      "runs": 3,
+      "load_seconds": 3.328650251,
+      "ttft_seconds": 23.684088017,
+      "gen_tokens_per_sec": 13.884746320542225,
+      "prompt_tokens_per_sec": 49.673091081272524,
+      "prompt_tokens": 1176,
+      "gen_tokens": 81
+    },
+    {
+      "model": "llama3.2:3b",
+      "prompt": "short",
+      "runs": 3,
+      "load_seconds": 0.004990259,
+      "ttft_seconds": 0.997455097,
+      "gen_tokens_per_sec": 9.931345684178183,
+      "prompt_tokens_per_sec": 61.4993542567803,
+      "prompt_tokens": 60,
+      "gen_tokens": 83
+    },
+    {
+      "model": "llama3.2:3b",
+      "prompt": "long",
+      "runs": 3,
+      "load_seconds": 0.004990259,
+      "ttft_seconds": 16.532505665,
+      "gen_tokens_per_sec": 9.039439072674078,
+      "prompt_tokens_per_sec": 71.77995488605421,
+      "prompt_tokens": 1176,
+      "gen_tokens": 96
+    }
+  ]
+}

@@ -1,0 +1,337 @@
+{
+  "meta": {
+    "date": "2026-10-30",
+    "hardware": {
+      "cpu": "AMD Ryzen 5 PRO 5650U with Radeon Graphics",
+      "threads": 12,
+      "mem_gib": 14.934738159179688,
+      "os": "Zorin OS 18.1"
+    },
+    "go": "go1.26.5",
+    "dir": "/tmp/offgrid-perf-1295714907",
+    "dir_filesystem": "ext4",
+    "cpu_governor": "performance",
+    "repeats": 3,
+    "seed": 1,
+    "rss_peak_per_phase": true
+  },
+  "store": [
+    {
+      "name": "append (one durable write per op)",
+      "ops": 1000,
+      "seconds": {
+        "median": 0.998886674,
+        "min": 0.995881836,
+        "max": 1.003306174
+      },
+      "ops_per_sec": 1001.1145668762821,
+      "db_mib": 0.29296875,
+      "memory": {
+        "peak_go_heap_mib": 3.565673828125,
+        "peak_rss_mib": 21.2421875
+      }
+    },
+    {
+      "name": "open an existing log",
+      "ops": 100,
+      "seconds": {
+        "median": 0.000859764,
+        "min": 0.000689963,
+        "max": 0.001071725
+      },
+      "ops_per_sec": 0,
+      "db_mib": 0.08984375,
+      "memory": {
+        "peak_go_heap_mib": 0.9059524536132812,
+        "peak_rss_mib": 21.29296875
+      }
+    },
+    {
+      "name": "rebuild the view from the log",
+      "ops": 100,
+      "seconds": {
+        "median": 0.009386806,
+        "min": 0.008721689,
+        "max": 0.010057002
+      },
+      "ops_per_sec": 10653.250956715203,
+      "db_mib": 0.08984375,
+      "memory": {
+        "peak_go_heap_mib": 1.4190902709960938,
+        "peak_rss_mib": 20.0390625
+      }
+    },
+    {
+      "name": "open an existing log",
+      "ops": 1000,
+      "seconds": {
+        "median": 0.000744186,
+        "min": 0.000678162,
+        "max": 0.001037811
+      },
+      "ops_per_sec": 0,
+      "db_mib": 0.29296875,
+      "memory": {
+        "peak_go_heap_mib": 0.944061279296875,
+        "peak_rss_mib": 22.78515625
+      }
+    },
+    {
+      "name": "rebuild the view from the log",
+      "ops": 1000,
+      "seconds": {
+        "median": 0.074183295,
+        "min": 0.070988618,
+        "max": 0.075702455
+      },
+      "ops_per_sec": 13480.123793368844,
+      "db_mib": 0.29296875,
+      "memory": {
+        "peak_go_heap_mib": 3.2270050048828125,
+        "peak_rss_mib": 23.5859375
+      }
+    },
+    {
+      "name": "open an existing log",
+      "ops": 10000,
+      "seconds": {
+        "median": 0.000726783,
+        "min": 0.000684303,
+        "max": 0.000926941
+      },
+      "ops_per_sec": 0,
+      "db_mib": 2.29296875,
+      "memory": {
+        "peak_go_heap_mib": 1.0147323608398438,
+        "peak_rss_mib": 23.8828125
+      }
+    },
+    {
+      "name": "rebuild the view from the log",
+      "ops": 10000,
+      "seconds": {
+        "median": 0.663108266,
+        "min": 0.658293319,
+        "max": 0.690605631
+      },
+      "ops_per_sec": 15080.493658029594,
+      "db_mib": 2.29296875,
+      "memory": {
+        "peak_go_heap_mib": 5.167640686035156,
+        "peak_rss_mib": 27.4453125
+      }
+    }
+  ],
+  "sync": [
+    {
+      "mode": "new replica, in process",
+      "ops": 100,
+      "seconds": {
+        "median": 0.008438825,
+        "min": 0.008028019,
+        "max": 0.008548041
+      },
+      "ops_per_sec": 11849.990964381888,
+      "memory": {
+        "peak_go_heap_mib": 1.574737548828125,
+        "peak_rss_mib": 23.39453125
+      }
+    },
+    {
+      "mode": "new replica, HTTP on localhost",
+      "ops": 100,
+      "seconds": {
+        "median": 0.010562467,
+        "min": 0.009589659,
+        "max": 0.01126817
+      },
+      "ops_per_sec": 9467.485200190447,
+      "requests": 2,
+      "memory": {
+        "peak_go_heap_mib": 1.905792236328125,
+        "peak_rss_mib": 22.45703125
+      }
+    },
+    {
+      "mode": "10 new ops on a 100-op log, HTTP",
+      "ops": 10,
+      "seconds": {
+        "median": 0.002729467,
+        "min": 0.002691766,
+        "max": 0.003448876
+      },
+      "ops_per_sec": 3663.7189605150015,
+      "requests": 2,
+      "memory": {
+        "peak_go_heap_mib": 1.2790679931640625,
+        "peak_rss_mib": 23.31640625
+      }
+    },
+    {
+      "mode": "new replica, in process",
+      "ops": 1000,
+      "seconds": {
+        "median": 0.077915957,
+        "min": 0.074299904,
+        "max": 0.08325238
+      },
+      "ops_per_sec": 12834.341494387345,
+      "memory": {
+        "peak_go_heap_mib": 3.5776519775390625,
+        "peak_rss_mib": 24.68359375
+      }
+    },
+    {
+      "mode": "new replica, HTTP on localhost",
+      "ops": 1000,
+      "seconds": {
+        "median": 0.078522373,
+        "min": 0.077024081,
+        "max": 0.079777273
+      },
+      "ops_per_sec": 12735.223883261908,
+      "requests": 3,
+      "memory": {
+        "peak_go_heap_mib": 3.5116119384765625,
+        "peak_rss_mib": 25.1640625
+      }
+    },
+    {
+      "mode": "10 new ops on a 1,000-op log, HTTP",
+      "ops": 10,
+      "seconds": {
+        "median": 0.0031544,
+        "min": 0.002991753,
+        "max": 0.003288994
+      },
+      "ops_per_sec": 3170.17499365965,
+      "requests": 2,
+      "memory": {
+        "peak_go_heap_mib": 1.224334716796875,
+        "peak_rss_mib": 24.1796875
+      }
+    },
+    {
+      "mode": "new replica, in process",
+      "ops": 10000,
+      "seconds": {
+        "median": 0.837740456,
+        "min": 0.831671179,
+        "max": 0.847695985
+      },
+      "ops_per_sec": 11936.871292747977,
+      "memory": {
+        "peak_go_heap_mib": 3.6324081420898438,
+        "peak_rss_mib": 28.453125
+      }
+    },
+    {
+      "mode": "new replica, HTTP on localhost",
+      "ops": 10000,
+      "seconds": {
+        "median": 0.888247524,
+        "min": 0.887146723,
+        "max": 0.89290274
+      },
+      "ops_per_sec": 11258.123135505639,
+      "requests": 21,
+      "memory": {
+        "peak_go_heap_mib": 3.6815261840820312,
+        "peak_rss_mib": 28.23046875
+      }
+    },
+    {
+      "mode": "10 new ops on a 10,000-op log, HTTP",
+      "ops": 10,
+      "seconds": {
+        "median": 0.008878294,
+        "min": 0.008200063,
+        "max": 0.012327822
+      },
+      "ops_per_sec": 1126.3425158031487,
+      "requests": 2,
+      "memory": {
+        "peak_go_heap_mib": 1.23260498046875,
+        "peak_rss_mib": 26.5078125
+      }
+    }
+  ],
+  "queue": [
+    {
+      "jobs": 100,
+      "concurrency": 1,
+      "enqueue_seconds": {
+        "median": 0.086787929,
+        "min": 0.081159484,
+        "max": 0.08703764
+      },
+      "drain_seconds": {
+        "median": 0.185693943,
+        "min": 0.180601031,
+        "max": 0.1965151
+      },
+      "drain_jobs_per_sec": 538.5205267572998,
+      "memory": {
+        "peak_go_heap_mib": 2.702178955078125,
+        "peak_rss_mib": 24.85546875
+      }
+    },
+    {
+      "jobs": 100,
+      "concurrency": 4,
+      "enqueue_seconds": {
+        "median": 0.088622535,
+        "min": 0.083891055,
+        "max": 0.091231815
+      },
+      "drain_seconds": {
+        "median": 0.181949709,
+        "min": 0.180978324,
+        "max": 0.193007733
+      },
+      "drain_jobs_per_sec": 549.6024178857027,
+      "memory": {
+        "peak_go_heap_mib": 2.7276229858398438,
+        "peak_rss_mib": 25.2734375
+      }
+    },
+    {
+      "jobs": 1000,
+      "concurrency": 1,
+      "enqueue_seconds": {
+        "median": 0.762980188,
+        "min": 0.758777086,
+        "max": 0.766164546
+      },
+      "drain_seconds": {
+        "median": 1.70131323,
+        "min": 1.698196423,
+        "max": 5.208219178
+      },
+      "drain_jobs_per_sec": 587.7812400248013,
+      "memory": {
+        "peak_go_heap_mib": 3.5387039184570312,
+        "peak_rss_mib": 26.5859375
+      }
+    },
+    {
+      "jobs": 1000,
+      "concurrency": 4,
+      "enqueue_seconds": {
+        "median": 3.9994498419999998,
+        "min": 3.995388667,
+        "max": 4.02531616
+      },
+      "drain_seconds": {
+        "median": 8.189017032,
+        "min": 8.177696033,
+        "max": 8.231980121
+      },
+      "drain_jobs_per_sec": 122.11477837844603,
+      "memory": {
+        "peak_go_heap_mib": 3.1787490844726562,
+        "peak_rss_mib": 26.40234375
+      }
+    }
+  ]
+}
