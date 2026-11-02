@@ -1,0 +1,25 @@
+# Day 28. `make lint` and CI use this file (golangci-lint v2).
+# The default set (errcheck, govet, ineffassign, staticcheck, unused) stays on.
+# What is switched off, and why:
+#  - style-only staticcheck suggestions (QF*): they rewrite working code and change no behaviour
+#  - errcheck on Close/Remove/RemoveAll: best-effort cleanup, where there is nothing to do with the error
+#  - errcheck on writes to a terminal or response (Fprint*, Write, Flush, Encode), on Rollback after a failed
+#    transaction (the original error is the one to report), on Shutdown/Run of background loops at exit,
+#    and on the deferred closeStore() of a command: nothing useful can be done with those errors
+#  - errcheck in tests: a test that ignores an error is still caught by its own assertions
+version: "2"
+linters:
+  settings:
+    staticcheck:
+      checks: ["all", "-QF*", "-ST*"]
+  exclusions:
+    rules:
+      - linters: [errcheck]
+        path: _test\.go
+      - linters: [errcheck]
+        text: "Error return value of `[^`]*\\.(Close|Remove|RemoveAll)` is not checked"
+      - linters: [errcheck]
+        text: "Error return value of `([a-z]+\\.)?(Fprint|Fprintf|Fprintln|WriteString|Write|Flush|Encode|Rollback|Shutdown|Run)` is not checked"
+      - linters: [errcheck]
+        path: cmd/offgrid/
+        text: "Error return value is not checked"
