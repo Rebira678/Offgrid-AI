@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -136,3 +136,19 @@ web-check: build
 # Day 27: edit the log by hand and watch it get caught (a careless edit, then a careful one). Needs python3.
 tamper-demo: build
 	scripts/tamper-demo.sh $(PAUSE)
+
+# Day 28: the same lint CI runs (golangci-lint v2; config in .golangci.yml).
+lint:
+	golangci-lint run ./...
+
+# Day 28: build the release binary exactly as the release workflow does, for this machine only.
+#   make release-local VERSION=0.28.0
+VERSION ?= 0.28.0
+release-local:
+	mkdir -p dist
+	CGO_ENABLED=1 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o dist/offgrid ./cmd/offgrid
+	@test "$$(./dist/offgrid version)" = "offgrid $(VERSION)" && echo "ok: ./dist/offgrid version says $(VERSION)"
+
+# Day 28: open the starter issues on GitHub (needs gh, logged in). DRY=1 only prints them.
+good-first-issues:
+	scripts/create-good-first-issues.sh
