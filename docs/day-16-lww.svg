@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="900" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Two people edit one task. Who wins?</text>
+<text xml:space="preserve" x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid: a simulated example. Each field of a task is its own last-writer-wins register.</text>
+<rect x="60" y="160" width="420" height="250" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="82" y="200" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">Lidia (offline)</text>
+<text xml:space="preserve" x="82" y="246" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">priority</text>
+<text xml:space="preserve" x="210" y="246" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f5fa8" font-weight="bold" text-anchor="start">low</text>
+<text xml:space="preserve" x="82" y="270" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">10:02:00 lidia</text>
+<text xml:space="preserve" x="82" y="304" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">status</text>
+<text xml:space="preserve" x="210" y="304" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="bold" text-anchor="start">open</text>
+<text xml:space="preserve" x="82" y="328" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">(shared start)</text>
+<text xml:space="preserve" x="82" y="362" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">title</text>
+<text xml:space="preserve" x="210" y="362" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="bold" text-anchor="start">Leaking pump</text>
+<text xml:space="preserve" x="82" y="386" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">(shared start)</text>
+<rect x="560" y="160" width="420" height="250" rx="14" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="582" y="200" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#c2410c" font-weight="bold" text-anchor="start">Beka (offline)</text>
+<text xml:space="preserve" x="582" y="246" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">priority</text>
+<text xml:space="preserve" x="710" y="246" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">high</text>
+<text xml:space="preserve" x="582" y="270" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">10:05:00 beka</text>
+<text xml:space="preserve" x="582" y="304" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">status</text>
+<text xml:space="preserve" x="710" y="304" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">in_progress</text>
+<text xml:space="preserve" x="582" y="328" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">10:04:00 beka</text>
+<text xml:space="preserve" x="582" y="362" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">title</text>
+<text xml:space="preserve" x="710" y="362" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2328" font-weight="bold" text-anchor="start">Leaking pump</text>
+<text xml:space="preserve" x="582" y="386" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="15" fill="#59636e" font-weight="normal" text-anchor="start">(shared start)</text>
+<line x1="480" y1="285" x2="560" y2="285" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<line x1="560" y1="320" x2="480" y2="320" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="1080" y="215" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f2328" font-weight="bold" text-anchor="start">They meet. Same rule on both:</text>
+<text xml:space="preserve" x="1080" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">per field, keep the entry with the</text>
+<text xml:space="preserve" x="1080" y="282" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">larger (stamp, node name).</text>
+<text xml:space="preserve" x="1080" y="330" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">No server. No asking. No order of</text>
+<text xml:space="preserve" x="1080" y="360" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">arrival that matters.</text>
+<rect x="60" y="450" width="1480" height="250" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="84" y="494" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">After merging, both have the same task</text>
+<text xml:space="preserve" x="84" y="540" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">priority      high          Beka's 10:05 beats Lidia's 10:02 (later stamp wins)</text>
+<text xml:space="preserve" x="84" y="576" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">status        in_progress   only Beka touched it, so his edit is kept</text>
+<text xml:space="preserve" x="84" y="612" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">title         Leaking pump  nobody touched it</text>
+<text xml:space="preserve" x="84" y="662" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">Lidia's edit was not wrong. It was overwritten, as if Beka had typed after her.</text>
+<rect x="60" y="730" width="1480" height="140" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="84" y="772" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="start">If both stamps are identical, the node name decides (lidia sorts after beka)</text>
+<text xml:space="preserve" x="84" y="808" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">Arbitrary, but the same on every replica. Order is total: stamp, then node, then deleted, then value.</text>
+<text xml:space="preserve" x="84" y="838" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">Limit: notes are not registers (appended). Task IDs collide across replicas until sync.</text>
+</svg>

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1070" viewBox="0 0 1600 1070">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="1070" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="66" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">One sync round, start to finish</text>
+<text xml:space="preserve" x="60" y="104" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 19. Two replicas, localhost HTTP, a shared key. Replica A runs `sync once`; replica B runs `sync serve`.</text>
+<rect x="160" y="140" width="340" height="70" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="330" y="171" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f5fa8" font-weight="bold" text-anchor="middle">Replica A  (client)</text>
+<text xml:space="preserve" x="330" y="198" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">holds: A up to 5, B up to 2</text>
+<rect x="1100" y="140" width="340" height="70" rx="14" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="1270" y="171" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#c2410c" font-weight="bold" text-anchor="middle">Replica B  (server)</text>
+<text xml:space="preserve" x="1270" y="198" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">holds: A up to 3, B up to 4</text>
+<line x1="330" y1="210" x2="330" y2="1000" stroke="#c9ccd1" stroke-width="3" stroke-dasharray="8 8"/>
+<line x1="1270" y1="210" x2="1270" y2="1000" stroke="#c9ccd1" stroke-width="3" stroke-dasharray="8 8"/>
+<line x1="340" y1="270" x2="1260" y2="270" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="256" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">1  GET /sync/summary</text>
+<text xml:space="preserve" x="800" y="298" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">signed: HMAC(key, method, path, node, time, sha256(body))</text>
+<circle cx="270" cy="270" r="0" />
+<line x1="1260" y1="350" x2="340" y2="350" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="336" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">  200 {node-b, summary: {A:3, B:4}}</text>
+<text xml:space="preserve" x="800" y="378" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">signed over the request signature + status + body</text>
+<circle cx="1330" cy="350" r="0" />
+<text xml:space="preserve" x="354" y="404" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#0f766e" font-weight="normal" text-anchor="start">A checks B's signature: B knows the key</text>
+<line x1="340" y1="450" x2="1260" y2="450" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="436" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">2  POST /sync/ops   {have: {A:5, B:2}}</text>
+<text xml:space="preserve" x="800" y="478" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">"send me what I lack"</text>
+<circle cx="270" cy="450" r="0" />
+<line x1="1260" y1="530" x2="340" y2="530" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="516" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">  200 {ops: B/3, B/4, more: false}</text>
+<text xml:space="preserve" x="800" y="558" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">only ops past A's numbers, in HLC order</text>
+<circle cx="1330" cy="530" r="0" />
+<rect x="30" y="570" width="600" height="118" rx="14" fill="#eef3fa" stroke="#1f5fa8" stroke-width="2"/>
+<text xml:space="preserve" x="50" y="602" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f5fa8" font-weight="bold" text-anchor="start">A applies B/3, B/4 in one transaction:</text>
+<text xml:space="preserve" x="50" y="630" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">valid? continues B's sequence? same as held?</text>
+<text xml:space="preserve" x="50" y="656" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">HLC clock moves past them. Older than what A holds?</text>
+<text xml:space="preserve" x="50" y="680" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">then the view is rebuilt in timestamp order.</text>
+<line x1="340" y1="760" x2="1260" y2="760" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="746" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">3  POST /sync/push   {ops: A/4, A/5}</text>
+<text xml:space="preserve" x="800" y="788" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">what B's summary said it lacks (A past 3)</text>
+<circle cx="270" cy="760" r="0" />
+<rect x="970" y="815" width="600" height="100" rx="14" fill="#fcefe8" stroke="#c2410c" stroke-width="2"/>
+<text xml:space="preserve" x="990" y="847" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">B applies them the same way, all or nothing.</text>
+<text xml:space="preserve" x="990" y="875" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">A gap, a fork, a bad op or a far-future</text>
+<text xml:space="preserve" x="990" y="899" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">clock: the whole batch is refused (409/422).</text>
+<line x1="1260" y1="960" x2="340" y2="960" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="800" y="946" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="bold" text-anchor="middle">  200 {applied: 2, duplicates: 0}</text>
+<text xml:space="preserve" x="800" y="988" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#59636e" font-weight="normal" text-anchor="middle">signed</text>
+<circle cx="1330" cy="960" r="0" />
+<rect x="60" y="1000" width="1480" height="50" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="800" y="1033" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#0f766e" font-weight="bold" text-anchor="middle">Both replicas now hold A up to 5 and B up to 4, so both fold the same ops in the same order: the same state hash.</text>
+</svg>

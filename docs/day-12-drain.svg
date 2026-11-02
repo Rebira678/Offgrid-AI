@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="960" fill="#fbfaf7"/>
+<text x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Drain the queue, and survive a crash</text>
+<text x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 12: every way a job can end, and why none of them loses it or runs it twice.</text>
+<rect x="60" y="170" width="360" height="150" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="82" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">queue.db</text>
+<text x="82" y="242" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">jobs, oldest first</text>
+<text x="82" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">survives power loss</text>
+<rect x="500" y="170" width="380" height="150" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="522" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">1  The gate</text>
+<text x="522" y="242" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">network up: run everything</text>
+<text x="522" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">down: only jobs needing no network</text>
+<text x="522" y="294" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">(a claim is an attempt: filter first)</text>
+<rect x="960" y="170" width="260" height="150" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="982" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">2  Claim</text>
+<text x="982" y="242" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">lease for 2 min</text>
+<text x="982" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">attempt number = fence</text>
+<rect x="1300" y="170" width="240" height="150" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="1322" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">3  Handler</text>
+<text x="1322" y="242" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">at most N at once</text>
+<text x="1322" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">heartbeat: lease / 3</text>
+<line x1="420" y1="245" x2="500" y2="245" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<line x1="880" y1="245" x2="960" y2="245" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<line x1="1220" y1="245" x2="1300" y2="245" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="60" y="406" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f2328" font-weight="bold" text-anchor="start">How a job can end</text>
+<rect x="60" y="420" width="460" height="130" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text x="80" y="458" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#0f766e" font-weight="bold" text-anchor="start">DONE + result</text>
+<text x="80" y="488" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">stored in the SAME transaction</text>
+<text x="80" y="514" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">as 'done': never one without the other</text>
+<rect x="550" y="420" width="460" height="130" rx="14" fill="#fff1ea" stroke="#c2410c" stroke-width="3"/>
+<text x="570" y="458" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#c2410c" font-weight="bold" text-anchor="start">failed, attempts left</text>
+<text x="570" y="488" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">back in the queue after a backoff</text>
+<text x="570" y="514" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">delay (exponential, with jitter)</text>
+<rect x="1040" y="420" width="500" height="130" rx="14" fill="#fff1ea" stroke="#c2410c" stroke-width="3"/>
+<text x="1060" y="458" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#c2410c" font-weight="bold" text-anchor="start">failed for good: dead letter</text>
+<text x="1060" y="488" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">bad payload, or out of attempts</text>
+<text x="1060" y="514" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">kept with its error; a person retries it</text>
+<rect x="60" y="590" width="740" height="130" rx="14" fill="#eef4fb" stroke="#1f5fa8" stroke-width="3"/>
+<text x="80" y="628" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f5fa8" font-weight="bold" text-anchor="start">RELEASED: stop, or the network dropped</text>
+<text x="80" y="658" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">the attempt is handed back, same place in line</text>
+<text x="80" y="684" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">restarts can never burn a job's attempts</text>
+<rect x="830" y="590" width="710" height="130" rx="14" fill="#fdeeee" stroke="#a4262c" stroke-width="3"/>
+<text x="850" y="628" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#a4262c" font-weight="bold" text-anchor="start">kill -9: the process just disappears</text>
+<text x="850" y="658" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">nothing is reported. The lease runs out,</text>
+<text x="850" y="684" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">the next worker claims it (try 2) and resumes</text>
+<rect x="60" y="760" width="1480" height="150" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="84" y="802" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f2328" font-weight="bold" text-anchor="start">The fence: every report carries the attempt number it was claimed with</text>
+<text x="84" y="838" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">A worker that was too slow and lost its lease reports late: the number no longer matches, so the report is ignored.</text>
+<text x="84" y="870" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">Result, checkpoint, retry and release are all fenced this way. Repeating the work is possible; recording it twice is not.</text>
+<text x="84" y="898" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#c2410c" font-weight="bold" text-anchor="start">Not promised: exactly-once execution. Handlers must be safe to repeat, or refuse to repeat (the 'executing' marker).</text>
+</svg>

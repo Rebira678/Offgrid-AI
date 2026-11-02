@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="960" viewBox="0 0 1600 960">
+<rect width="1600" height="960" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="66" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">The AI never overwrites a human</text>
+<text xml:space="preserve" x="60" y="104" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 23. A person and an AI disagree while the devices are apart. Real processes on localhost; the AI's command is typed by the demo script.</text>
+<text xml:space="preserve" x="60" y="170" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">PHONE (a person)</text>
+<text xml:space="preserve" x="60" y="420" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#6d3fb0" font-weight="bold" text-anchor="start">LAPTOP (an AI job, finishing later)</text>
+<rect x="60" y="190" width="1480" height="170" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<rect x="60" y="440" width="1480" height="170" rx="12" fill="#f3ecfb" stroke="#6d3fb0" stroke-width="2"/>
+<rect x="90" y="215" width="360" height="120" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="110" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">Pump is HIGH</text>
+<text xml:space="preserve" x="110" y="284" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">the shared starting point</text>
+<rect x="560" y="215" width="420" height="120" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="580" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">Person sets it to MEDIUM</text>
+<text xml:space="preserve" x="580" y="284" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">an ordinary edit, offline</text>
+<rect x="1090" y="215" width="420" height="120" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="1110" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">Still MEDIUM</text>
+<text xml:space="preserve" x="1110" y="284" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">after the sync. Nothing wrote over it.</text>
+<line x1="450" y1="275" x2="550" y2="275" stroke="#59636e" stroke-width="3"/>
+<polygon points="560,275 546,267 546,283" fill="#59636e"/>
+<line x1="980" y1="275" x2="1080" y2="275" stroke="#59636e" stroke-width="3"/>
+<polygon points="1090,275 1076,267 1076,283" fill="#59636e"/>
+<rect x="90" y="465" width="360" height="120" rx="12" fill="#ffffff" stroke="#6d3fb0" stroke-width="2"/>
+<text xml:space="preserve" x="110" y="502" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#6d3fb0" font-weight="bold" text-anchor="start">Pump is HIGH</text>
+<text xml:space="preserve" x="110" y="534" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">same start; edit not seen yet</text>
+<rect x="560" y="465" width="420" height="120" rx="12" fill="#ffffff" stroke="#6d3fb0" stroke-width="3"/>
+<text xml:space="preserve" x="580" y="502" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#6d3fb0" font-weight="bold" text-anchor="start">AI proposes LOW</text>
+<text xml:space="preserve" x="580" y="534" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">suggestion.made: stored BESIDE</text>
+<text xml:space="preserve" x="580" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">the task. The task is not touched.</text>
+<rect x="1090" y="465" width="420" height="120" rx="12" fill="#fff4d6" stroke="#b7791f" stroke-width="3"/>
+<text xml:space="preserve" x="1110" y="502" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#8a5a00" font-weight="bold" text-anchor="start">Suggestion is STALE</text>
+<text xml:space="preserve" x="1110" y="534" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">made when the pump was HIGH;</text>
+<text xml:space="preserve" x="1110" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">a person has since changed it</text>
+<line x1="450" y1="525" x2="550" y2="525" stroke="#6d3fb0" stroke-width="3"/>
+<polygon points="560,525 546,517 546,533" fill="#6d3fb0"/>
+<line x1="980" y1="525" x2="1080" y2="525" stroke="#6d3fb0" stroke-width="3"/>
+<polygon points="1090,525 1076,517 1076,533" fill="#6d3fb0"/>
+<line x1="1300" y1="360" x2="1300" y2="440" stroke="#59636e" stroke-width="3" stroke-dasharray="8 6"/>
+<text xml:space="preserve" x="1320" y="405" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">WiFi back: sync</text>
+<rect x="60" y="650" width="1480" height="260" rx="12" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="90" y="692" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f2328" font-weight="bold" text-anchor="start">What a person can do with the suggestion</text>
+<rect x="90" y="716" width="460" height="150" rx="12" fill="#fbe9ea" stroke="#a4262c" stroke-width="2"/>
+<text xml:space="preserve" x="110" y="752" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#a4262c" font-weight="bold" text-anchor="start">accept  ->  REFUSED</text>
+<text xml:space="preserve" x="110" y="784" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">applying it could undo the person's edit.</text>
+<text xml:space="preserve" x="110" y="812" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">Nothing changes.</text>
+<rect x="590" y="716" width="460" height="150" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="610" y="752" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">dismiss  ->  fine</text>
+<text xml:space="preserve" x="610" y="784" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">the task is untouched; both devices</text>
+<text xml:space="preserve" x="610" y="812" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">agree the suggestion is closed.</text>
+<rect x="1090" y="716" width="420" height="150" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="1110" y="752" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">a fresh suggestion</text>
+<text xml:space="preserve" x="1110" y="784" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">nobody contradicted: accept applies it,</text>
+<text xml:space="preserve" x="1110" y="812" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">as a person's edit, and it syncs.</text>
+</svg>

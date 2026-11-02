@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1180" viewBox="0 0 1600 1180">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="1180" fill="#fbfaf7"/>
+<text x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Answer now, or save it for later?</text>
+<text x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid: the router asks three cheap questions in order. Nothing is ever dropped.</text>
+<rect x="60" y="170" width="440" height="130" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="88" y="216" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">1  A rule understands it fully?</text>
+<text x="88" y="252" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">closed vocabulary, microseconds</text>
+<rect x="60" y="370" width="440" height="130" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="88" y="416" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">2  Complexity gate</text>
+<text x="88" y="452" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">asks for judgement, advice, analysis?</text>
+<text x="88" y="478" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">(a few string checks, no model)</text>
+<rect x="60" y="570" width="440" height="130" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="88" y="616" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">3  Local model: valid command?</text>
+<text x="88" y="652" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">tried only if 1 and 2 said no</text>
+<line x1="280" y1="300" x2="280" y2="370" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="300" y="336" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">no</text>
+<line x1="280" y1="500" x2="280" y2="570" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="300" y="536" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">no</text>
+<rect x="640" y="187" width="420" height="96" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text x="664" y="229" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#0f766e" font-weight="bold" text-anchor="start">ANSWER NOW</text>
+<text x="664" y="261" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">tier 0 rule, runs on this laptop</text>
+<line x1="500" y1="235" x2="640" y2="235" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="540" y="225" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="bold" text-anchor="start">yes</text>
+<rect x="640" y="587" width="420" height="96" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text x="664" y="629" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#0f766e" font-weight="bold" text-anchor="start">ANSWER NOW</text>
+<text x="664" y="661" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">tier 1 local model, a few seconds</text>
+<line x1="500" y1="635" x2="640" y2="635" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="540" y="625" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="bold" text-anchor="start">valid</text>
+<rect x="640" y="372" width="420" height="126" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="664" y="414" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f5fa8" font-weight="bold" text-anchor="start">Online AND a cloud model?</text>
+<text x="664" y="448" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">connectivity decides only this fork</text>
+<text x="664" y="474" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">no cloud client is built yet: always no for now</text>
+<line x1="500" y1="435" x2="640" y2="435" stroke="#c2410c" stroke-width="4" marker-end="url(#ah)"/>
+<text x="540" y="425" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">hard</text>
+<rect x="1180" y="330" width="380" height="96" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text x="1204" y="372" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#0f766e" font-weight="bold" text-anchor="start">ANSWER NOW</text>
+<text x="1204" y="404" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">cloud model (future)</text>
+<line x1="1060" y1="400" x2="1180" y2="378" stroke="#0f766e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="1090" y="368" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#0f766e" font-weight="bold" text-anchor="start">yes</text>
+<rect x="1180" y="450" width="380" height="96" rx="14" fill="#fff1ea" stroke="#c2410c" stroke-width="3"/>
+<text x="1204" y="492" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#c2410c" font-weight="bold" text-anchor="start">SAVED  deep_think</text>
+<text x="1204" y="524" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">waits in the queue</text>
+<line x1="1060" y1="470" x2="1180" y2="498" stroke="#c2410c" stroke-width="4" marker-end="url(#ah)"/>
+<text x="1090" y="506" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">no</text>
+<rect x="60" y="760" width="440" height="96" rx="14" fill="#fff1ea" stroke="#c2410c" stroke-width="3"/>
+<text x="84" y="802" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#c2410c" font-weight="bold" text-anchor="start">SAVED  interpret</text>
+<text x="84" y="834" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#1f2328" font-weight="normal" text-anchor="start">no valid command, model missing or slow</text>
+<line x1="280" y1="700" x2="280" y2="760" stroke="#c2410c" stroke-width="4" marker-end="url(#ah)"/>
+<text x="300" y="736" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">invalid or unavailable</text>
+<rect x="640" y="760" width="920" height="96" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="664" y="800" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">Saved = a durable job plus a visible status: job number, why, and the connection.</text>
+<text x="664" y="832" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">The same sentence typed twice is one job. "queue" lists what is waiting, instantly.</text>
+<rect x="60" y="900" width="1500" height="230" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="88" y="944" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="25" fill="#1f2328" font-weight="bold" text-anchor="start">How good is the gate? Measured on messages I wrote, not on real crews</text>
+<text x="88" y="984" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="bold" text-anchor="start">Blind (first version, 66 labelled cases):</text>
+<text x="560" y="984" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">0 false defers, but 11 of 33 hard requests missed</text>
+<text x="88" y="1022" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="bold" text-anchor="start">Tuned on those cases:</text>
+<text x="560" y="1022" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">0 and 0. Optimistic: I adjusted the gate until they passed.</text>
+<text x="88" y="1060" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#c2410c" font-weight="bold" text-anchor="start">Held-out (40 new cases, never used to tune):</text>
+<text x="660" y="1060" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#c2410c" font-weight="bold" text-anchor="start">1 false defer in 20 simple; 10 of 20 hard requests missed</text>
+<text x="88" y="1102" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">A missed hard request is not lost: the local model tries it, and if it cannot produce a valid command, step 3 saves it.</text>
+</svg>

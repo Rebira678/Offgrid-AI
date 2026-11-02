@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" font-family="Helvetica, Arial, sans-serif">
+<rect width="1200" height="675" fill="#fcfcfb"/>
+<text x="50" y="62" font-size="34" font-weight="700" fill="#0b0b0b">What Offgrid costs on this machine</text>
+<text x="50" y="96" font-size="20" font-weight="400" fill="#52514e">AMD Ryzen 5 PRO 5650U with Radeon Graphics, 12 threads, 14.9 GiB RAM, Zorin OS 18.1. No model involved.</text>
+<text x="50" y="160" font-size="21" font-weight="700" fill="#0b0b0b">A new replica catches up (time, lower is better)</text>
+<line x1="350" y1="178" x2="350" y2="412" stroke="#e4e3df" stroke-width="1"/>
+<text x="340" y="205" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">100 ops, in process</text>
+<rect x="350" y="188" width="3.0" height="26" rx="4" fill="#2a78d6"/>
+<text x="361" y="205" font-size="17" font-weight="700" fill="#0b0b0b">8 ms</text>
+<text x="340" y="243" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">100 ops, over HTTP</text>
+<rect x="350" y="226" width="3.4" height="26" rx="4" fill="#eb6834"/>
+<text x="361" y="243" font-size="17" font-weight="700" fill="#0b0b0b">11 ms</text>
+<text x="340" y="281" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">1,000 ops, in process</text>
+<rect x="350" y="264" width="25.4" height="26" rx="4" fill="#2a78d6"/>
+<text x="383" y="281" font-size="17" font-weight="700" fill="#0b0b0b">78 ms</text>
+<text x="340" y="319" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">1,000 ops, over HTTP</text>
+<rect x="350" y="302" width="25.6" height="26" rx="4" fill="#eb6834"/>
+<text x="383" y="319" font-size="17" font-weight="700" fill="#0b0b0b">79 ms</text>
+<text x="340" y="357" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">10,000 ops, in process</text>
+<rect x="350" y="340" width="273.5" height="26" rx="4" fill="#2a78d6"/>
+<text x="631" y="357" font-size="17" font-weight="700" fill="#0b0b0b">838 ms</text>
+<text x="340" y="395" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">10,000 ops, over HTTP</text>
+<rect x="350" y="378" width="290.0" height="26" rx="4" fill="#eb6834"/>
+<text x="648" y="395" font-size="17" font-weight="700" fill="#0b0b0b">888 ms</text>
+<text x="800" y="160" font-size="21" font-weight="700" fill="#0b0b0b">Queue drain (jobs per second)</text>
+<line x1="990" y1="178" x2="990" y2="336" stroke="#e4e3df" stroke-width="1"/>
+<text x="980" y="205" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">100 jobs, 1 at a time</text>
+<rect x="990" y="188" width="45.8" height="26" rx="4" fill="#2a78d6"/>
+<text x="1043" y="205" font-size="17" font-weight="700" fill="#0b0b0b">539 jobs/s</text>
+<text x="980" y="243" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">100 jobs, 4 at a time</text>
+<rect x="990" y="226" width="46.8" height="26" rx="4" fill="#2a78d6"/>
+<text x="1044" y="243" font-size="17" font-weight="700" fill="#0b0b0b">550 jobs/s</text>
+<text x="980" y="281" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">1,000 jobs, 1 at a time</text>
+<rect x="990" y="264" width="50.0" height="26" rx="4" fill="#2a78d6"/>
+<text x="1048" y="281" font-size="17" font-weight="700" fill="#0b0b0b">588 jobs/s</text>
+<text x="980" y="319" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">1,000 jobs, 4 at a time</text>
+<rect x="990" y="302" width="10.4" height="26" rx="4" fill="#2a78d6"/>
+<text x="1008" y="319" font-size="17" font-weight="700" fill="#0b0b0b">122 jobs/s</text>
+<text x="50" y="450" font-size="21" font-weight="700" fill="#0b0b0b">Peak memory of the whole process (MiB)</text>
+<line x1="350" y1="468" x2="350" y2="588" stroke="#e4e3df" stroke-width="1"/>
+<text x="340" y="495" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">rebuild, 10,000 ops</text>
+<rect x="350" y="478" width="281.9" height="26" rx="4" fill="#2a78d6"/>
+<text x="639" y="495" font-size="17" font-weight="700" fill="#0b0b0b">27 MiB</text>
+<text x="340" y="533" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">sync over HTTP, 10,000 ops</text>
+<rect x="350" y="516" width="290.0" height="26" rx="4" fill="#2a78d6"/>
+<text x="648" y="533" font-size="17" font-weight="700" fill="#0b0b0b">28 MiB</text>
+<text x="340" y="571" font-size="16" font-weight="400" fill="#52514e" text-anchor="end">queue, 1,000 jobs</text>
+<rect x="350" y="554" width="271.2" height="26" rx="4" fill="#2a78d6"/>
+<text x="629" y="571" font-size="17" font-weight="700" fill="#0b0b0b">26 MiB</text>
+<rect x="800" y="447" width="16" height="16" rx="4" fill="#2a78d6"/>
+<text x="826" y="460" font-size="17" font-weight="400" fill="#0b0b0b">in process (no network)</text>
+<rect x="800" y="477" width="16" height="16" rx="4" fill="#eb6834"/>
+<text x="826" y="490" font-size="17" font-weight="400" fill="#0b0b0b">HTTP on localhost, HMAC-signed</text>
+<text x="800" y="540" font-size="17" font-weight="400" fill="#52514e">Median of 3 runs, seed 1, go1.26.5.</text>
+<text x="800" y="566" font-size="17" font-weight="400" fill="#52514e">Files on ext4. 2026-10-30.</text>
+<text x="800" y="592" font-size="17" font-weight="400" fill="#52514e">Network is localhost, not WiFi.</text>
+<text x="50" y="645" font-size="17" font-weight="400" fill="#52514e">Reproduce it yourself: make bench</text>
+</svg>

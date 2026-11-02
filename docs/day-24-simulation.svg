@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1200" height="675" fill="#0f172a"/>
+  <text x="60" y="78" font-size="38" font-weight="700" fill="#f8fafc">I ran 3,000 random failure schedules.</text>
+  <text x="60" y="122" font-size="26" fill="#94a3b8">Here is the one that broke it, cut from 80 actions to 3.</text>
+
+  <!-- left: the seed pipeline -->
+  <rect x="60" y="165" width="500" height="440" rx="14" fill="#1e293b"/>
+  <text x="85" y="205" font-size="22" font-weight="700" fill="#e2e8f0">One seed = one schedule</text>
+  <g font-size="19" fill="#cbd5e1">
+    <text x="85" y="248">partitions, heals</text>
+    <text x="85" y="282">clock skew up to ±90 min</text>
+    <text x="85" y="316">crashes (clock may restart 40 h back)</text>
+    <text x="85" y="350">sync replies: dropped, duplicated,</text>
+    <text x="85" y="378">delayed, cut short, reversed, holed</text>
+  </g>
+  <text x="85" y="428" font-size="19" fill="#94a3b8">3 real SQLite replicas, no real time,</text>
+  <text x="85" y="456" font-size="19" fill="#94a3b8">no goroutines: same seed, same run.</text>
+  <rect x="85" y="484" width="450" height="106" rx="10" fill="#0f172a"/>
+  <text x="105" y="520" font-size="19" fill="#4ade80">then heal, sync until quiet, and check:</text>
+  <text x="105" y="548" font-size="18" fill="#cbd5e1">same ops, same state, view = replay of log,</text>
+  <text x="105" y="572" font-size="18" fill="#cbd5e1">fresh replica in another order agrees</text>
+
+  <!-- right: the bug -->
+  <rect x="600" y="165" width="540" height="440" rx="14" fill="#1e293b"/>
+  <text x="625" y="205" font-size="22" font-weight="700" fill="#e2e8f0">The failing schedule</text>
+  <g font-family="Menlo, Consolas, monospace" font-size="24" fill="#f8fafc">
+    <text x="625" y="258">create r2</text>
+    <text x="625" y="298">create r1</text>
+    <text x="625" y="338">sync r2-r1</text>
+  </g>
+  <g font-size="19" fill="#cbd5e1">
+    <text x="625" y="394">Both devices named their first task "T1".</text>
+    <text x="625" y="424">The sync was refused, and refused again,</text>
+    <text x="625" y="454">every time.</text>
+  </g>
+  <text x="625" y="504" font-size="21" font-weight="700" fill="#f87171">744 of the first 1,000 seeds hit it.</text>
+  <rect x="625" y="528" width="490" height="56" rx="10" fill="#0f172a"/>
+  <text x="645" y="563" font-size="21" fill="#4ade80">Fix: IDs carry the device (T1.r2). 3,000 pass.</text>
+
+  <text x="60" y="645" font-size="17" fill="#64748b">Own 2-core sandbox, stand-in network: the simulation calls the store directly. 10 deliberate bugs put in; all 10 caught.</text>
+</svg>

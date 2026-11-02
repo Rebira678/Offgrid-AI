@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980">
+<rect width="1600" height="980" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="66" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Two phones, no signal, the same task: what happens?</text>
+<text xml:space="preserve" x="60" y="104" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 20. Real processes on localhost; the network cut is simulated by the fault switch.</text>
+<rect x="60" y="140" width="380" height="56" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="250" y="176" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#0f766e" font-weight="bold" text-anchor="middle">connected: both start identical</text>
+<rect x="440" y="140" width="660" height="56" rx="12" fill="#fbe9ea" stroke="#a4262c" stroke-width="3"/>
+<text xml:space="preserve" x="770" y="176" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#a4262c" font-weight="bold" text-anchor="middle">WiFi OFF: every edit stays on its own phone</text>
+<rect x="1100" y="140" width="440" height="56" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="1320" y="176" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#0f766e" font-weight="bold" text-anchor="middle">WiFi ON: one sync round</text>
+<rect x="60" y="230" width="360" height="300" rx="12" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="80" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f2328" font-weight="bold" text-anchor="start">Both phones hold</text>
+<text xml:space="preserve" x="84" y="310" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">T1 Leaking pump</text>
+<text xml:space="preserve" x="84" y="332" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">note: seal cracked</text>
+<text xml:space="preserve" x="84" y="368" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">T2 Replace filter</text>
+<text xml:space="preserve" x="84" y="426" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">T3 Check valve</text>
+<text xml:space="preserve" x="80" y="500" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="bold" text-anchor="start">same state hash on both</text>
+<rect x="440" y="230" width="320" height="420" rx="12" fill="#eef3fa" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="460" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">Phone A edits</text>
+<rect x="456" y="290" width="288" height="52" rx="10" fill="#ffffff" stroke="#1f5fa8" stroke-width="2"/>
+<text xml:space="preserve" x="470" y="322" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">T1 status: done</text>
+<rect x="456" y="378" width="288" height="52" rx="10" fill="#ffffff" stroke="#1f5fa8" stroke-width="2"/>
+<text xml:space="preserve" x="470" y="410" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">T1 note: replaced seal</text>
+<rect x="456" y="466" width="288" height="52" rx="10" fill="#ffffff" stroke="#1f5fa8" stroke-width="2"/>
+<text xml:space="preserve" x="470" y="498" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">delete T2 and T3</text>
+<rect x="456" y="554" width="288" height="52" rx="10" fill="#ffffff" stroke="#1f5fa8" stroke-width="2"/>
+<text xml:space="preserve" x="470" y="586" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">new task: Fuel line</text>
+<rect x="780" y="230" width="320" height="420" rx="12" fill="#fcefe8" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="796" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#c2410c" font-weight="bold" text-anchor="start">Phone B edits</text>
+<rect x="796" y="290" width="288" height="52" rx="10" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<text xml:space="preserve" x="810" y="322" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">T1 in_progress, low</text>
+<rect x="796" y="378" width="288" height="52" rx="10" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<text xml:space="preserve" x="810" y="410" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">T1 note + remove note</text>
+<rect x="796" y="466" width="288" height="52" rx="10" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<text xml:space="preserve" x="810" y="498" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">T2 priority: high</text>
+<rect x="796" y="554" width="288" height="52" rx="10" fill="#ffffff" stroke="#c2410c" stroke-width="2"/>
+<text xml:space="preserve" x="810" y="586" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#1f2328" font-weight="bold" text-anchor="start">new: Order gasket</text>
+<text xml:space="preserve" x="770" y="676" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#a4262c" font-weight="bold" text-anchor="middle">different hashes while apart</text>
+<rect x="1120" y="230" width="420" height="420" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="1140" y="268" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#0f766e" font-weight="bold" text-anchor="start">Both phones now hold</text>
+<text xml:space="preserve" x="1140" y="310" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="bold" text-anchor="start">T1 in_progress, low  (B's later edit)</text>
+<text xml:space="preserve" x="1140" y="350" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">  notes: replaced the seal, waiting for parts</text>
+<text xml:space="preserve" x="1140" y="390" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="bold" text-anchor="start">T2 high  (A deleted it, B edited it</text>
+<text xml:space="preserve" x="1140" y="430" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">  unseen: the edit wins)</text>
+<text xml:space="preserve" x="1140" y="470" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="bold" text-anchor="start">T3  gone</text>
+<text xml:space="preserve" x="1140" y="510" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="bold" text-anchor="start">Fuel line  (A)</text>
+<text xml:space="preserve" x="1140" y="550" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#1f2328" font-weight="bold" text-anchor="start">Order gasket  (B)</text>
+<text xml:space="preserve" x="1140" y="610" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#0f766e" font-weight="bold" text-anchor="start">same state hash. Identical.</text>
+<rect x="60" y="690" width="1480" height="250" rx="12" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="84" y="732" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f2328" font-weight="bold" text-anchor="start">The rules that made it come out the same on both phones</text>
+<text xml:space="preserve" x="84" y="776" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold">Each field decides for itself: <tspan fill="#59636e" font-weight="normal">last writer wins, ordered by a hybrid logical clock (Days 15-16).</tspan></text>
+<text xml:space="preserve" x="84" y="814" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold">A note is removed by name, <tspan fill="#59636e" font-weight="normal">so a note added at the same time is a different note and stays (Day 18).</tspan></text>
+<text xml:space="preserve" x="84" y="852" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold">A delete only beats what its author had seen: <tspan fill="#59636e" font-weight="normal">an edit made without knowing about it brings the task back (Day 20).</tspan></text>
+<text xml:space="preserve" x="84" y="890" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold">Both phones fold the same ops in the same order, <tspan fill="#59636e" font-weight="normal">so the state is the same whatever order they arrived in (Day 19).</tspan></text>
+</svg>

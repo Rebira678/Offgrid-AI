@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="940" viewBox="0 0 1600 940">
+<rect width="1600" height="940" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="66" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="40" fill="#1f2328" font-weight="bold" text-anchor="start">Two brains, one agent: fast and slow thinking on a laptop</text>
+<text xml:space="preserve" x="60" y="104" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 22. Stand-in models in the demo; the speeds are the author's own measurements on one laptop.</text>
+<rect x="60" y="140" width="720" height="250" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="90" y="182" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">FAST brain: answers a person who is waiting</text>
+<text xml:space="preserve" x="90" y="222" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="normal" text-anchor="start">Tier 0  rules               19 microseconds (median)</text>
+<text xml:space="preserve" x="90" y="256" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="normal" text-anchor="start">Tier 1  3B model             2.2 s per message (median), 9.9 tok/s</text>
+<text xml:space="preserve" x="90" y="300" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">Runs the moment you type. Cannot be slowed down by the slow brain:</text>
+<text xml:space="preserve" x="90" y="326" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">a slow job never starts while a fast job is running.</text>
+<text xml:space="preserve" x="90" y="366" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">CPU only. 16 of 30 field messages never reach a model.</text>
+<rect x="820" y="140" width="720" height="250" rx="12" fill="#f3ecfb" stroke="#6d3fb0" stroke-width="3"/>
+<text xml:space="preserve" x="850" y="182" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#6d3fb0" font-weight="bold" text-anchor="start">SLOW brain: thinks when nobody is waiting</text>
+<text xml:space="preserve" x="850" y="222" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="normal" text-anchor="start">Local 7-8B model   (-deep-model)   always available, offline too</text>
+<text xml:space="preserve" x="850" y="256" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#1f2328" font-weight="normal" text-anchor="start">Cloud model         (-cloud-url)     OFF by default; online only</text>
+<text xml:space="preserve" x="850" y="300" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">If the cloud fails, the local model answers. Turning the cloud on</text>
+<text xml:space="preserve" x="850" y="326" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">sends task data off the laptop; start-up says so.</text>
+<text xml:space="preserve" x="850" y="366" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">One slow job at a time. Waiting for a quiet CPU costs no retry attempts.</text>
+<text xml:space="preserve" x="60" y="452" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">What happens to a hard question</text>
+<rect x="60" y="480" width="340" height="170" rx="12" fill="#ffffff" stroke="#c9ccd1" stroke-width="3"/>
+<text xml:space="preserve" x="80" y="520" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#1f2328" font-weight="bold" text-anchor="start">1  Saved</text>
+<text xml:space="preserve" x="80" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">offline: the router puts it</text>
+<text xml:space="preserve" x="80" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">in the queue (Day 10)</text>
+<rect x="440" y="480" width="340" height="170" rx="12" fill="#fff4d6" stroke="#b7791f" stroke-width="3"/>
+<text xml:space="preserve" x="460" y="520" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#8a5a00" font-weight="bold" text-anchor="start">2  Idle gate</text>
+<text xml:space="preserve" x="460" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">CPU busy &lt;= 50%, no fast job</text>
+<text xml:space="preserve" x="460" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">running, no other slow job</text>
+<rect x="820" y="480" width="340" height="170" rx="12" fill="#f3ecfb" stroke="#6d3fb0" stroke-width="3"/>
+<text xml:space="preserve" x="840" y="520" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#6d3fb0" font-weight="bold" text-anchor="start">3  Answered</text>
+<text xml:space="preserve" x="840" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">7-8B local, or cloud</text>
+<text xml:space="preserve" x="840" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">if configured and online</text>
+<rect x="1200" y="480" width="340" height="170" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="1220" y="520" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="23" fill="#0f766e" font-weight="bold" text-anchor="start">4  Recorded as an op</text>
+<text xml:space="preserve" x="1220" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">answer.recorded, once per</text>
+<text xml:space="preserve" x="1220" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">question: first answer wins</text>
+<line x1="400" y1="565" x2="430" y2="565" stroke="#59636e" stroke-width="3"/>
+<polygon points="440,565 426,557 426,573" fill="#59636e"/>
+<line x1="780" y1="565" x2="810" y2="565" stroke="#59636e" stroke-width="3"/>
+<polygon points="820,565 806,557 806,573" fill="#59636e"/>
+<line x1="1160" y1="565" x2="1190" y2="565" stroke="#59636e" stroke-width="3"/>
+<polygon points="1200,565 1186,557 1186,573" fill="#59636e"/>
+<text xml:space="preserve" x="1200" y="690" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">A crash after saving re-runs nothing:</text>
+<text xml:space="preserve" x="1200" y="714" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">the handler finds the answer first.</text>
+<rect x="60" y="740" width="1480" height="150" rx="12" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="90" y="782" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f2328" font-weight="bold" text-anchor="start">Because the answer is an op, it syncs like a task edit</text>
+<rect x="90" y="806" width="300" height="64" rx="10" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="240" y="845" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#0f766e" font-weight="bold" text-anchor="middle">laptop: answer in the log</text>
+<line x1="400" y1="838" x2="660" y2="838" stroke="#0f766e" stroke-width="3"/>
+<polygon points="670,838 656,830 656,846" fill="#0f766e"/>
+<text xml:space="preserve" x="540" y="826" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="middle">WiFi back: sync round</text>
+<rect x="680" y="806" width="300" height="64" rx="10" fill="#e8f3f1" stroke="#0f766e" stroke-width="2"/>
+<text xml:space="preserve" x="830" y="845" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#0f766e" font-weight="bold" text-anchor="middle">phone: same answer</text>
+<text xml:space="preserve" x="1010" y="838" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">state hashes equal, rebuild gives the same state</text>
+<text xml:space="preserve" x="1010" y="862" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">(offgrid answers -db FILE   on either device)</text>
+</svg>

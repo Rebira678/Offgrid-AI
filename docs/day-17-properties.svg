@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<rect width="1600" height="900" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Proving the merge: three laws, thousands of cases</text>
+<text xml:space="preserve" x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid: rapid generates the inputs, shrinks any failure, and the same laws run on broken merges.</text>
+<rect x="60" y="160" width="460" height="170" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="82" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#0f766e" font-weight="bold" text-anchor="start">Commutative</text>
+<text xml:space="preserve" x="82" y="248" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">merge(a, b) = merge(b, a)</text>
+<text xml:space="preserve" x="82" y="290" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">who merges first does not matter</text>
+<rect x="560" y="160" width="460" height="170" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="582" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#0f766e" font-weight="bold" text-anchor="start">Associative</text>
+<text xml:space="preserve" x="582" y="248" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">merge(merge(a,b),c) = merge(a,merge(b,c))</text>
+<text xml:space="preserve" x="582" y="290" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">grouping does not matter</text>
+<rect x="1060" y="160" width="460" height="170" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="1082" y="204" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#0f766e" font-weight="bold" text-anchor="start">Idempotent</text>
+<text xml:space="preserve" x="1082" y="248" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="16" fill="#1f2328" font-weight="normal" text-anchor="start">merge(a, a) = a</text>
+<text xml:space="preserve" x="1082" y="290" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">the same data twice changes nothing</text>
+<text xml:space="preserve" x="60" y="372" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">13 properties x 3000 generated cases on the real merge: all pass. Keys, values, stamps and nodes come from tiny sets,</text>
+<text xml:space="preserve" x="60" y="400" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">so the awkward cases (equal stamps, a delete against a write) happen in almost every run.</text>
+<rect x="60" y="440" width="1480" height="300" rx="14" fill="#fdeeee" stroke="#a4262c" stroke-width="3"/>
+<text xml:space="preserve" x="84" y="484" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#a4262c" font-weight="bold" text-anchor="start">Break the tie-break on purpose: "if the stamps are equal, keep the first argument"</text>
+<text xml:space="preserve" x="84" y="530" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">rapid finds it within a few cases and shrinks it to the smallest example:</text>
+<text xml:space="preserve" x="84" y="572" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">a = { title: "a", stamp 0#0, node x }</text>
+<text xml:space="preserve" x="84" y="604" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">b = { title: "a", stamp 0#0, node y }</text>
+<text xml:space="preserve" x="84" y="646" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#a4262c" font-weight="bold" text-anchor="start">merge(a, b) keeps node x          merge(b, a) keeps node y</text>
+<text xml:space="preserve" x="84" y="696" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#a4262c" font-weight="normal" text-anchor="start">Two replicas would disagree forever. Without the node-ID tie-break the merge is not commutative.</text>
+<rect x="60" y="770" width="1480" height="100" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="84" y="812" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="bold" text-anchor="start">7 breakages caught (forgotten tie-break, ignored counter, overwrite, in-place edit...).  2 controls accepted:</text>
+<text xml:space="preserve" x="84" y="844" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">"lowest node wins" is also a lawful merge. The tests check the math, not the particular choice.</text>
+</svg>

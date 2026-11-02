@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="900" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">What happens when I delete a task while you edit it?</text>
+<text xml:space="preserve" x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 18: a simulated example. Every add gets a unique tag. A delete removes only the tags it has SEEN.</text>
+<rect x="60" y="160" width="1480" height="90" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="84" y="196" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f2328" font-weight="bold" text-anchor="start">Start: both phones have task T1, added once. Its tag is  office#0.</text>
+<text xml:space="preserve" x="84" y="230" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">set of adds:  T1 &lt;- office#0                tombstones: none</text>
+<rect x="60" y="290" width="640" height="250" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="84" y="334" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f5fa8" font-weight="bold" text-anchor="start">Alice (offline) deletes T1</text>
+<text xml:space="preserve" x="84" y="380" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">she can see one tag: office#0</text>
+<text xml:space="preserve" x="84" y="418" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">she writes a tombstone for that tag</text>
+<text xml:space="preserve" x="84" y="470" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">adds: T1 &lt;- office#0</text>
+<text xml:space="preserve" x="84" y="500" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f5fa8" font-weight="bold" text-anchor="start">tombstones: office#0   => T1 is gone</text>
+<rect x="900" y="290" width="640" height="250" rx="14" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="924" y="334" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#c2410c" font-weight="bold" text-anchor="start">Bob (offline) edits T1</text>
+<text xml:space="preserve" x="924" y="380" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">an edit touches the task: a NEW add</text>
+<text xml:space="preserve" x="924" y="418" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">with a new unique tag: bob#30</text>
+<text xml:space="preserve" x="924" y="470" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">adds: T1 &lt;- office#0, T1 &lt;- bob#30</text>
+<text xml:space="preserve" x="924" y="500" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#c2410c" font-weight="bold" text-anchor="start">tombstones: none      => T1 is there</text>
+<line x1="720" y1="415" x2="880" y2="415" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<line x1="880" y1="445" x2="720" y2="445" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text xml:space="preserve" x="730" y="395" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">meet</text>
+<rect x="60" y="580" width="1480" height="170" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="84" y="624" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">After merging: union of adds, union of tombstones</text>
+<text xml:space="preserve" x="84" y="666" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">adds: T1 &lt;- office#0, T1 &lt;- bob#30        tombstones: office#0</text>
+<text xml:space="preserve" x="84" y="706" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#0f766e" font-weight="bold" text-anchor="start">T1 has a tag with no tombstone (bob#30), so T1 is there, with Bob's edit. Both phones agree.</text>
+<rect x="60" y="780" width="1480" height="90" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text xml:space="preserve" x="84" y="818" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="bold" text-anchor="start">No clock decides this. The delete was about what Alice had seen, and she had not seen Bob's edit.</text>
+<text xml:space="preserve" x="84" y="848" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#c2410c" font-weight="normal" text-anchor="start">Cost: tombstones are kept forever for now, so the set only grows (cleanup needs sync to know everyone has seen them).</text>
+</svg>

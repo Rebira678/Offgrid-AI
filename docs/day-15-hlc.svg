@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="16" markerHeight="16" refX="14" refY="8" orient="auto"><path d="M1,1 L15,8 L1,15 z" fill="context-stroke"/></marker></defs>
+<rect width="1600" height="900" fill="#fbfaf7"/>
+<text x="60" y="72" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Why a phone's clock cannot order edits</text>
+<text x="60" y="112" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Day 15: a simulated example. Bob's phone runs 10 minutes slow.</text>
+<rect x="60" y="170" width="440" height="200" rx="14" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<text x="82" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f5fa8" font-weight="bold" text-anchor="start">Alice</text>
+<text x="82" y="244" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">sets priority = low</text>
+<text x="82" y="282" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">real time:</text>
+<text x="200" y="282" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">10:00:00</text>
+<text x="82" y="310" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">wall clock:</text>
+<text x="200" y="310" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">10:00:00</text>
+<text x="82" y="338" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">hybrid clock:</text>
+<text x="230" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="normal" text-anchor="start">10:00:00 #0</text>
+<rect x="580" y="170" width="440" height="200" rx="14" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<text x="602" y="210" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#c2410c" font-weight="bold" text-anchor="start">Bob</text>
+<text x="602" y="244" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#1f2328" font-weight="normal" text-anchor="start">gets Alice's edit, then edits</text>
+<text x="602" y="282" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">real time:</text>
+<text x="720" y="282" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">10:01:00</text>
+<text x="602" y="310" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">wall clock:</text>
+<text x="720" y="310" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#1f2328" font-weight="normal" text-anchor="start">09:51:00</text>
+<text x="602" y="338" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="17" fill="#59636e" font-weight="normal" text-anchor="start">hybrid clock:</text>
+<text x="750" y="338" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="17" fill="#0f766e" font-weight="normal" text-anchor="start">10:00:00 #2</text>
+<line x1="500" y1="270" x2="580" y2="270" stroke="#59636e" stroke-width="4" marker-end="url(#ah)"/>
+<text x="1100" y="215" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#1f2328" font-weight="bold" text-anchor="start">Bob's edit is the LATER one.</text>
+<text x="1100" y="250" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#59636e" font-weight="normal" text-anchor="start">He saw Alice's edit first.</text>
+<rect x="60" y="430" width="720" height="250" rx="14" fill="#fdeeee" stroke="#a4262c" stroke-width="3"/>
+<text x="84" y="474" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#a4262c" font-weight="bold" text-anchor="start">Order by wall clock</text>
+<text x="84" y="512" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Alice  10:00:00</text>
+<text x="84" y="544" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#a4262c" font-weight="normal" text-anchor="start">Bob    09:51:00   &lt;- looks older</text>
+<text x="84" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#a4262c" font-weight="bold" text-anchor="start">Alice's edit wins. Bob's later edit is lost.</text>
+<text x="84" y="626" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">No error, no warning: the data is just wrong.</text>
+<rect x="820" y="430" width="720" height="250" rx="14" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text x="844" y="474" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="start">Order by hybrid logical clock</text>
+<text x="844" y="512" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Alice  10:00:00 #0</text>
+<text x="844" y="544" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" fill="#0f766e" font-weight="normal" text-anchor="start">Bob    10:00:00 #2   &lt;- after Alice</text>
+<text x="844" y="590" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#0f766e" font-weight="bold" text-anchor="start">Bob's edit wins, as it should.</text>
+<text x="844" y="626" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="19" fill="#59636e" font-weight="normal" text-anchor="start">Receiving Alice's stamp moved Bob's clock past it.</text>
+<rect x="60" y="720" width="1480" height="150" rx="14" fill="#ffffff" stroke="#c9ccd1" stroke-width="2"/>
+<text x="84" y="762" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="22" fill="#1f2328" font-weight="bold" text-anchor="start">The rule (Kulkarni et al.): a stamp is (wall, counter)</text>
+<text x="84" y="800" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">wall  = max(own last wall, remote wall, physical clock)   counter breaks ties and counts events at the same wall value</text>
+<text x="84" y="832" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#59636e" font-weight="normal" text-anchor="start">Never goes backwards. Always after what it has seen. Never far ahead of the real time: remote stamps over 1 h ahead are refused.</text>
+</svg>

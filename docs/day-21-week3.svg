@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<rect width="1600" height="1000" fill="#fbfaf7"/>
+<text xml:space="preserve" x="60" y="66" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="42" fill="#1f2328" font-weight="bold" text-anchor="start">Week 3: from two copies of the data to one state</text>
+<text xml:space="preserve" x="60" y="104" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="21" fill="#59636e" font-weight="normal" text-anchor="start">Offgrid, Days 15-20. One CPU-only laptop. Network cuts simulated on localhost.</text>
+<rect x="60" y="140" width="1480" height="108" rx="12" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<rect x="60" y="140" width="110" height="108" rx="12" fill="#1f5fa8" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="190" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="226" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">15</text>
+<text xml:space="preserve" x="200" y="182" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Hybrid logical clock</text>
+<text xml:space="preserve" x="200" y="214" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">A stamp never goes backwards, even if the clock does.</text>
+<text xml:space="preserve" x="200" y="238" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">Simulation, fake clocks: 0 ordering mistakes, raw wall time got 33,190 of 66,677 wrong</text>
+<rect x="60" y="266" width="1480" height="108" rx="12" fill="#ffffff" stroke="#1f5fa8" stroke-width="3"/>
+<rect x="60" y="266" width="110" height="108" rx="12" fill="#1f5fa8" stroke="#1f5fa8" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="316" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="352" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">16</text>
+<text xml:space="preserve" x="200" y="308" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Last-writer-wins per field</text>
+<text xml:space="preserve" x="200" y="340" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Two people can edit different fields of one task and keep both.</text>
+<text xml:space="preserve" x="200" y="364" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">Pure merge function, node ID breaks ties, no database needed to test it</text>
+<rect x="60" y="392" width="1480" height="108" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+<rect x="60" y="392" width="110" height="108" rx="12" fill="#0f766e" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="442" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="478" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">17</text>
+<text xml:space="preserve" x="200" y="434" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Property tests</text>
+<text xml:space="preserve" x="200" y="466" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Merge order never matters: commutative, associative, idempotent.</text>
+<text xml:space="preserve" x="200" y="490" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">Laws run on thousands of random cases; 7 deliberately broken merges are all caught</text>
+<rect x="60" y="518" width="1480" height="108" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="3"/>
+<rect x="60" y="518" width="110" height="108" rx="12" fill="#0f766e" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="568" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="604" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">18</text>
+<text xml:space="preserve" x="200" y="560" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Add-wins set for notes</text>
+<text xml:space="preserve" x="200" y="592" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">A remove only beats what it had seen.</text>
+<text xml:space="preserve" x="200" y="616" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">Concurrent add and remove tested as examples, as properties, and in a demo</text>
+<rect x="60" y="644" width="1480" height="108" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<rect x="60" y="644" width="110" height="108" rx="12" fill="#c2410c" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="694" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="730" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">19</text>
+<text xml:space="preserve" x="200" y="686" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Sync protocol</text>
+<text xml:space="preserve" x="200" y="718" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Send only what is missing. Applying a batch twice equals once.</text>
+<text xml:space="preserve" x="200" y="742" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">Two real processes over localhost HTTP, HMAC-signed, a gap or a fork is refused whole</text>
+<rect x="60" y="770" width="1480" height="108" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="3"/>
+<rect x="60" y="770" width="110" height="108" rx="12" fill="#c2410c" stroke="#c2410c" stroke-width="3"/>
+<text xml:space="preserve" x="115" y="820" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="18" fill="#ffffff" font-weight="normal" text-anchor="middle">Day</text>
+<text xml:space="preserve" x="115" y="856" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="36" fill="#ffffff" font-weight="bold" text-anchor="middle">20</text>
+<text xml:space="preserve" x="200" y="812" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#1f2328" font-weight="bold" text-anchor="start">Checkpoint 2</text>
+<text xml:space="preserve" x="200" y="844" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="20" fill="#1f2328" font-weight="normal" text-anchor="start">Offline edits on both sides, reconnect: same state hash.</text>
+<text xml:space="preserve" x="200" y="868" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="16" fill="#59636e" font-weight="normal" text-anchor="start">25 random 3-replica runs vs an oracle; a network losing 20% of requests and replies</text>
+<rect x="60" y="902" width="1480" height="70" rx="12" fill="#e8f3f1" stroke="#0f766e" stroke-width="3"/>
+<text xml:space="preserve" x="800" y="946" font-family="DejaVu Sans, Helvetica, Arial, sans-serif" font-size="24" fill="#0f766e" font-weight="bold" text-anchor="middle">723 test functions  ·  about 16,000 lines of Go  ·  about 19,000 lines of tests</text>
+</svg>
