@@ -1,0 +1,82 @@
+# Day 28. Runs on every push to main and every pull request.
+# Needs a C compiler (mattn/go-sqlite3 uses cgo): ubuntu-latest has gcc.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # "1.22" is the version go.mod promises; "stable" is whatever is current.
+        go: ["1.22", "stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+
+      - name: go.mod and go.sum are complete (run "go mod tidy" if this fails)
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: test (race detector)
+        run: go test -race -count=1 ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  # The same single binary the release publishes, started for real: one command that touches the
+  # database, and the dashboard demo (a browser-free end-to-end check).
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: build and run
+        run: |
+          go build -o bin/offgrid ./cmd/offgrid
+          ./bin/offgrid version
+          make web-check
+          make tamper-demo
