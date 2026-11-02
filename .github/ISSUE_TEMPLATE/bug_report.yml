@@ -1,0 +1,35 @@
+name: Bug report
+description: Something does not work the way the docs say it does
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes:
+      label: The command you ran, and its output
+      description: A tiny example beats a description. For sync or store bugs, add the output of `offgrid store verify`.
+      render: shell
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes:
+      label: Output of `offgrid version`
+    validations: {required: true}
+  - type: input
+    id: system
+    attributes:
+      label: OS and CPU
+      placeholder: Zorin OS 18, Ryzen 5 PRO 5650U
+    validations: {required: true}
+  - type: dropdown
+    id: ollama
+    attributes:
+      label: Was Ollama running?
+      options: ["Not involved", "Yes", "No"]
+  - type: markdown
+    attributes:
+      value: "Please do not attach your real database. It holds your tasks."
