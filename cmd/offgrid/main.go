@@ -36,7 +36,8 @@ import (
 	"offgrid/internal/sysinfo"
 )
 
-const version = "0.27.0-day27"
+// version is a var so a release build can stamp it: -ldflags "-X main.version=1.2.3".
+var version = "0.28.0-day28"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
