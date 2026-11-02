@@ -24,6 +24,8 @@ with no GPU and costs $0.
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
 that enforces it) and [Why I used CRDTs for an AI agent](docs/article-why-crdts-for-an-ai-agent.md) (draft).
 
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](docs/good-first-issues.md).
+
 ---
 
 ## Quickstart: three commands
@@ -46,6 +48,22 @@ curl -fsSL https://ollama.com/install.sh | sh && scripts/pull-models.sh
 
 Without a model, `offgrid agent -no-model` still handles everything the rules
 cover, and says so politely for the rest.
+
+---
+
+## Install
+
+Tagged releases publish a Linux binary for amd64 and arm64 with a `SHA256SUMS`
+file (Releases page). The binary is dynamically linked against glibc (SQLite is
+compiled in), and is built on Ubuntu 22.04, so it needs glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+).
+
+```bash
+sha256sum -c --ignore-missing SHA256SUMS
+tar xzf offgrid-vX.Y.Z-linux-amd64.tar.gz && ./offgrid-vX.Y.Z-linux-amd64/offgrid version
+```
+
+Or build it yourself with `go build ./cmd/offgrid` (Go 1.22+, a C compiler).
+Nothing here has been run on macOS or Windows; see the first good first issue.
 
 ---
 
@@ -80,6 +98,7 @@ cover, and says so politely for the rest.
 | 25 | Benchmarks anyone can reproduce: store, sync and queue times, and memory | `make bench-system` / `make bench` / `offgrid perf -quick` |
 | 26 | **Checkpoint 3:** The web dashboard from the single binary; localhost security, stale suggestions, live replica & queue status | `make web-demo` / `make web-check` / `offgrid web -db FILE` |
 | 27 | Tamper-evident log: SHA-256 hash chain per replica; verify checks it, sync refuses an op built on an edited history | `make tamper-demo` / `offgrid store -db FILE verify` / `head` |
+| 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -359,4 +378,9 @@ make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
 - Honest numbers only, always with the hardware named.
 
 ---
+
+## Licence
+
+[MIT](LICENSE). Copyright (c) 2026 Rebira.
+
 
