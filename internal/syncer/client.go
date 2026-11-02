@@ -125,7 +125,7 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	}
 	if resp.StatusCode != http.StatusOK {
 		var e ErrorResponse
-		json.Unmarshal(rb, &e)
+		_ = json.Unmarshal(rb, &e) // best effort: the status code is what matters if the body is not JSON
 		return &RemoteError{resp.StatusCode, e.Code, e.Error}
 	}
 	if err := json.Unmarshal(rb, out); err != nil {
