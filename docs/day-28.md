@@ -14,7 +14,7 @@
 | `docs/good-first-issues.md`, `scripts/create-good-first-issues.sh` | six real starter tasks; one command opens them as GitHub issues (`DRY=1` to preview) |
 | `Makefile`, `README.md`, `.gitignore` | `make lint`, `make release-local`, `make good-first-issues`; badges, an Install section, a licence section; `dist/` ignored |
 
-The version is now stamped at build time (`-X main.version=...`), so a release binary says the tag it came from. A plain `go build` still says `0.28.0-day28`.
+The version is now stamped at build time (`-X main.version=...`), so a release binary says the tag it came from. A plain `go build` still says its day version.
 
 ## What linting found
 
