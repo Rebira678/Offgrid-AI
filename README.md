@@ -183,85 +183,6 @@ line says which machine produced it):
 Peak RSS is the largest resident memory of the whole process during that row (counter reset before each row). Peak Go heap is sampled every 10 ms, so a very short spike can be missed. Sync over HTTP runs on one machine: it measures protocol, signing and storage cost, not a WiFi link.
 <!-- perf:end -->
 
-## Layout
-
-```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync
-internal/ollama/        HTTP client for Ollama: streaming, typed errors
-internal/bench/         benchmark method and report writers
-internal/sysinfo/       reads CPU and RAM so every result names its hardware
-internal/intent/        the Command type and its validation
-internal/structured/    getting valid JSON out of a model, with retries
-internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, fake)
-internal/eval/          measures how reliably models produce valid commands
-internal/task/          the Task type, matching rules, the Store contract
-internal/task/storetest shared contract tests every store must pass
-internal/tools/         the closed menu of tools and the registry
-internal/agent/         tiered loop: rules first, model second
-internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
-internal/connectivity   state machine, probers and the monitor goroutine
-internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
-internal/router         answer now or defer: complexity gate, output validity, connectivity
-internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
-internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; job handlers
-internal/obs            structured logs (slog), counters, snapshot files other processes can read
-internal/dash           the one-screen view: a pure render function plus a repaint loop
-internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
-internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
-internal/web            the dashboard: one embedded page, a JSON state endpoint, and the one write it allows (accept or dismiss a suggestion), guarded for localhost
-internal/sim            deterministic simulation: a seed becomes a failure schedule (partitions, skew, crashes, lossy sync) run against the real store
-internal/perf           reproducible benchmarks: store, sync, queue drain, memory, hardware recorded (make bench)
-internal/suggest        the wall between AI output and a person's tasks: updates and notes become suggestions
-internal/idle           is the CPU quiet? (the gate for slow jobs; reads /proc/stat)
-internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
-scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh, web-demo.sh,
-                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh,
-                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py
-examples/               sample command and message files
-docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
-```
-
-## Tests
-
-As of Day 24, `go test -v ./...` runs **1,300+ test functions** (plus their subtests)
-in 25 packages: about 20,500 lines of Go and about 30,000 lines of tests. One
-test skips by design (a helper process that only runs when launched by another
-test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
-
-```bash
-make check                 # vet + gofmt + tests
-go test -race ./...        # with the race detector
-make sim                   # 1,000 random failure schedules (SEEDS=3000 make sim)
-make sim-quick             # quick 100-schedule simulation run
-scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
-make converge-demo         # runs multi-replica convergence demo
-make two-brains-demo       # runs Day 22 Tier 2 deliberate reasoning and idle gate demo
-make ai-suggests-demo      # runs Day 23 safe AI suggestions and review demo
-make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
-```
-
-### Quality Guarantees
-- **Deterministic Simulation Engine & Chaos Sweeps:** 1,000+ seeded failure schedules throw network partitions, severe clock skew (±90m), process crashes and restarts, dropped/duplicated/delayed/truncated/reversed sync replies, and gap injections at 3 real SQLite replicas. Assertions mathematically guarantee causal HLC monotonicity, atomic refusal, state hash convergence, and log oracle validation (recomputing deletes and suggestion resolutions from raw ops). A delta shrinker reduces failing 80-action traces to minimal reproducible test cases.
-- **AI Suggestion Isolation & Stale Protection:** Proving mathematically and empirically that an AI model wrapper (`suggest.Store`) and safe queue drain (`drain.InterpretSafely`) cannot overwrite existing tasks. Base snapshot comparison prevents accepting stale proposals if a human concurrently edited the targeted fields.
-- **Add-Wins Suggestion Lifecycle & Ring Sync:** Multi-replica convergence tests verify that suggestions, acceptances, and dismissals sync canonically over HLC timestamps across 3-node ring topologies, and SQLite rebuild from raw op log reconstructs suggestions with byte-for-byte state hash equality.
-- **Contract Testing (`storetest`):** Shared contract test suite runs identically against `MemStore` and `sqlstore.Store`, including `task.Remover` (`DeleteTask`, `RemoveNote`).
-- **Differential Random-Walk Testing:** `TestSQLiteAgreesWithTheInMemoryStoreOnRandomWorkloads` executes 5,000 operations across 25 random seeds comparing `sqlstore` directly against the in-memory oracle.
-- **Causal & Monotonic Clock Testing:** Multi-node simulation across 25 random seeds and ±5s clock drift (66,677 messages verified with 0 HLC misorderings vs 33,190 wall clock failures).
-- **CRDT Lattice & Purity Verification:** `internal/crdt` verifies commutativity, associativity, and idempotence of `Merge` over 20,000 randomized comparisons and 200 random multi-replica sync scenarios.
-- **Property-Based Testing (`pgregory.net/rapid`):** 67,000+ generated test cases across 21 formal algebraic properties mathematically proving that `crdt.Merge` and `crdt.MergeSet` form bounded join-semilattices. Deliberately broken merge mutants (12 anti-patterns) are proven caught and shrunk.
-- **Observed-Remove Set (OR-Set) Lattice & Oracle Proofs:** Add-wins semantics with tombstones proven via Rapid (3,000 cases per law). Proves mathematically that deleting an item never destroys an unseen concurrent edit.
-- **Multi-Replica Convergence:** Chaos tests and end-to-end multi-process simulation (`scripts/converge-demo.sh`) subject replicas to network cuts, concurrent offline edits, deletions, and lossy networks. Replicas reconnect and achieve 100% cryptographic state hash parity.
-- **Tier 2 Deliberate Reasoning & Idle Gate:** End-to-end testing of `internal/idle` CPU sampler, window boundaries, `/proc/stat` counter resets, graceful fail-open on non-Linux, and worker idle backoff (`make two-brains-demo`).
-- **Cloud Failover & Dead-Letter Isolation:** Exhaustive failure testing verifying that cloud HTTP 401/403/429/500/503 errors safely trigger automatic fallback to local models, while missing local models (`*llm.ModelNotFoundError`) are marked `Permanent` to prevent endless CPU burns.
-- **Answer Synchronization & Rebuild Parity:** Three-replica out-of-order delta sync tests prove that Tier 2 answers converge canonically across partitions. Tamper injection tests prove `Verify` detects corrupted projection rows and `Rebuild` restores cryptographic op-log parity.
-- **UTF-8 Boundary Safety:** Truncation guards ensure multi-byte UTF-8 runes (Japanese, Amharic, Emoji) crossing the 8KB limit are never bisected, preventing JSON encoding or SQLite projection errors.
-- **Race Detection:** Clean under `go test -race ./...`.
-- **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
-- **Cryptographic Tamper-Evident Hash Chain (Day 27):** SHA-256 chain per replica with SQLite trigger protection (`op_chain`). `offgrid store verify` detects altered or reordered ops, `-anchor` compares heads against external checkpoints, and remote sync refuses an op built on an edited history with HTTP 409 conflict code `chain` (`make tamper-demo`).
-- **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
-
----
-
 ## Honest limits
 
 - **No real devices, no real network.** Everything ran on one HP EliteBook
@@ -370,17 +291,69 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
-## Licence
+## Layout
 
-- The model proposes, the code disposes: nothing a model says is trusted until validated.
-- Precision over coverage: when unsure, ask or refuse, never guess a task.
-- The op log is the truth; tables are a disposable cache.
-- Honest numbers only, always with the hardware named.
+```
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync
+internal/ollama/        HTTP client for Ollama: streaming, typed errors
+internal/bench/         benchmark method and report writers
+internal/sysinfo/       reads CPU and RAM so every result names its hardware
+internal/intent/        the Command type and its validation
+internal/structured/    getting valid JSON out of a model, with retries
+internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, fake)
+internal/eval/          measures how reliably models produce valid commands
+internal/task/          the Task type, matching rules, the Store contract
+internal/task/storetest shared contract tests every store must pass
+internal/tools/         the closed menu of tools and the registry
+internal/agent/         tiered loop: rules first, model second
+internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
+internal/connectivity   state machine, probers and the monitor goroutine
+internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
+internal/router         answer now or defer: complexity gate, output validity, connectivity
+internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
+internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; job handlers
+internal/obs            structured logs (slog), counters, snapshot files other processes can read
+internal/dash           the one-screen view: a pure render function plus a repaint loop
+internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
+internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
+internal/web            the dashboard: one embedded page, a JSON state endpoint, and the one write it allows (accept or dismiss a suggestion), guarded for localhost
+internal/sim            deterministic simulation: a seed becomes a failure schedule (partitions, skew, crashes, lossy sync) run against the real store
+internal/perf           reproducible benchmarks: store, sync, queue drain, memory, hardware recorded (make bench)
+internal/suggest        the wall between AI output and a person's tasks: updates and notes become suggestions
+internal/idle           is the CPU quiet? (the gate for slow jobs; reads /proc/stat)
+internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
+scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh, web-demo.sh,
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh,
+                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py
+examples/               sample command and message files
+docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
+```
 
----
+## Tests
+
+As of Day 29, `go test -v ./...` runs all test functions (plus their subtests)
+in 28 packages: over 22,000 lines of Go and over 24,000 lines of tests. One
+test skips by design (a helper process that only runs when launched by another
+test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
+
+```bash
+make check                 # vet + gofmt + tests
+make lint                  # golangci-lint (the config CI uses)
+go test -race ./...        # with the race detector
+scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
+make fresh-test            # fresh-clone build, test, and demo harness (timed under 10m)
+```
+
+### Quality Guarantees
+
+- **Deterministic Simulation Testing:** Seeded pseudo-random failure schedules (clock skew, network partitions, worker crashes, message drop) verify eventual consistency and CRDT convergence against reference models.
+- **CRDT Mathematical Laws:** Automated property-based tests via Rapid verify Commutativity ($A \cup B = B \cup A$), Associativity ($(A \cup B) \cup C = A \cup (B \cup C)$), and Idempotence ($A \cup A = A$). Deliberately broken operations fail fast.
+- **Cryptographic Tamper-Evident Hash Chain:** SHA-256 chain per replica with SQLite trigger protection (`op_chain`). `offgrid store verify` detects altered or reordered ops, `-anchor` compares heads against external checkpoints, and remote sync refuses an op built on an edited history with HTTP 409 conflict code `chain` (`make tamper-demo`).
+- **Crash-Resilience Testing (`kill -9`):** Subprocess-level SIGKILL injection tests verify that killed workers in mid-execution leave no leaked leases, duplicate results, or corrupted state.
+- **UTF-8 Boundary Safety:** Truncation guards ensure multi-byte UTF-8 runes (Japanese, Amharic, Emoji) crossing the 8KB limit are never bisected, preventing JSON encoding or SQLite projection errors.
+- **Race Detection:** Clean under `go test -race ./...`.
+- **Adversarial & Tamper Testing:** Unit tests deliberately corrupt SQLite database rows and assert that `Verify` detects the divergence and `Rebuild` restores cryptographic parity.
 
 ## Licence
 
 [MIT](LICENSE). Copyright (c) 2026 Rebira.
-
-
