@@ -357,7 +357,7 @@ func TestSuggestionsCLIEdgeHelpAndFlagParsing(t *testing.T) {
 	}
 
 	// Unknown flag
-	code, _, errOut = runCmd(t, "suggestions", "-nonexistent-flag")
+	code, _, _ = runCmd(t, "suggestions", "-nonexistent-flag")
 	if code != 2 {
 		t.Fatalf("expected code 2 for bad flag, got: %d", code)
 	}

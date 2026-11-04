@@ -87,7 +87,10 @@ func cmdPerf(args []string, stdout, stderr io.Writer) int {
 	stdout.Write(md.Bytes())
 	if *mdPath != "" {
 		if d := filepath.Dir(*mdPath); d != "" && d != "." {
-			os.MkdirAll(d, 0o755)
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				fmt.Fprintf(stderr, "error: %v\n", err)
+				return 1
+			}
 		}
 		if err := os.WriteFile(*mdPath, md.Bytes(), 0o644); err != nil {
 			fmt.Fprintf(stderr, "error: %v\n", err)

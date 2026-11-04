@@ -41,7 +41,7 @@ func TestCLISpecialCharactersAndUnicode(t *testing.T) {
 
 	// List should only have second note
 	code, out, _ = runTask(t, db, "list")
-	if strings.Contains(out, "Prüfung") || !strings.Contains(out, "温度正常") {
+	if code != 0 || strings.Contains(out, "Prüfung") || !strings.Contains(out, "温度正常") {
 		t.Fatalf("list after note removal unexpected: %s", out)
 	}
 
@@ -53,7 +53,7 @@ func TestCLISpecialCharactersAndUnicode(t *testing.T) {
 
 	// List should now be empty
 	code, out, _ = runTask(t, db, "list")
-	if !strings.Contains(out, "(no tasks)") {
+	if code != 0 || !strings.Contains(out, "(no tasks)") {
 		t.Fatalf("expected (no tasks), got: %s", out)
 	}
 }
