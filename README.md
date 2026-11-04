@@ -215,6 +215,13 @@ make bench-models     # or: make bench (runs system + models)
 | 3b | + schema | 100% [89-100] | 93% [79-98] | 90% [74-97] | 92% [75-98] |
 | 3b | + schema + retries | 100% [89-100] | 100% [89-100] | 97% [83-99] | 100% [87-100] |
 
+**Tiers** (`offgrid agent -eval`, same 30 messages): Tier 0 rules handled 16 of 30
+(all 16 correct: 11 done, 5 refused) in a median 19 microseconds; the 3B model
+handled the other 14 in a median 2.2 s (11 done, 3 declined). The Tier 0 split
+was reproduced independently; the model timings were not (no model server in
+the reviewing sandbox). The Tier 2 (7-8B) model has no row yet: run it with
+`offgrid bench -models qwen2.5:7b` and add it.
+
 **Storage & CRDT Replay Throughput** (`make bench-store`)
 
 ```bash
