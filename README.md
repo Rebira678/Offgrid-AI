@@ -317,6 +317,23 @@ make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
   asking again the next day makes a new answer, and old ones are never rewritten.
 - Upgrade both replicas together: an older replica refuses ops it does not know.
 
+## What's next
+
+Only what is already known to be missing; nothing here is promised by a date.
+
+- **A real network and real devices.** Everything ran on one laptop over localhost.
+  Two real devices on a real WiFi link is the test that matters most.
+- **Read-only commands that create a database.** Opening a path that does not exist
+  creates it, under a random node name, even for a command that only reads (found
+  by the Day 29 clean-copy test; the demo script now names its node).
+- **Authentication per device** (signing keys), and encryption on the wire.
+- **Compaction** of old ops and tombstones.
+- **A 7-8B Tier 2 model in the tables**, and the same benchmarks on other hardware.
+- **macOS and Windows.** Linux only so far; the first good first issue is a macOS test run.
+- **The long-form article** ([draft](docs/article-why-crdts-for-an-ai-agent.md)), published and linked here.
+
+Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Licence
 
 - The model proposes, the code disposes: nothing a model says is trusted until validated.
