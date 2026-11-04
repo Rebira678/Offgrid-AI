@@ -334,6 +334,42 @@ Only what is already known to be missing; nothing here is promised by a date.
 
 Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## What works today
+
+| Day | What | Try it |
+|---|---|---|
+| 1 | Measure local model speed honestly | `offgrid bench` |
+| 2 | Streaming client, typed errors | `offgrid ask "..."` |
+| 3 | Free text to a validated command | `offgrid parse "close the pump ticket"` |
+| 4 | Closed tool menu, code re-validates what the model proposes | `offgrid exec -seed '{"intent":"list_tasks"}'` |
+| 5 | Tier 0 rules first, model second | `offgrid agent -seed -no-model` |
+| 6 | Event-sourced SQLite store: append-only op log plus a rebuildable view | `offgrid store -db FILE verify` |
+| 7 | Automated offline demo & developer test harness | `make demo` / `make check` |
+| 8 | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
+| 9 | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
+| 10 | Router: answer now, or save hard requests in the queue with a visible status. **Checkpoint 1** | `offgrid agent -route -net offline` |
+| 11 | A switch to break your own network: injected latency, packet loss and partitions | `scripts/partition-demo.sh` |
+| 12 | Drain on reconnect, survive a crash: worker with concurrency limit, leases, checkpoints, stored results | `scripts/drain-demo.sh` |
+| 13 | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` |
+| 14 | Recap: `ARCHITECTURE.md` v1, release v0.1 | `ARCHITECTURE.md`, `scripts/release-v0.1.sh` |
+| 15 | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
+| 16 | LWW-Map: per-field last-writer-wins registers, pure merge, node-ID tie-break | `offgrid lww demo` |
+| 17 | Property tests (`rapid`): merge is commutative, associative, idempotent; broken merges are caught | `scripts/prove-merge.sh` |
+| 18 | OR-Set: add-wins observed-remove set with tombstones (notes, task lists) | `offgrid orset demo` |
+| 19 | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `offgrid sync serve` / `once` |
+| 20 | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` |
+| 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
+| 22 | Tier 2, slow thinking: a big local model that runs only when the laptop is quiet, an optional cloud model, answers written back as synced ops | `make two-brains-demo` |
+| 23 | The AI never overwrites a human: AI output is a suggestion beside the task; accepting is an explicit op, refused if a person edited since | `make ai-suggests-demo` |
+| 24 | Deterministic simulation: seeded schedules of partitions, clock skew, crashes and lossy sync against the real store; a failing seed replays exactly. It found a real bug on its first run | `make sim` |
+| 25 | Reproducible benchmarks: store, sync, queue drain and memory with the hardware stated; `make bench` rewrites the tables below | `make bench` |
+| 26 | Web dashboard from the single binary (`embed`): replicas and merges, connection, queue, tiers, tasks, and Accept / Dismiss for AI suggestions. This machine only. **Feature freeze** | `make web-demo` |
+| 27 | Tamper-evident log: every op is hash-chained to the previous op of the same replica; `store verify` names an edited op; saved heads and sync catch a rewritten chain | `make tamper-demo` |
+| 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
+| 29 | Front page that works: visual architecture, trade-off matrix, fresh-clone test harness, demo replay GIF | `make fresh-test` / `make demo-gif` |
+
+Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
+
 ## Licence
 
 - The model proposes, the code disposes: nothing a model says is trusted until validated.
