@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <rect width="1200" height="675" fill="#fafaf8"/>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#555"/></marker>
+    <style>
+      .t{font-size:15px;fill:#1c1c1c} .s{font-size:12px;fill:#555} .h{font-size:13px;font-weight:700;fill:#555;letter-spacing:1px}
+      .b{fill:#fff;stroke:#444;stroke-width:1.5;rx:8} .g{fill:#e8f3ea;stroke:#2e7d4a;stroke-width:1.5;rx:8} .o{fill:#fdf0dc;stroke:#b8741a;stroke-width:1.5;rx:8} .p{fill:#ece9f7;stroke:#5b4bb0;stroke-width:1.5;rx:8}
+      .l{stroke:#555;stroke-width:1.6;fill:none}
+    </style>
+  </defs>
+  <text x="40" y="44" style="font-size:24px;font-weight:700;fill:#1c1c1c">Offgrid: how a message and an edit travel</text>
+  <text x="40" y="68" class="s">One Go binary. Everything on one laptop, no GPU. Green: works with no network. Orange: decides what waits. Purple: slow thinking. Blue: another device.</text>
+
+  <text x="40" y="112" class="h">1  UNDERSTAND (no network)</text>
+  <rect class="g" x="40" y="124" width="190" height="64"/><text class="t" x="56" y="150">Tier 0: rules</text><text class="s" x="56" y="170">instant, free, exact</text>
+  <rect class="g" x="290" y="124" width="210" height="64"/><text class="t" x="306" y="150">Tier 1: small model</text><text class="s" x="306" y="170">3B on CPU, output validated</text>
+  <rect class="b" x="560" y="124" width="230" height="64"/><text class="t" x="576" y="150">Closed tool menu</text><text class="s" x="576" y="170">code re-validates every proposal</text>
+  <path class="l" d="M230 156H288" marker-end="url(#a)"/><path class="l" d="M500 156H558" marker-end="url(#a)"/>
+  <text class="s" x="40" y="212">message in</text>
+
+  <text x="40" y="262" class="h">2  DECIDE</text><text class="s" x="300" y="262">the router reads the connection state: ONLINE, DEGRADED or OFFLINE</text>
+  <rect class="o" x="40" y="274" width="250" height="78"/><text class="t" x="56" y="300">Router</text><text class="s" x="56" y="320">easy: answer now</text><text class="s" x="56" y="338">hard + OFFLINE: save it, say so</text>
+  <rect class="o" x="350" y="274" width="210" height="78"/><text class="t" x="366" y="300">Durable queue</text><text class="s" x="366" y="320">leases, backoff, dead-letter</text><text class="s" x="366" y="338">survives kill -9</text>
+  <rect class="p" x="660" y="274" width="250" height="78"/><text class="t" x="676" y="300">Tier 2: big model</text><text class="s" x="676" y="320">runs when the laptop is idle,</text><text class="s" x="676" y="338">or an optional cloud model</text>
+  <path class="l" d="M290 313H348" marker-end="url(#a)"/><path class="l" d="M560 313H658" marker-end="url(#a)"/>
+  <text class="s" x="296" y="304">hard</text><text class="s" x="568" y="304">on reconnect</text>
+  <path class="l" d="M675 188V250H165V272" marker-end="url(#a)"/>
+
+  <text x="40" y="402" class="h">3  REMEMBER</text><text class="s" x="300" y="402">the op log is the truth; the tables are a cache you can rebuild</text>
+  <rect class="b" x="40" y="414" width="300" height="86"/><text class="t" x="56" y="440">Append-only op log (SQLite)</text><text class="s" x="56" y="460">hybrid logical clock on every op</text><text class="s" x="56" y="478">hash-chained per replica</text>
+  <rect class="b" x="400" y="414" width="250" height="86"/><text class="t" x="416" y="440">Task view</text><text class="s" x="416" y="460">rebuilt from the log any time</text><text class="s" x="416" y="478">LWW fields, add-wins notes</text>
+  <rect class="b" x="710" y="414" width="210" height="86"/><text class="t" x="726" y="440">AI suggestions</text><text class="s" x="726" y="460">beside the task, never over it;</text><text class="s" x="726" y="478">a person accepts</text>
+  <path class="l" d="M340 457H398" marker-end="url(#a)"/>
+  <path class="l" d="M785 352V382H190V412" marker-end="url(#a)"/>
+  <text class="s" x="792" y="376">answers are ops too</text>
+
+  <rect class="o" x="980" y="124" width="180" height="64" style="fill:#e3eefb;stroke:#2f6db3"/><text class="t" x="996" y="150">Other replica</text><text class="s" x="996" y="170">phone, second laptop</text>
+  <rect x="980" y="274" width="180" height="226" rx="8" style="fill:#e3eefb;stroke:#2f6db3;stroke-width:1.5"/>
+  <text class="t" x="996" y="302">Sync</text>
+  <text class="s" x="996" y="326">exchange only the ops</text><text class="s" x="996" y="344">the other side lacks</text>
+  <text class="s" x="996" y="370">HMAC-signed requests</text><text class="s" x="996" y="394">idempotent apply</text>
+  <text class="s" x="996" y="418">refuses a forked or</text><text class="s" x="996" y="436">edited history</text>
+  <text class="s" x="996" y="470">same ops, any order,</text><text class="s" x="996" y="488">same state hash</text>
+  <path class="l" d="M1070 500V532H190V502" marker-end="url(#a)" marker-start="url(#a)"/><text class="s" x="480" y="526">sync sends and receives ops</text>
+  <path class="l" d="M1070 188V272" marker-end="url(#a)" marker-start="url(#a)"/>
+
+  <text x="40" y="552" class="h">4  SEE AND CHECK</text>
+  <rect class="b" x="40" y="564" width="270" height="64"/><text class="t" x="56" y="590">offgrid web / top</text><text class="s" x="56" y="610">this machine only, no login</text>
+  <rect class="b" x="350" y="564" width="270" height="64"/><text class="t" x="366" y="590">store verify</text><text class="s" x="366" y="610">names the first edited op</text>
+  <rect class="b" x="660" y="564" width="270" height="64"/><text class="t" x="676" y="590">simulation</text><text class="s" x="676" y="610">seeded partitions, crashes, skew</text>
+  <text class="s" x="962" y="582">Not built:</text><text class="s" x="962" y="600">encryption on the wire,</text><text class="s" x="962" y="618">per-device signatures, compaction</text>
+</svg>
