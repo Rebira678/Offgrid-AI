@@ -204,7 +204,18 @@ make bench-models     # or: make bench (runs system + models)
 | **Llama 3.2 (3B)** | Long (1,176 tok) | 0.0 s | 16.5 s | **9.0 tok/s** | 71.8 tok/s |
 <!-- bench:end -->
 
-### 2. Storage & CRDT Replay Throughput (`make bench-store`)
+**Reliability** (`offgrid eval -ablation`, 30 labelled messages; 95% Wilson intervals in brackets):
+
+| Model | Setup | Clean JSON | Valid after retries | Intent correct | Arguments correct |
+|---|---|---|---|---|---|
+| 1b | prompt only | 60% [42-75] | 60% [42-75] | 57% [39-73] | 56% [37-73] |
+| 1b | + schema | 100% [89-100] | 87% [70-95] | 83% [66-93] | 84% [65-94] |
+| 1b | + schema + retries | 100% [89-100] | 97% [83-99] | 93% [79-98] | 92% [75-98] |
+| 3b | prompt only | 73% [55-86] | 73% [55-86] | 73% [55-86] | 76% [57-89] |
+| 3b | + schema | 100% [89-100] | 93% [79-98] | 90% [74-97] | 92% [75-98] |
+| 3b | + schema + retries | 100% [89-100] | 100% [89-100] | 97% [83-99] | 100% [87-100] |
+
+**Storage & CRDT Replay Throughput** (`make bench-store`)
 
 ```bash
 make bench-store
