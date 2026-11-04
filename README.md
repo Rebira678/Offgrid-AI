@@ -287,7 +287,11 @@ make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
   encryption, so it refuses any address but 127.0.0.1, ::1 or localhost, and any
   request whose Host is not one of those (DNS rebinding) or that comes from
   another site. Anyone who can use a browser on your computer can use it: accept
-  and dismiss included (`-read-only` removes those).
+  and dismiss included (`-read-only` removes those). To see the dashboard from a
+  phone, sync to the phone and run it there. It was checked in Chromium only, by
+  me, not on your laptop, and not with a screen reader. It polls every 2 seconds;
+  there is no history, only what the log, the queue and the published snapshots
+  hold right now.
 - **Tamper-evident, not tamper-proof (Day 27).** Editing, deleting or reordering
   an op without rewriting what follows makes `offgrid store verify` fail and name
   the op. Someone who can write the file can also recompute every later hash and
@@ -298,13 +302,22 @@ make tamper-demo           # runs Day 27 cryptographic tamper-evident log demo
   opened, so edits made before then cannot be seen. The chain is not
   authentication: it does not say who made an op, and HMAC sync is still a shared key.
 - **The log only grows.** No compaction of old ops or tombstones.
-- **Model quality is measured separately** (`offgrid bench`, `offgrid eval`);
-  the benchmark table above is filled from measurements on this machine.
+- **Model numbers are one laptop, one run.** Small samples (30 messages): read
+  the intervals, not the point values. The 7-8B Tier 2 model is not in the tables.
+- **Suggestions (Day 23) protect against edits made AFTER a suggestion is made,**
+  and only edits this device has received. An edit made on another device that
+  has not synced yet cannot be seen; once it syncs, the suggestion turns stale.
+  Staleness is about status and priority; a suggested note is never stale. A
+  queued message that updates a task is read hours later by a model, and what the
+  task looked like at that moment is what the suggestion remembers.
+- **Tier 2 (Day 22) is tested with stand-in models,** not a real 7-8B model or a
+  real cloud API. The idle gate looks at CPU use only (Linux `/proc/stat`; on
+  other systems it never blocks). The cloud client is off unless configured, and
+  sends your task data to the URL you give it. An answer is a fact in the log:
+  asking again the next day makes a new answer, and old ones are never rewritten.
 - Upgrade both replicas together: an older replica refuses ops it does not know.
 
----
-
-## Design rules
+## Licence
 
 - The model proposes, the code disposes: nothing a model says is trusted until validated.
 - Precision over coverage: when unsure, ask or refuse, never guess a task.
