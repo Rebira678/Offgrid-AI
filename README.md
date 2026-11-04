@@ -52,8 +52,6 @@ curl -fsSL https://ollama.com/install.sh | sh && scripts/pull-models.sh
 Without a model, `offgrid agent -no-model` still handles everything the rules
 cover, and says so politely for the rest.
 
----
-
 ## Install
 
 Tagged releases publish a Linux binary for amd64 and arm64 with a `SHA256SUMS`
@@ -67,8 +65,6 @@ tar xzf offgrid-vX.Y.Z-linux-amd64.tar.gz && ./offgrid-vX.Y.Z-linux-amd64/offgri
 
 Or build it yourself with `go build ./cmd/offgrid` (Go 1.22+, a C compiler).
 Nothing here has been run on macOS or Windows; see the first good first issue.
-
----
 
 ## Architecture
 
@@ -92,117 +88,37 @@ Each of these cost something. The cost is stated next to the choice.
 | **An AI never overwrites a human.** Model output becomes a *suggestion* beside the task. | A hallucination or a stale model edit cannot destroy real field notes. A person has to accept it. | Suggestions pile up if ignored; accepting is an extra step. |
 | **A single binary with zero runtime dependencies.** No npm, no external daemon, embedded dashboard. | Copy one file, run it; works on an airplane or a mine site. | The binary is ~20 MB (with SQLite compiled in); the web UI is plain HTML/CSS (no React, no CDN). |
 
-## What works today
-
-| Day | What | Try it |
-|---|---|---|
-| 1 | Measure local model speed honestly | `offgrid bench` |
-| 2 | Streaming client, typed errors | `offgrid ask "..."` |
-| 3 | Free text to a validated command | `offgrid parse "close the pump ticket"` |
-| 4 | Closed tool menu, code re-validates what the model proposes | `offgrid exec -seed '{"intent":"list_tasks"}'` |
-| 5 | Tier 0 rules first, model second | `offgrid agent -seed -no-model` |
-| 6 | Event-sourced SQLite store: append-only op log plus a rebuildable view | `offgrid store -db FILE verify` |
-| 7 | Automated offline demo & developer test harness | `make demo` / `make check` |
-| 8 | Connectivity monitor: ONLINE / DEGRADED / OFFLINE with hysteresis | `offgrid net` |
-| 9 | Durable job queue: backoff with jitter, idempotency keys, leases, dead-letter | `offgrid queue stats` |
-| 10 | Router: answer now, or save hard requests in the queue with a visible status. **Checkpoint 1** | `offgrid agent -route -net offline` |
-| 11 | A switch to break your own network: injected latency, packet loss and partitions | `scripts/partition-demo.sh` |
-| 12 | Drain on reconnect, survive a crash: worker with concurrency limit, leases, checkpoints, stored results | `scripts/drain-demo.sh` / `offgrid drain` |
-| 13 | See the system: `log/slog` logs, counters, and a one-screen live view of connection, queue and tiers | `scripts/top-demo.sh` / `offgrid top` |
-| 14 | Recap: `ARCHITECTURE.md` v1, release v0.1 | `ARCHITECTURE.md`, `scripts/release-v0.1.sh` |
-| 15 | Hybrid logical clock: stamps that survive slow, fast and backwards clocks | `offgrid clock demo` |
-| 16 | LWW-Map: per-field last-writer-wins registers, pure merge, node-ID tie-break | `offgrid lww demo` |
-| 17 | Property tests (`rapid`): merge is commutative, associative, idempotent; broken merges are caught | `scripts/prove-merge.sh` |
-| 18 | OR-Set: add-wins observed-remove set with tombstones (notes, task lists) | `offgrid orset demo` |
-| 19 | Sync protocol: version summaries, delta exchange, idempotent apply, HMAC auth | `make sync-demo` / `offgrid sync serve` / `once` |
-| 20 | **Checkpoint 2:** two replicas edit offline (chaos switch), reconnect, state hashes match; delete task / note | `make converge-demo` / `scripts/converge-demo.sh` |
-| 21 | Recap: README, the long-form article draft, the re-cut flagship video plan | `docs/day-21.md` |
-| 22 | Tier 2 Deliberate Reasoning: local 7-8B slow thinking gated by CPU idle meter, optional cloud failover, answers synced via op log | `make two-brains-demo` / `offgrid answers -db FILE` |
-| 23 | The AI never overwrites a human: proposals sit alongside tasks with stale detection; CLI accept/dismiss | `make ai-suggests-demo` / `offgrid suggestions -db FILE` |
-| 24 | Deterministic simulation testing: 1,000+ random failure schedules, log oracle, schedule shrinker | `make sim` / `make sim-quick` / `offgrid sim` |
-| 25 | Benchmarks anyone can reproduce: store, sync and queue times, and memory | `make bench-system` / `make bench` / `offgrid perf -quick` |
-| 26 | **Checkpoint 3:** The web dashboard from the single binary; localhost security, stale suggestions, live replica & queue status | `make web-demo` / `make web-check` / `offgrid web -db FILE` |
-| 27 | Tamper-evident log: SHA-256 hash chain per replica; verify checks it, sync refuses an op built on an edited history | `make tamper-demo` / `offgrid store -db FILE verify` / `head` |
-| 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
-
-Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
-
----
-
-## Architectural Flow
-
-```
-                              [ User Command ]
-                                     |
-                                     v
-                        +--------------------------+
-                        |  Tiered Intent Router    |
-                        +--------------------------+
-                         /            |           \
-           (Deterministic)     (SLM: ~1-3s)     (Complex Request)
-                       v              v                   v
-             +----------------+ +---------------+ +--------------------+
-             | Tier 0: Regex  | | Tier 1: SLM   | | Tier 2: Job Queue  |
-             | (Closed Vocab) | | (Llama 1B/3B) | | (Durable Deferral) |
-             +----------------+ +---------------+ +--------------------+
-                         \            |                    |
-                          v           v           (Worker & Idle Gate)
-                        +---------------+                  v
-                        | Closed Tools  |         +--------------------+
-                        | ("Propose,    |         | 7-8B Model / Cloud |
-                        |   Dispose")   |         | (Quiet CPU / Net)  |
-                        +---------------+         +--------------------+
-                                |                          |
-                       (Suggest Wrapper)                   |
-                                v                          |
-                        +---------------+                  |
-                        | Suggestions   |                  |
-                        | (Human Review)|                  |
-                        +---------------+                  |
-                                |                          |
-                                \                          /
-                                 v                        v
-                        +----------------------------------+
-                        |     Event-Sourced SQLite Log     |
-                        | (`ops`: tasks, notes, answers,   |
-                        |         suggestions)             |
-                        +----------------------------------+
-                                        |
-                                        v
-                        +----------------------------------+
-                        |   Materialized Views (v4 DDL)    |
-                        |   Disposable & 100% Rebuildable  |
-                        +----------------------------------+
-                                        |
-                        (Sync Protocol & CRDT Merge: HLC)
-                                        v
-                           [ Remote Replica Nodes ]
-```
-
----
-
 ## Benchmarks
 
-Measured with `offgrid bench` (medians of 3 runs after a warm-up) and `make bench-store`. All numbers are measured directly on the target hardware:
+All numbers below were measured directly on the hardware named here with `offgrid bench`,
+`offgrid eval -ablation` and `offgrid agent -eval` (copied from `docs/benchmarks.md` and the Day 3 and Day 5 reports). Rerun them
+on your own machine: `make bench` (speed, sync, queue, memory), `offgrid eval -ablation`, `offgrid agent -eval`.
 
-**Hardware:** HP EliteBook 845 G8, AMD Ryzen 5 PRO 5650U (6 cores / 12 threads), 16 GB RAM, consumer SSD, no GPU used for inference. Zorin OS 18.1.
-
-### 1. Local Language Model Inference (`offgrid bench`)
-
-```bash
-make bench-models     # or: make bench (runs system + models)
-```
+**Hardware:** HP EliteBook 845 G8, AMD Ryzen 5 PRO 5650U (6 cores / 12 threads),
+14.9 GiB RAM, no GPU used for inference. Zorin OS 18.1.
 
 <!-- bench:start -->
-**Hardware:** HP EliteBook 845 G8, AMD Ryzen 5 PRO 5650U (6 cores / 12 threads), 16 GB RAM, consumer SSD, no GPU used for inference. Zorin OS 18.1.
+**Speed** (`offgrid bench`, median of 3 runs, long prompt = 1,176 tokens):
 
-| Model | Prompt Type | Load Time | Time to First Token | Generation Rate | Prompt Processing |
+| Model | Prompt | Load (s) | First token (s) | Generation (tok/s) | Prompt processing (tok/s) |
 |---|---|---|---|---|---|
-| **Llama 3.2 (1B)** | Short (60 tok) | 3.3 s | **0.7 s** | **16.0 tok/s** | 88.0 tok/s |
-| **Llama 3.2 (1B)** | Long (1,176 tok) | 3.3 s | 23.7 s | **13.9 tok/s** | 49.7 tok/s |
-| **Llama 3.2 (3B)** | Short (60 tok) | 0.0 s | **1.0 s** | **9.9 tok/s** | 61.5 tok/s |
-| **Llama 3.2 (3B)** | Long (1,176 tok) | 0.0 s | 16.5 s | **9.0 tok/s** | 71.8 tok/s |
+| llama3.2:1b | short | 3.3 | 0.7 | 16.0 | 88.0 |
+| llama3.2:1b | long | 3.3 | 23.7 | 13.9 | 49.7 |
+| llama3.2:3b | short | 0.0 (already loaded) | 1.0 | 9.9 | 61.5 |
+| llama3.2:3b | long | 0.0 (already loaded) | 16.5 | 9.0 | 71.8 |
 <!-- bench:end -->
+
+**Storage & CRDT Replay Throughput** (`make bench-store`):
+
+| Operation | Scale | Latency / Rate | Architectural Guarantees |
+|---|---|---|---|
+| **Committed Write** (`BenchmarkAppend`) | 1 op | **910 µs / op** (~1,100 ops/s) | Full WAL flush (`PRAGMA synchronous=FULL`), trigger check, and view update. |
+| **Rebuild View** (`BenchmarkRebuild`) | 1,000 ops | **23.1 ms** (~43,000 ops/s) | In-memory reconstruction of full materialized view from scratch. |
+| **Rebuild View** (`BenchmarkRebuild`) | 10,000 ops | **233.6 ms** (~42,800 ops/s) | Entire dataset reconstructed in under a quarter of a second. |
+| **Rebuild View** (`BenchmarkRebuild`) | 50,000 ops | **1.15 s** (~43,500 ops/s) | 50,000 historical ops replayed in barely over 1 second. |
+| **CRDT Register Projection** (`BenchmarkFields`) | 10,000 ops | **26.0 ms** (~384,000 ops/s) | Reads op-log and folds into LWW-Map per-field registers with single allocation. |
+| **HLC Timestamp Issue** (`BenchmarkNow`) | 1 op | **55.4 ns** (~18,000,000 ops/s) | Thread-safe, monotonic, causal timestamp issuance (0 allocs). |
+| **CRDT Merge (Small)** (`BenchmarkMergeSmall`) | 4 fields | **345 ns** (~2,900,000 merges/s) | Pure semilattice join over per-field registers. |
 
 **Reliability** (`offgrid eval -ablation`, 30 labelled messages; 95% Wilson intervals in brackets):
 
@@ -222,25 +138,8 @@ was reproduced independently; the model timings were not (no model server in
 the reviewing sandbox). The Tier 2 (7-8B) model has no row yet: run it with
 `offgrid bench -models qwen2.5:7b` and add it.
 
-**Storage & CRDT Replay Throughput** (`make bench-store`)
-
-```bash
-make bench-store
-```
-
-| Operation | Scale | Latency / Rate | Architectural Guarantees |
-|---|---|---|---|
-| **Committed Write** (`BenchmarkAppend`) | 1 op | **910 µs / op** (~1,100 ops/s) | Full WAL flush (`PRAGMA synchronous=FULL`), trigger check, and view update. |
-| **Rebuild View** (`BenchmarkRebuild`) | 1,000 ops | **23.1 ms** (~43,000 ops/s) | In-memory reconstruction of full materialized view from scratch. |
-| **Rebuild View** (`BenchmarkRebuild`) | 10,000 ops | **233.6 ms** (~42,800 ops/s) | Entire dataset reconstructed in under a quarter of a second. |
-| **Rebuild View** (`BenchmarkRebuild`) | 50,000 ops | **1.15 s** (~43,500 ops/s) | 50,000 historical ops replayed in barely over 1 second. |
-| **CRDT Register Projection** (`BenchmarkFields`) | 10,000 ops | **26.0 ms** (~384,000 ops/s) | Reads op-log and folds into LWW-Map per-field registers with single allocation. |
-| **HLC Timestamp Issue** (`BenchmarkNow`) | 1 op | **55.4 ns** (~18,000,000 ops/s) | Thread-safe, monotonic, causal timestamp issuance (0 allocs). |
-| **CRDT Merge (Small)** (`BenchmarkMergeSmall`) | 4 fields | **345 ns** (~2,900,000 merges/s) | Pure semilattice join over per-field registers. |
-
-### 3. System Costs & Resource Footprint (`make bench-system` / `offgrid perf`)
-
-**System costs** (no model involved; `make bench` regenerates this block, and its Hardware line says which machine produced it):
+**System costs** (no model involved; `make bench` regenerates this block, and its Hardware
+line says which machine produced it):
 
 <!-- perf:start -->
 **Hardware:** AMD Ryzen 5 PRO 5650U with Radeon Graphics, 12 threads, 14.9 GiB RAM, Zorin OS 18.1  
@@ -283,14 +182,6 @@ make bench-store
 
 Peak RSS is the largest resident memory of the whole process during that row (counter reset before each row). Peak Go heap is sampled every 10 ms, so a very short spike can be missed. Sync over HTTP runs on one machine: it measures protocol, signing and storage cost, not a WiFi link.
 <!-- perf:end -->
-
----
-
-## Architecture
-
-How the parts fit, what is guaranteed and what tests enforce it, and what is not built yet: [ARCHITECTURE.md](ARCHITECTURE.md).
-
----
 
 ## Layout
 
