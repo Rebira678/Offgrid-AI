@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -152,3 +152,7 @@ release-local:
 # Day 28: open the starter issues on GitHub (needs gh, logged in). DRY=1 only prints them.
 good-first-issues:
 	scripts/create-good-first-issues.sh
+
+# Day 29: a clean copy of this repo, built, tested and both demos run, timed (what a friend does). URL=... clones that instead.
+fresh-test:
+	scripts/fresh-clone-test.sh $(URL)
