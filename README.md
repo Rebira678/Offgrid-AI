@@ -1,5 +1,10 @@
 # Offgrid
 
+[![ci](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Tests](https://img.shields.io/badge/Tests-Passing%20(980%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
+
 **An AI agent runtime that keeps working when the internet doesn't.**
 
 A small local model makes instant decisions, a durable queue holds the hard
@@ -7,26 +12,24 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Status](https://img.shields.io/badge/Release-0.1.0--v0.1-success)](https://github.com/Rebira678/Offgrid-AI)
-[![Tests](https://img.shields.io/badge/Tests-Passing%20(980%2B%20tests)-brightgreen)](https://github.com/Rebira678/Offgrid-AI)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+> Status: **Day 29, feature freeze since Day 26.** Tasks are logged, updated and
+> reviewed offline; the data survives restarts and `kill -9`; the program knows
+> whether it is ONLINE, DEGRADED or OFFLINE; hard requests wait in a durable
+> queue; two replicas that edited the same task apart end with identical state
+> hashes; an edited log is noticed. **Not yet tested on real devices or a real
+> network:** sync has only run on localhost, with the cut simulated by fault
+> injection. See [Honest limits](#honest-limits).
 
-> Status: **Day 26: The Dashboard, from the Single Binary (Checkpoint 3, Feature Freeze).**
-> Tasks are logged, updated and reviewed entirely offline; the data survives restarts and `kill -9`;
-> hard requests wait in a durable queue. Tier 2 slow-thinking runs a larger 7-8B local model
-> only while the machine is quiet (`-idle-max-busy`), with optional cloud failover (`-cloud-url`).
-> An AI never overwrites an existing task: changes become suggestions with base snapshots and stale detection; only a person accepts or dismisses them (`make ai-suggests-demo` / `offgrid suggestions -db FILE`).
-> Answers and suggestions are persisted into the append-only op log and sync deterministically across replicas (`make two-brains-demo` / `make ai-suggests-demo`).
-> The embedded web dashboard runs directly from the single binary with zero npm, CDN, or network dependencies (`make web-demo` / `offgrid web -db FILE`).
-> See [Honest limits](#honest-limits).
+![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
+
+*`make converge-demo`, replayed from its real output (about 12 seconds to run).
+The partition is simulated on localhost, not real WiFi.*
+
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[good first issues](docs/good-first-issues.md).
 
 Read next: [the architecture](ARCHITECTURE.md) (guarantees, each with the test
 that enforces it) and [Why I used CRDTs for an AI agent](docs/article-why-crdts-for-an-ai-agent.md) (draft).
-
-Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](docs/good-first-issues.md).
-
----
 
 ## Quickstart: three commands
 
