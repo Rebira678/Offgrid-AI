@@ -186,40 +186,40 @@ Peak RSS is the largest resident memory of the whole process during that row (co
 ## Layout
 
 ```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, fault, top, clock, lww, orset, sync, answers, suggestions
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync
 internal/ollama/        HTTP client for Ollama: streaming, typed errors
 internal/bench/         benchmark method and report writers
 internal/sysinfo/       reads CPU and RAM so every result names its hardware
 internal/intent/        the Command type and its validation
 internal/structured/    getting valid JSON out of a model, with retries
-internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, and fakes)
+internal/llm/           the interface models sit behind (Ollama, OpenAI-compatible cloud, fake)
 internal/eval/          measures how reliably models produce valid commands
-internal/task/          the Task type, matching rules, the Store and Suggester contracts
+internal/task/          the Task type, matching rules, the Store contract
 internal/task/storetest shared contract tests every store must pass
-internal/suggest/       proposing wrapper: models propose changes, humans review and accept
 internal/tools/         the closed menu of tools and the registry
 internal/agent/         tiered loop: rules first, model second
-internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify, answers and suggestions projection
+internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
 internal/connectivity   state machine, probers and the monitor goroutine
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
 internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
-internal/idle           measures CPU busy share (/proc/stat) so slow jobs start only when the machine is quiet
-internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; slow-thinking handlers, safe drain
+internal/drain          queue worker: concurrency, network gate, leases, release, checkpoints; job handlers
 internal/obs            structured logs (slog), counters, snapshot files other processes can read
 internal/dash           the one-screen view: a pure render function plus a repaint loop
 internal/hlc            hybrid logical clock (Kulkarni et al.): ordering stamps that survive bad clocks
 internal/crdt           LWW-Map (per-field registers) and OR-Set (add-wins sets): pure, order-independent merges
+internal/web            the dashboard: one embedded page, a JSON state endpoint, and the one write it allows (accept or dismiss a suggestion), guarded for localhost
+internal/sim            deterministic simulation: a seed becomes a failure schedule (partitions, skew, crashes, lossy sync) run against the real store
+internal/perf           reproducible benchmarks: store, sync, queue drain, memory, hardware recorded (make bench)
+internal/suggest        the wall between AI output and a person's tasks: updates and notes become suggestions
+internal/idle           is the CPU quiet? (the gate for slow jobs; reads /proc/stat)
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
-internal/sim            deterministic simulation testing: random failure schedules, log oracle, schedule shrinker
-internal/perf           reproducible benchmarks: store, sync, queue and memory footprint; Markdown, JSON and SVG reports
-scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh,
-                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh, web-demo.sh, tamper-demo.sh
+scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh, web-demo.sh,
+                        release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh,
+                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
-
----
 
 ## Tests
 
