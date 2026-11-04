@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -156,3 +156,8 @@ good-first-issues:
 # Day 29: a clean copy of this repo, built, tested and both demos run, timed (what a friend does). URL=... clones that instead.
 fresh-test:
 	scripts/fresh-clone-test.sh $(URL)
+
+# Day 29: re-render the README's demo GIF from the demo's real output.
+demo-gif: build
+	PAUSE=0 scripts/converge-demo.sh > /tmp/offgrid-converge.out 2>&1 || true
+	scripts/render-demo-gif.py /tmp/offgrid-converge.out docs/day-29-demo.gif
