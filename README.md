@@ -77,6 +77,21 @@ Nothing here has been run on macOS or Windows; see the first good first issue.
 Each guarantee, the test that enforces it, and what is not built yet:
 [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## Design decisions and trade-offs
+
+Each of these cost something. The cost is stated next to the choice.
+
+| Decision | Why | What it costs |
+|---|---|---|
+| **The op log is the truth; tables are a cache.** Every change is an immutable op; the task view is rebuilt from the log. | Crashes, merges and audits all reduce to "replay the log". `kill -9` cannot corrupt the answer. | The log only grows (no compaction yet). Rebuilding replays everything: see the benchmark table for the time at 10,000 ops. |
+| **A small CRDT written here, not a library.** Per-field last-writer-wins for tasks, an add-wins set for notes. | Small enough to prove: property tests for commutative, associative and idempotent merges, and a seeded simulator that found a real bug on its first run. | It is not battle-tested like an established library, and it does less (no text merging, no moves). |
+| **A hybrid logical clock, not wall clocks.** | A phone's clock can be wrong, slow, or go backwards. The HLC keeps order monotonic anyway. | A replica whose clock is far in the future is refused (more than an hour ahead), and ties are broken by device name, which is deterministic but arbitrary. |
+| **The model proposes, the code disposes.** A closed menu of tools; every proposed command is re-validated. | A small model can be wrong and still be safe, as long as nothing it says is trusted. | It can only do what is in the menu. Precision over coverage: when unsure it asks or refuses. |
+| **Rules first, small model second, big model last.** Tier 0 is instant and free; Tier 1 is a 3B model on CPU; Tier 2 runs only when the laptop is idle. | Most messages never touch a model; a small model handles the common phrasing; the slow model never competes with the user for the machine. | Three paths to maintain, and the rules only cover what someone wrote them for. |
+| **Durable queue before slow thinking.** Defer the hard work to a worker, with backoff and leases in SQLite. | The user gets an instant answer ("queued"); a crash during a long task loses nothing. | The answer is not immediate; the user has to look in the queue or wait for sync. |
+| **An AI never overwrites a human.** Model output becomes a *suggestion* beside the task. | A hallucination or a stale model edit cannot destroy real field notes. A person has to accept it. | Suggestions pile up if ignored; accepting is an extra step. |
+| **A single binary with zero runtime dependencies.** No npm, no external daemon, embedded dashboard. | Copy one file, run it; works on an airplane or a mine site. | The binary is ~20 MB (with SQLite compiled in); the web UI is plain HTML/CSS (no React, no CDN). |
+
 ## What works today
 
 | Day | What | Try it |
