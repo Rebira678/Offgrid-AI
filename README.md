@@ -70,6 +70,13 @@ Nothing here has been run on macOS or Windows; see the first good first issue.
 
 ---
 
+## Architecture
+
+![How a message and an edit travel through Offgrid](docs/architecture.png)
+
+Each guarantee, the test that enforces it, and what is not built yet:
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## What works today
 
 | Day | What | Try it |
