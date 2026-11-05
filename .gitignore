@@ -3,7 +3,7 @@ dist/
 *.test
 *.out
 ollama-local/
-*roadmap*.md
+*[Rr]oadmap*.md
 *.db
 *.db-wal
 *.db-shm
