@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -161,3 +161,7 @@ fresh-test:
 demo-gif: build
 	PAUSE=0 scripts/converge-demo.sh > /tmp/offgrid-converge.out 2>&1 || true
 	scripts/render-demo-gif.py /tmp/offgrid-converge.out docs/day-29-demo.gif
+
+# Day 30: pre-flight checks before public launch and outreach.
+launch-check:
+	scripts/launch-check.sh
