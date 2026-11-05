@@ -114,3 +114,45 @@ func TestLaunchReadiness_NoPlaceholdersOrDraftLeaks(t *testing.T) {
 	}
 }
 
+// TestLaunchReadiness_VersionStampingContract verifies that the compiled CLI binary
+// version matches the Day 30 milestone format and contract.
+func TestLaunchReadiness_VersionStampingContract(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("offgrid version exit code = %d, stderr: %s", code, stderr.String())
+	}
+
+	out := strings.TrimSpace(stdout.String())
+	want := "offgrid 0.30.0-day30"
+	if out != want {
+		t.Errorf("version output = %q, want %q", out, want)
+	}
+}
+
+// TestLaunchReadiness_Day30GuideContract verifies that docs/day-30.md contains
+// the claims ledger, launch post drafts for all platforms, and outreach guidelines.
+func TestLaunchReadiness_Day30GuideContract(t *testing.T) {
+	guidePath := filepath.Join("..", "..", "docs", "day-30.md")
+	content, err := os.ReadFile(guidePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", guidePath, err)
+	}
+
+	text := string(content)
+	requiredSections := []string{
+		"The claims ledger: say these, and only these",
+		"The launch post (LinkedIn)",
+		"X / short thread",
+		"Show HN",
+		"r/LocalLLaMA and r/golang",
+		"The 30 messages",
+		"Questions you will be asked",
+	}
+
+	for _, sec := range requiredSections {
+		if !strings.Contains(text, sec) {
+			t.Errorf("docs/day-30.md missing required section: %q", sec)
+		}
+	}
+}
