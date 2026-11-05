@@ -12,7 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 29, feature freeze since Day 26.** Tasks are logged, updated and
+> Status: **Day 30: Launch, feature freeze since Day 26.** Tasks are logged, updated and
 > reviewed offline; the data survives restarts and `kill -9`; the program knows
 > whether it is ONLINE, DEGRADED or OFFLINE; hard requests wait in a durable
 > queue; two replicas that edited the same task apart end with identical state
