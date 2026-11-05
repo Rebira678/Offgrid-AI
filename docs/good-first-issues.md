@@ -55,7 +55,7 @@ run is an error, never a quiet number), `make lint` passes, and the perf tests s
 
 ## Make `offgrid version` say more
 
-Today it prints `offgrid 0.29.0-day29`. When someone reports a bug we also want
+Today it prints `offgrid 0.30.0-day30`. When someone reports a bug we also want
 the Go version, the OS and architecture, and the commit it was built from.
 
 **Where to start:** `cmd/offgrid/main.go` (`case "version"`) and `runtime/debug.ReadBuildInfo`.
