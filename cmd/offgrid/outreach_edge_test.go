@@ -105,3 +105,35 @@ func TestOutreachScript_CSVGenerationAndVerification(t *testing.T) {
 	}
 }
 
+// TestOutreachScript_IDFiltering verifies that the --ids option filters specific rows.
+func TestOutreachScript_IDFiltering(t *testing.T) {
+	repoRoot := filepath.Join("..", "..")
+	scriptPath := filepath.Join(repoRoot, "scripts", "outreach-drafts.py")
+
+	tmpDir := t.TempDir()
+	csvPath := filepath.Join(tmpDir, "targets.csv")
+
+	csvContent := `#,Name,Website,Category,What they do (specific),Why Offgrid is relevant / angle for a comment,How sure I am
+10,Company Ten,https://ten.test,Robotics,Warehouse agvs,Edge sync,High
+20,Company Twenty,https://twenty.test,Agriculture,Tractor sensors,Field sync,High
+30,Company Thirty,https://thirty.test,Energy,Substation monitoring,Grid resilience,High
+`
+	if err := os.WriteFile(csvPath, []byte(csvContent), 0o644); err != nil {
+		t.Fatalf("writing test csv: %v", err)
+	}
+
+	// Select only ID 20
+	cmd := exec.Command("python3", scriptPath, csvPath, "--ids", "20")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("outreach-drafts.py --ids failed: %v", err)
+	}
+
+	outStr := string(out)
+	if !strings.Contains(outStr, "Company Twenty") {
+		t.Errorf("expected selected company 20 in output: %s", outStr)
+	}
+	if strings.Contains(outStr, "Company Ten") || strings.Contains(outStr, "Company Thirty") {
+		t.Errorf("unselected companies appeared in output: %s", outStr)
+	}
+}
