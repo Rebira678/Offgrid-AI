@@ -332,7 +332,7 @@ docs/                   day-NN.md guides, architecture specifications, benchmark
 
 ## Tests
 
-As of Day 29, `go test -v ./...` runs all test functions (plus their subtests)
+As of Day 30, `go test -v ./...` runs all test functions (plus their subtests)
 in 28 packages: over 22,000 lines of Go and over 24,000 lines of tests. One
 test skips by design (a helper process that only runs when launched by another
 test). Day 17 and later need `go get pgregory.net/rapid@v1.2.0` once.
@@ -343,6 +343,7 @@ make lint                  # golangci-lint (the config CI uses)
 go test -race ./...        # with the race detector
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
 make fresh-test            # fresh-clone build, test, and demo harness (timed under 10m)
+make launch-check          # Day 30 pre-flight readiness checks
 ```
 
 ### Quality Guarantees
