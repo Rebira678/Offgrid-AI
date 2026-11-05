@@ -288,6 +288,7 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 | 27 | Tamper-evident log: every op is hash-chained to the previous op of the same replica; `store verify` names an edited op; saved heads and sync catch a rewritten chain | `make tamper-demo` |
 | 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
 | 29 | Front page that works: visual architecture, trade-off matrix, fresh-clone test harness, demo replay GIF | `make fresh-test` / `make demo-gif` |
+| 30 | Launch: pre-flight launch verification, personalized outreach drafts, claims ledger | `make launch-check` / `docs/day-30.md` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
