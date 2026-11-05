@@ -325,7 +325,7 @@ internal/idle           is the CPU quiet? (the gate for slow jobs; reads /proc/s
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh, web-demo.sh,
                         release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh,
-                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py
+                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py, launch-check.sh, outreach-drafts.py
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
