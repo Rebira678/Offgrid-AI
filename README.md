@@ -289,6 +289,7 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 | 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
 | 29 | Front page that works: visual architecture, trade-off matrix, fresh-clone test harness, demo replay GIF | `make fresh-test` / `make demo-gif` |
 | 30 | Launch: pre-flight launch verification, personalized outreach drafts, claims ledger | `make launch-check` / `docs/day-30.md` |
+| 31 | Safe database opening (MustExist/ErrNoDatabase, exit 3), WebAssembly merge portability, v1.0 beta product spec | `make wasm` / `make wasm-test` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -325,7 +326,7 @@ internal/idle           is the CPU quiet? (the gate for slow jobs; reads /proc/s
 internal/syncer         sync over HTTP: version summaries, delta exchange, HMAC-signed requests and responses
 scripts/                pull-models.sh, demo-offline.sh, checkpoint1-demo.sh, partition-demo.sh, drain-demo.sh, top-demo.sh, web-demo.sh,
                         release-v0.1.sh, prove-merge.sh, sync-demo.sh, converge-demo.sh, converge-clip.sh, two-brains-demo.sh, ai-suggests-demo.sh,
-                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py, launch-check.sh, outreach-drafts.py
+                        create-good-first-issues.sh, fresh-clone-test.sh, render-demo-gif.py, launch-check.sh, outreach-drafts.py, wasm-check.sh
 examples/               sample command and message files
 docs/                   day-NN.md guides, architecture specifications, benchmarks, and article drafts
 ```
@@ -344,6 +345,8 @@ go test -race ./...        # with the race detector
 scripts/prove-merge.sh     # the merge laws, and the broken merges they must catch
 make fresh-test            # fresh-clone build, test, and demo harness (timed under 10m)
 make launch-check          # Day 30 pre-flight readiness checks
+make wasm                  # Day 31: verify CRDT & HLC build for WebAssembly
+make wasm-test             # Day 31: run merge tests under WebAssembly via Node.js
 ```
 
 ### Quality Guarantees
