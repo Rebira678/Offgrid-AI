@@ -60,13 +60,12 @@ func cmdSuggestions(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: suggestions live in the task database: use -db FILE or set OFFGRID_DB")
 		return 2
 	}
-	if _, err := os.Stat(*dbPath); err != nil {
-		fmt.Fprintf(stderr, "error: no database at %s\n", *dbPath)
-		return 1
-	}
 	ctx := context.Background()
-	st, err := sqlstore.Open(ctx, *dbPath, sqlstore.Options{NodeID: nodeFromEnv()})
+	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
 	if err != nil {
+		if code, ok := noDatabaseExit(stderr, err); ok {
+			return code
+		}
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
