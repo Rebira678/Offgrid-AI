@@ -133,7 +133,7 @@ func TestSuggestionsCommandErrors(t *testing.T) {
 		code int
 	}{
 		{[]string{"suggestions"}, 2},
-		{[]string{"suggestions", "-db", "/nonexistent/x.db"}, 1},
+		{[]string{"suggestions", "-db", "/nonexistent/x.db"}, exitNoDatabase},
 		{[]string{"suggestions", "-db", db, "frobnicate"}, 2},
 		{[]string{"suggestions", "-db", db, "accept"}, 2},
 		{[]string{"suggestions", "-db", db, "list", "extra"}, 2},
