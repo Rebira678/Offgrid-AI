@@ -165,8 +165,8 @@ func TestToolsCommandListsAllFiveAndNothingElse(t *testing.T) {
 func TestVersionHasTheExpectedShapeAndUsageListsTheDay4Commands(t *testing.T) {
 	var o, e strings.Builder
 	run([]string{"version"}, &o, &e)
-	// A pattern, not a number, so this test does not break every day. Daily builds end in -dayN; a release (v0.1) is plain x.y.z.
-	if !regexp.MustCompile(`^offgrid \d+\.\d+\.\d+(-day\d+)?\n$`).MatchString(o.String()) {
+	// A pattern, not a number, so this test does not break every day. Supports standard SemVer (x.y.z, pre-releases like -beta.1, or daily -dayN).
+	if !regexp.MustCompile(`^offgrid \d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\n$`).MatchString(o.String()) {
 		t.Errorf("version = %q", o.String())
 	}
 	o.Reset()
