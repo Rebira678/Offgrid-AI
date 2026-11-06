@@ -189,7 +189,7 @@ func TestStoreCommandErrors(t *testing.T) {
 		{"no subcommand", []string{"store"}, 2, "usage"},
 		{"unknown subcommand", []string{"store", "-db", db, "explode"}, 2, "unknown store command"},
 		{"no database given", []string{"store", "info"}, 2, "no database given"},
-		{"database missing", []string{"store", "-db", db, "info"}, 1, "no database at"},
+		{"database missing", []string{"store", "-db", db, "info"}, exitNoDatabase, "no such database"},
 		{"extra argument", []string{"store", "-db", db, "info", "now"}, 2, "usage"},
 	}
 	t.Setenv("OFFGRID_DB", "")
