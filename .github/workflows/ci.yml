@@ -64,6 +64,22 @@ jobs:
         with:
           version: v2.5.0
 
+  # Day 31: the merge packages must keep building as WebAssembly (and pass their tests there), so a
+  # browser or phone can run the same rules. Fails on any import beyond the standard library.
+  wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: merge packages as WebAssembly
+        run: make wasm-test
+
   # The same single binary the release publishes, started for real: one command that touches the
   # database, and the dashboard demo (a browser-free end-to-end check).
   smoke:
