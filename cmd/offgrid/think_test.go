@@ -194,7 +194,7 @@ func TestAnswersCommandErrorsAndEmptyState(t *testing.T) {
 	if code := run([]string{"answers"}, &o, &e); code != 2 {
 		t.Errorf("no db: %d", code)
 	}
-	if code := run([]string{"answers", "-db", "/nonexistent/x.db"}, &o, &e); code != 1 {
+	if code := run([]string{"answers", "-db", "/nonexistent/x.db"}, &o, &e); code != exitNoDatabase {
 		t.Errorf("missing db: %d", code)
 	}
 	db, _ := fill(t)
