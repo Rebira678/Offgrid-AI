@@ -57,14 +57,10 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: no database given. Use -db FILE (or set OFFGRID_DB)")
 		return 2
 	}
-	if _, err := os.Stat(*dbPath); err != nil {
-		fmt.Fprintf(stderr, "error: no database at %s (create one by running: offgrid exec -db %s ...)\n", *dbPath, *dbPath)
-		return 1
-	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	st, err := sqlstore.Open(ctx, *dbPath, sqlstore.Options{NodeID: nodeFromEnv()})
+	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
 	if err != nil {
 		return storeError(stderr, err)
 	}
@@ -195,6 +191,9 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 }
 
 func storeError(w io.Writer, err error) int {
+	if code, ok := noDatabaseExit(w, err); ok {
+		return code
+	}
 	switch {
 	case errors.Is(err, sqlstore.ErrCorruptLog):
 		fmt.Fprintf(w, "error: %v\n\nThe op log contains something that cannot be applied. The log is never edited automatically; look at the position named above (offgrid store ops) before doing anything else.\n", err)
