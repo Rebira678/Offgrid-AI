@@ -60,15 +60,14 @@ func cmdWeb(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 2
 	}
-	if _, err := os.Stat(*dbPath); err != nil {
-		fmt.Fprintf(stderr, "error: no database at %s (create one with: offgrid exec -seed -db %s '{\"intent\":\"list_tasks\"}')\n", *dbPath, *dbPath)
-		return 1
-	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	st, err := sqlstore.Open(ctx, *dbPath, sqlstore.Options{NodeID: nodeFromEnv()})
+	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
 	if err != nil {
+		if code, ok := noDatabaseExit(stderr, err); ok {
+			return code
+		}
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
