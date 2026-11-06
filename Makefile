@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -165,3 +165,12 @@ demo-gif: build
 # Day 30: pre-flight checks before public launch and outreach.
 launch-check:
 	scripts/launch-check.sh
+
+# Day 31: the merge packages (crdt, hlc) must stay buildable as WebAssembly, so a browser or phone can run the same rules.
+#   make wasm        imports are standard library only, and they build for GOOS=js GOARCH=wasm
+#   make wasm-test   also runs their tests as WebAssembly (needs node 18 or newer)
+wasm:
+	scripts/wasm-check.sh
+
+wasm-test:
+	scripts/wasm-check.sh --run
