@@ -31,7 +31,7 @@ func TestWebRefusesBadArgumentsBeforeDoingAnything(t *testing.T) {
 		"lan address":    {[]string{"web", "-db", db, "-listen", "192.168.1.5:8787"}, 2, "only listens on this machine"},
 		"no port":        {[]string{"web", "-db", db, "-listen", "127.0.0.1"}, 2, "host:port"},
 		"unknown flag":   {[]string{"web", "-db", db, "-public"}, 2, "flag provided but not defined"},
-		"missing db":     {[]string{"web", "-db", missing}, 1, "no database at"},
+		"missing db":     {[]string{"web", "-db", missing}, exitNoDatabase, "no such database"},
 	} {
 		code, out, errOut := runCLI(t, "", c.args...)
 		if code != c.code || !strings.Contains(errOut, c.msg) || out != "" {
