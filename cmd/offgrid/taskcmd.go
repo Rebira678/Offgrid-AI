@@ -40,8 +40,11 @@ func cmdTask(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	st, err := sqlstore.Open(ctx, *db, sqlstore.Options{NodeID: nodeFromEnv()})
+	st, err := openExistingStore(ctx, *db, sqlstore.Options{})
 	if err != nil {
+		if code, ok := noDatabaseExit(stderr, err); ok {
+			return code
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
