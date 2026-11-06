@@ -1,6 +1,6 @@
 # Day 31: a read must never create a database, and the merge code must stay portable
 
-**Done when:** v0.30.1 is tagged with the fix, the product spec is in `docs/`, and CI has a job that builds the merge packages for WebAssembly (green, or a written list of what blocks it). The tag is yours to make; see "Your part" at the bottom.
+**Done when:** v1.0.0-beta.1 is tagged with the fix, the product spec is in `docs/`, and CI has a job that builds the merge packages for WebAssembly (green, or a written list of what blocks it). The tag is yours to make; see "Your part" at the bottom.
 
 ```bash
 go test ./cmd/offgrid -run 'ReadOnlyCommand|WritingCommandsStill'   # the regression test
@@ -86,5 +86,5 @@ Mutation-tested: an SQLite import in `hlc` fails the guard; an import of `offgri
 git rm .github/workflows/test.yml            # optional: the duplicate workflow
 make test && make wasm-test && make lint     # on your machine
 git add -A && git commit -m "Day 31: reads never create a database; product spec; wasm check"
-git tag -a v0.30.1 -m "v0.30.1" && git push origin main v0.30.1
+git tag -a v1.0.0-beta.1 -m "v1.0.0-beta.1" && git push origin main v1.0.0-beta.1
 ```
