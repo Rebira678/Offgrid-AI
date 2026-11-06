@@ -22,6 +22,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -58,7 +60,19 @@ type Options struct {
 	// MaxDrift bounds how far ahead of Now a timestamp received from another
 	// replica may be (see hlc.Config). Zero is hlc.DefaultMaxDrift.
 	MaxDrift time.Duration
+	// MustExist makes Open refuse a database file that is not there, with
+	// ErrNoDatabase, instead of creating it. Every command that only reads or
+	// edits what is already stored sets it: creating a database is a decision
+	// (it also fixes the replica's node ID for good), and a mistyped path must
+	// not make that decision. The driver is also told not to create the file
+	// (mode=rw), so a file deleted between the check and the open cannot be
+	// recreated either.
+	MustExist bool
 }
+
+// ErrNoDatabase means there is no database at the path and the caller asked
+// for an existing one (Options.MustExist). The error text names the path.
+var ErrNoDatabase = errors.New("no such database")
 
 // ErrNodeMismatch means the database belongs to a different replica.
 var ErrNodeMismatch = errors.New("database belongs to a different node")
@@ -75,7 +89,14 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if opt.NodeID != "" && !nodeIDRe.MatchString(opt.NodeID) {
 		return nil, fmt.Errorf("sqlstore: node ID %q must be 1 to 64 letters, digits, '.', '_' or '-'", opt.NodeID)
 	}
-	db, err := sql.Open(driverName, dsn(path))
+	conn := dsn(path)
+	if opt.MustExist && path != ":memory:" {
+		if err := requireFile(path); err != nil {
+			return nil, err
+		}
+		conn += "&mode=rw" // never create: see Options.MustExist
+	}
+	db, err := sql.Open(driverName, conn)
 	if err != nil {
 		return nil, fmt.Errorf("sqlstore: open %s: %w", path, err)
 	}
@@ -90,9 +111,30 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	s.clock = hlc.New(hlc.Config{Now: s.now, MaxDrift: opt.MaxDrift})
 	if err := s.init(ctx, opt); err != nil {
 		db.Close()
+		if opt.MustExist && path != ":memory:" {
+			// The file was there a moment ago; if it is gone now, say so plainly.
+			if gone := requireFile(path); gone != nil {
+				return nil, gone
+			}
+		}
 		return nil, err
 	}
 	return s, nil
+}
+
+// requireFile returns ErrNoDatabase (naming the path) if path is not an
+// existing file. A folder is reported as itself, not as a missing database.
+func requireFile(path string) error {
+	fi, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("%w: %s", ErrNoDatabase, path)
+	case err != nil:
+		return fmt.Errorf("sqlstore: %w", err)
+	case fi.IsDir():
+		return fmt.Errorf("sqlstore: %s is a folder, not a database file", path)
+	}
+	return nil
 }
 
 func (s *Store) init(ctx context.Context, opt Options) error {
