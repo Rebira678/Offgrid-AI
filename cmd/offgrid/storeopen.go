@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -64,3 +66,32 @@ const dbHelp = "keep tasks in this SQLite file so they survive between runs (def
 // task IDs read T4.node-b instead of T4.n-9f2c41ab07de. A database that already
 // has a different node ID refuses to open, because the ID is its identity.
 func nodeFromEnv() string { return os.Getenv("OFFGRID_NODE") }
+
+// exitNoDatabase is the exit code for "that database file does not exist".
+// Scripts can test for it: 1 is any other failure, 2 is a usage mistake.
+const exitNoDatabase = 3
+
+// openExistingStore opens the database at path for a command that works on what
+// is already stored (list, delete, summary, inspect). It never creates a file,
+// a folder or a node ID: a missing database is sqlstore.ErrNoDatabase. Only the
+// commands that start or join a replica (exec, agent, sync once/serve/run) may
+// create one.
+func openExistingStore(ctx context.Context, path string, opt sqlstore.Options) (*sqlstore.Store, error) {
+	opt.MustExist = true
+	if opt.NodeID == "" {
+		opt.NodeID = nodeFromEnv()
+	}
+	return sqlstore.Open(ctx, path, opt)
+}
+
+// noDatabaseExit reports a missing database the same way for every command and
+// returns exitNoDatabase. ok is false when err is something else, so the caller
+// handles it as before.
+func noDatabaseExit(stderr io.Writer, err error) (code int, ok bool) {
+	if !errors.Is(err, sqlstore.ErrNoDatabase) {
+		return 0, false
+	}
+	fmt.Fprintf(stderr, "error: %v\n", err)
+	fmt.Fprintln(stderr, "Nothing was created. Check the path, or start a database with: offgrid exec -db FILE ...")
+	return exitNoDatabase, true
+}
