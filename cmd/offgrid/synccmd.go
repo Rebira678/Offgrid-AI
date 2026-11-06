@@ -61,6 +61,18 @@ func cmdSync(args []string, stdout, stderr io.Writer) int {
 	return 2
 }
 
+// openSyncStoreExisting is openSyncStore for a command that only looks
+// (sync summary): it refuses a missing database instead of creating one.
+func openSyncStoreExisting(ctx context.Context, db string) (*sqlstore.Store, error) {
+	if db == "" {
+		db = os.Getenv("OFFGRID_DB")
+	}
+	if db == "" {
+		return nil, errors.New("-db FILE is required (or set $OFFGRID_DB)")
+	}
+	return openExistingStore(ctx, db, sqlstore.Options{})
+}
+
 func openSyncStore(ctx context.Context, db string, maxDrift time.Duration) (*sqlstore.Store, error) {
 	if db == "" {
 		db = os.Getenv("OFFGRID_DB")
@@ -197,8 +209,11 @@ func cmdSyncSummary(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	st, err := openSyncStore(ctx, *db, 0)
+	st, err := openSyncStoreExisting(ctx, *db)
 	if err != nil {
+		if code, ok := noDatabaseExit(stderr, err); ok {
+			return code
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
