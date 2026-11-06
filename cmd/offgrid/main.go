@@ -37,7 +37,7 @@ import (
 )
 
 // version is a var so a release build can stamp it: -ldflags "-X main.version=1.2.3".
-var version = "0.30.0-day30"
+var version = "0.30.1"
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))

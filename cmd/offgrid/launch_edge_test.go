@@ -124,7 +124,7 @@ func TestLaunchReadiness_VersionStampingContract(t *testing.T) {
 	}
 
 	out := strings.TrimSpace(stdout.String())
-	want := "offgrid 0.30.0-day30"
+	want := "offgrid 0.30.1"
 	if out != want {
 		t.Errorf("version output = %q, want %q", out, want)
 	}
