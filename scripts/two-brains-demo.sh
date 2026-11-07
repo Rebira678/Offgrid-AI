@@ -64,7 +64,7 @@ OFFGRID_NODE=laptop $BIN answers -db "$LAPTOP"
 OFFGRID_NODE=laptop $BIN store -db "$LAPTOP" -n 2 ops | tail -3 | cut -c1-120
 
 say "4. Sync to the phone: the answer travels like a task edit"
-$BIN sync serve -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
+$BIN sync serve -create -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
 PIDS+=($!)
 for _ in $(seq 50); do grep -q 'serving on' "$WORK/srv.out" 2>/dev/null && break; sleep 0.1; done
 SYNCURL=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$WORK/srv.out")
