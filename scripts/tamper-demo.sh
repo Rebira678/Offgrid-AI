@@ -59,7 +59,7 @@ PY
 
 say "1. A laptop and a phone share three tasks; both logs verify; I save the laptop's heads"
 laptop exec -seed -db "$D/laptop.db" '{"intent":"list_tasks"}' >/dev/null
-phone sync serve -db "$D/phone.db" -addr 127.0.0.1:0 -key-file "$D/key" >"$D/srv.out" 2>"$D/srv.err" &
+phone sync serve -create -db "$D/phone.db" -addr 127.0.0.1:0 -key-file "$D/key" >"$D/srv.out" 2>"$D/srv.err" &
 SRV=$!
 for _ in $(seq 50); do grep -q 'serving on' "$D/srv.out" 2>/dev/null && break; sleep 0.1; done
 PEER=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$D/srv.out")
