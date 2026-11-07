@@ -208,6 +208,19 @@ func TestTheLawsCatchEveryDeliberatelyBrokenMergeAndAcceptTheControls(t *testing
 			defer flag.Set("rapid.checks", old)
 		}
 	}
+	// A fixed seed, unless one was given on the command line (-rapid.seed=N). This test asks
+	// "does a random search FIND each planted bug?", and for the narrowest bug (equal stamps,
+	// different nodes, different values, then spread through a gossip round) a random search
+	// occasionally does not, within the budget: the Day 32 -race run of the whole suite failed
+	// once in about 130 runs with "did NOT catch no tie-break". A red build that goes away on
+	// retry teaches people to ignore red builds. With a fixed seed the result is the same every
+	// time; seeds 1 to 40 all catch every planted bug, so the margin is wide. If you change the
+	// generators and this fails, try another seed and say so in the commit. The other property
+	// tests keep their random seeds.
+	if f := flag.Lookup("rapid.seed"); f != nil && f.Value.String() == "0" {
+		_ = flag.Set("rapid.seed", "1")
+		defer flag.Set("rapid.seed", "0")
+	}
 	// first, the real merge passes everything (the same laws, the same harness)
 	for _, l := range laws {
 		if failed, rep := runLaw(t, l, Merge); failed {
