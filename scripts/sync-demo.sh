@@ -14,7 +14,7 @@ $BIN exec -db "$D/a.db" '{"intent":"create_task","title":"Leaking pump","site":"
 $BIN exec -db "$D/a.db" '{"intent":"create_task","title":"Replace filter","priority":"low"}' >/dev/null
 
 echo "== Beka starts serving on a free localhost port"
-$BIN sync serve -db "$D/b.db" -addr 127.0.0.1:0 -key-file "$D/key" > "$D/srv.out" 2> "$D/srv.err" &
+$BIN sync serve -create -db "$D/b.db" -addr 127.0.0.1:0 -key-file "$D/key" > "$D/srv.out" 2> "$D/srv.err" &
 SRV=$!
 for _ in $(seq 50); do grep -q 'serving on' "$D/srv.out" 2>/dev/null && break; sleep 0.1; done
 URL=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$D/srv.out")
