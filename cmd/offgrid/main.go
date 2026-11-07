@@ -106,6 +106,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdPerf(args[1:], stdout, stderr)
 	case "web":
 		return cmdWeb(args[1:], stdout, stderr)
+	case "doctor":
+		return cmdDoctor(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -132,6 +134,7 @@ Usage:
   offgrid tools                                     list the tools a model can ask for
   offgrid agent  [-no-model] [-seed] [-eval] [-log FILE] [MESSAGE...]   rules first, model second; shows tier and latency
   offgrid agent  -route [-queue FILE] [-net auto|online|offline] ...      hard messages wait in the durable queue
+  offgrid doctor [-db FILE] [-deep] [-json]                          is this machine fit to run a node? clock, disk, ports, SQLite integrity (changes nothing)
   offgrid store  -db FILE info|verify [-anchor F]|head|rebuild|ops|fields   inspect the task store; verify checks the hash chain
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
   offgrid task   -db FILE list|delete REF|remove-note REF N          show and delete tasks (no model involved)
