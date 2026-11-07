@@ -79,7 +79,7 @@ func TestTwoOffgridProcessesExchangeOpsOverLocalhostHTTP(t *testing.T) {
 	// B runs as a server: a separate process listening on a free port.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	srv := exec.CommandContext(ctx, bin, "sync", "serve", "-db", dbB, "-addr", "127.0.0.1:0", "-key-file", keyFile)
+	srv := exec.CommandContext(ctx, bin, "sync", "serve", "-create", "-db", dbB, "-addr", "127.0.0.1:0", "-key-file", keyFile)
 	stdout, _ := srv.StdoutPipe()
 	var srvErr lockedBuf
 	srv.Stderr = &srvErr
@@ -173,7 +173,7 @@ func TestSyncCommandsRefuseMissingInputs(t *testing.T) {
 	}
 	e.Reset()
 	t.Setenv("OFFGRID_SYNC_KEY", "0123456789abcdef0123")
-	if code := run([]string{"sync", "once", "-peer", "http://127.0.0.1:1", "-timeout", "3s", "-db", filepath.Join(t.TempDir(), "x.db")}, &o, &e); code != 1 || !strings.Contains(e.String(), "cannot reach the peer") {
+	if code := run([]string{"sync", "once", "-peer", "http://127.0.0.1:1", "-timeout", "3s", "-create", "-db", filepath.Join(t.TempDir(), "x.db")}, &o, &e); code != 1 || !strings.Contains(e.String(), "cannot reach the peer") {
 		t.Errorf("nothing listening: code %d, %q", code, e.String())
 	}
 }
@@ -191,7 +191,7 @@ func TestSyncServeGracefulShutdown(t *testing.T) {
 
 	cmdDone := make(chan int, 1)
 	go func() {
-		code := cmdSyncServeContext(ctx, []string{"-db", dbFile, "-addr", "127.0.0.1:0", "-key-file", keyFile}, &stdout, &stderr)
+		code := cmdSyncServeContext(ctx, []string{"-create", "-db", dbFile, "-addr", "127.0.0.1:0", "-key-file", keyFile}, &stdout, &stderr)
 		cmdDone <- code
 	}()
 
