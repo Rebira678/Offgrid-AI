@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test doctor kill9-test
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -174,3 +174,11 @@ wasm:
 
 wasm-test:
 	scripts/wasm-check.sh --run
+
+# Day 32: is this machine fit to run a node? Set DB=path to check a database too (add DEEP=1 for the hash chain).
+doctor: build
+	./bin/offgrid doctor $(if $(DB),-db $(DB)) $(if $(DEEP),-deep)
+
+# Day 32: rehearse the power-pull test on this machine by killing the writer (N rounds). Not a power cut: see docs/day-32.md.
+kill9-test: build
+	scripts/real-device/kill9-test.sh $(or $(N),10)
