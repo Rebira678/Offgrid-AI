@@ -38,7 +38,7 @@ show() { # DB LABEL: the line for one task
 FAILED=0
 fail() { echo "FAIL: $*"; FAILED=1; }
 
-on_phone $BIN sync serve -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
+on_phone $BIN sync serve -create -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
 SRV=$!
 for _ in $(seq 50); do grep -q 'serving on' "$WORK/srv.out" 2>/dev/null && break; sleep 0.1; done
 URL=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$WORK/srv.out")
