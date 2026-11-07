@@ -22,13 +22,15 @@ import (
 
 const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
 
-  offgrid sync serve   -db FILE [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
-  offgrid sync once    -db FILE -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
-  offgrid sync run     -db FILE -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
+  offgrid sync serve   -db FILE [-create] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
+  offgrid sync once    -db FILE [-create] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
+  offgrid sync run     -db FILE [-create] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
 
 once and run take the -fault-* flags (see "offgrid fault"), so the connection can
 be broken on purpose: start with -fault-file F, then "offgrid fault set -file F partition".
+
+A database file that does not exist is an error, so a mistyped path cannot make a replica; add -create to start a new one.
 
 Both replicas need the same key: -key-file FILE, or $OFFGRID_SYNC_KEY
 (at least 16 bytes; make one with: openssl rand -hex 32).
@@ -73,14 +75,47 @@ func openSyncStoreExisting(ctx context.Context, db string) (*sqlstore.Store, err
 	return openExistingStore(ctx, db, sqlstore.Options{})
 }
 
-func openSyncStore(ctx context.Context, db string, maxDrift time.Duration) (*sqlstore.Store, error) {
+// openSyncStore opens the database for a command that may start a replica
+// (serve, once, run). A missing file is refused with ErrNoDatabase unless create
+// is set: joining a replica fixes its node ID for good, so it has to be a
+// decision, not the result of a mistyped path (found on real hardware on Day 32:
+// -db desktop.md for desktop.db made a second, empty replica without a word).
+// With create, a file that is not there yet is announced on stderr.
+func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift time.Duration, create bool) (*sqlstore.Store, error) {
 	if db == "" {
 		db = os.Getenv("OFFGRID_DB")
 	}
 	if db == "" {
 		return nil, errors.New("-db FILE is required (or set $OFFGRID_DB)")
 	}
-	return sqlstore.Open(ctx, db, sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift})
+	opt := sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift}
+	if !create {
+		opt.MustExist = true
+		return sqlstore.Open(ctx, db, opt)
+	}
+	if _, err := os.Stat(db); errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(stderr, "creating a NEW replica at %s (it gets its own node ID, and keeps it)\n", db)
+	}
+	return sqlstore.Open(ctx, db, opt)
+}
+
+// createHelp is the -create flag's text, shared by the three commands.
+const createHelp = "start a NEW replica if the database file does not exist (without it, a missing file is an error, so a mistyped path cannot make one)"
+
+// newSyncServer is the HTTP server `sync serve` runs, with every phase bounded.
+// Day 32: it had read limits but no WriteTimeout or IdleTimeout, so a peer that
+// stopped reading (WiFi dropped mid-response, a laptop put to sleep) held its
+// connection and goroutine open until the operating system gave up, which for an
+// idle keep-alive connection is never. On a small node that adds up over a week.
+func newSyncServer(h http.Handler) *http.Server {
+	return &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      2 * time.Minute, // the largest batch, over a slow link
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
 }
 
 func cmdSyncServe(args []string, stdout, stderr io.Writer) int {
@@ -97,6 +132,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
 	window := fs.Duration("window", syncer.DefaultWindow, "how far a request's time may differ from this clock")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
+	create := fs.Bool("create", false, createHelp)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -105,8 +141,11 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
-	st, err := openSyncStore(ctx, *db, *maxDrift)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
 	if err != nil {
+		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
+			return code
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
@@ -119,11 +158,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
 		fmt.Fprintln(stderr, "warning: listening beyond this computer. Requests are signed but NOT encrypted; use a trusted network or TLS.")
 	}
-	srv := &http.Server{
-		Handler:           syncer.Handler(st, syncer.ServerOptions{Key: key, Window: *window, Log: log.New(stderr, "sync: ", log.LstdFlags)}),
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       60 * time.Second,
-	}
+	srv := newSyncServer(syncer.Handler(st, syncer.ServerOptions{Key: key, Window: *window, Log: log.New(stderr, "sync: ", log.LstdFlags)}))
 	// Scripts and tests read this line to learn the port when -addr ends in :0.
 	fmt.Fprintf(stdout, "offgrid sync: node %s serving on http://%s\n", st.NodeID(), ln.Addr())
 	done := make(chan error, 1)
@@ -152,6 +187,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
+	create := fs.Bool("create", false, createHelp)
 	timeout := fs.Duration("timeout", 2*time.Minute, "give up after this long")
 	faults := addFaultFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -168,8 +204,11 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	st, err := openSyncStore(ctx, *db, *maxDrift)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
 	if err != nil {
+		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
+			return code
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
@@ -252,6 +291,7 @@ func cmdSyncRun(args []string, stdout, stderr io.Writer) int {
 	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
+	create := fs.Bool("create", false, createHelp)
 	every := fs.Duration("every", 2*time.Second, "time between rounds")
 	roundTimeout := fs.Duration("round-timeout", 10*time.Second, "give up on one round after this long")
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
@@ -276,8 +316,11 @@ func cmdSyncRun(args []string, stdout, stderr io.Writer) int {
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
 		defer cancel()
 	}
-	st, err := openSyncStore(ctx, *db, *maxDrift)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
 	if err != nil {
+		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
+			return code
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
