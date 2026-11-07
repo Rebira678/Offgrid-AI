@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -53,7 +54,7 @@ func NewClient(baseURL string) *Client {
 	}
 	return &Client{
 		BaseURL: strings.TrimRight(baseURL, "/"),
-		HTTP:    &http.Client{},
+		HTTP:    &http.Client{Transport: newTransport()},
 	}
 }
 
@@ -206,14 +207,16 @@ type Model struct {
 }
 
 // ListModels returns the models installed on the server (GET /api/tags).
-func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
+func (c *Client) ListModels(parent context.Context) ([]Model, error) {
+	ctx, cancel := quickDeadline(parent)
+	defer cancel()
 	resp, err := c.do(ctx, http.MethodGet, "/api/tags", nil)
 	if err != nil {
-		return nil, err
+		return nil, c.quickError(parent, err)
 	}
 	defer resp.Body.Close()
 
-	var body struct {
+	var body struct { // read inside the deadline above
 		Models []struct {
 			Name    string `json:"name"`
 			Size    int64  `json:"size"`
@@ -239,10 +242,12 @@ func (c *Client) ListModels(ctx context.Context) ([]Model, error) {
 }
 
 // Version returns the Ollama server version (GET /api/version).
-func (c *Client) Version(ctx context.Context) (string, error) {
+func (c *Client) Version(parent context.Context) (string, error) {
+	ctx, cancel := quickDeadline(parent)
+	defer cancel()
 	resp, err := c.do(ctx, http.MethodGet, "/api/version", nil)
 	if err != nil {
-		return "", err
+		return "", c.quickError(parent, err)
 	}
 	defer resp.Body.Close()
 
@@ -305,4 +310,38 @@ func readAPIError(resp *http.Response) error {
 		msg = http.StatusText(resp.StatusCode)
 	}
 	return &APIError{Status: resp.StatusCode, Message: msg}
+}
+
+// QuickCallTimeout bounds the short calls (Version, ListModels) when the caller
+// gave a context with no deadline. A silent host (a half-dead WiFi link, a
+// wedged server on another node) would otherwise be waited on forever, because
+// the client has no overall Timeout on purpose. Generation is not bounded here:
+// a long answer is legitimate, and its caller sets its own deadline.
+var QuickCallTimeout = 10 * time.Second
+
+// dialTimeout bounds opening the connection, so a host that drops packets fails
+// in seconds instead of after the operating system's own wait (about two minutes).
+const dialTimeout = 5 * time.Second
+
+// quickDeadline adds QuickCallTimeout unless ctx already has a deadline.
+func quickDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, QuickCallTimeout)
+}
+
+// quickError says "no answer" as ErrUnreachable when only our own default
+// deadline ran out; the caller's cancellation or deadline still comes through as it is.
+func (c *Client) quickError(parent context.Context, err error) error {
+	if errors.Is(err, context.DeadlineExceeded) && parent.Err() == nil {
+		return fmt.Errorf("%w at %s: no answer within %s", ErrUnreachable, c.BaseURL, QuickCallTimeout)
+	}
+	return err
+}
+
+func newTransport() *http.Transport {
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr.DialContext = (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext
+	return tr
 }
