@@ -27,7 +27,7 @@ on_laptop() { OFFGRID_NODE=laptop "$@"; }
 on_phone()  { OFFGRID_NODE=phone "$@"; }
 
 # the phone, as a sync server on a free port
-on_phone $BIN sync serve -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
+on_phone $BIN sync serve -create -db "$PHONE" -addr 127.0.0.1:0 -key-file "$WORK/key" >"$WORK/srv.out" 2>"$WORK/srv.err" &
 PIDS+=($!)
 for _ in $(seq 50); do grep -q 'serving on' "$WORK/srv.out" 2>/dev/null && break; sleep 0.1; done
 PEER=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$WORK/srv.out")
