@@ -1,6 +1,6 @@
 # Day 31: a read must never create a database, and the merge code must stay portable
 
-**Done when:** v1.0.0-beta.1 is tagged with the fix, the product spec is in `docs/`, and CI has a job that builds the merge packages for WebAssembly (green, or a written list of what blocks it). The tag is yours to make; see "Your part" at the bottom.
+**Done when:** v0.30.1 is tagged with the fix, the product spec is in `docs/`, and CI has a job that builds the merge packages for WebAssembly (green, or a written list of what blocks it). The tag is yours to make; see "Your part" at the bottom.
 
 ```bash
 go test ./cmd/offgrid -run 'ReadOnlyCommand|WritingCommandsStill'   # the regression test
@@ -31,7 +31,7 @@ Two commands created the file (`task`, `sync summary`). Four refused, but each w
 | `openExistingStore` (cmd) | The one way a command opens a database it did not come to create. |
 | Exit code **3** | The same for every command: `task`, `sync summary`, `store`, `web`, `suggestions`, `answers`. 1 stays "something else went wrong", 2 stays "usage". |
 
-Commands that may create a database still do: `exec`, `agent`, and `sync once/serve/run` (a new replica joins by syncing into a new file).
+Commands that may create a database still do: `exec` and `agent`. (`sync once/serve/run` did too until the Day 32 follow-up: they now need `-create`, because real-hardware testing showed a mistyped path made a stray replica.)
 
 **Behaviour change to know about:** `store`, `web`, `suggestions` and `answers` used to exit 1 for a missing file. They now exit 3 with the new message. Four existing tests were updated for that (`store_test.go`, `web_test.go`, `suggestions_test.go`, `think_test.go`). If a script of yours tests for exit 1 there, change it to 3.
 
@@ -86,5 +86,5 @@ Mutation-tested: an SQLite import in `hlc` fails the guard; an import of `offgri
 git rm .github/workflows/test.yml            # optional: the duplicate workflow
 make test && make wasm-test && make lint     # on your machine
 git add -A && git commit -m "Day 31: reads never create a database; product spec; wasm check"
-git tag -a v1.0.0-beta.1 -m "v1.0.0-beta.1" && git push origin main v1.0.0-beta.1
+git tag -a v0.30.1 -m "v0.30.1" && git push origin main v0.30.1
 ```
