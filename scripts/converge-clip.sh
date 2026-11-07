@@ -59,7 +59,7 @@ driver() {
   typeit "$PL" "og exec -db \$D/a.db '{\"intent\":\"add_note\",\"task_ref\":\"T1\",\"note\":\"seal cracked\"}' >/dev/null"; beat 0.8
   typeit "$PL" "og sync serve -db \$D/a.db -addr 127.0.0.1:7878 -key-file \$D/key 2>/dev/null &"; beat 1.2
   note "$PR" "B starts empty and syncs with A"
-  typeit "$PB" "og sync run -db \$D/b.db -peer http://127.0.0.1:7878 -key-file \$D/key -every 500ms -name B -fault-file \$D/fault"; beat 3
+  typeit "$PB" "og sync run -create -db \$D/b.db -peer http://127.0.0.1:7878 -key-file \$D/key -every 500ms -name B -fault-file \$D/fault"; beat 3
   typeit "$PR" "og task -db \$D/b.db list"; beat 2.5
   # --- wifi off
   note "$PR" "WiFi OFF"
