@@ -43,7 +43,7 @@ SRV=$!
 for _ in $(seq 100); do grep -q 'serving on' "$D/serve.out" 2>/dev/null && break; sleep 0.1; done
 URL=$(sed -n 's/.*serving on \(http[^ ]*\).*/\1/p' "$D/serve.out")
 [ -n "$URL" ] || { echo "the server did not start"; cat "$D/serve.err"; exit 1; }
-b sync run -db "$B" -peer "$URL" -key-file "$KEY" -every 300ms -name B -fault-file "$FAULT" > "$D/b.log" 2>&1 &
+b sync run -create -db "$B" -peer "$URL" -key-file "$KEY" -every 300ms -name B -fault-file "$FAULT" > "$D/b.log" 2>&1 &
 RUNNER=$!
 
 waitfor() {  # waitfor "description" command... : poll up to 30 s
