@@ -101,3 +101,61 @@ func TestWritingCommandsStillCreateTheDatabase(t *testing.T) {
 		t.Errorf("exec did not create the database: %v", err)
 	}
 }
+
+// Day 32, found on real hardware: `sync once -db desktop.md` (a typo for desktop.db)
+// silently made a second, empty replica with its own node ID and its own hash.
+// Joining a replica is a decision, so the three sync commands that can create a
+// database now do it only when told: -create.
+func TestSyncCommandsDoNotCreateADatabaseUnlessAsked(t *testing.T) {
+	t.Setenv("OFFGRID_DB", "")
+	t.Setenv("OFFGRID_NODE", "")
+	key := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(key, []byte("0123456789abcdef0123456789abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"sync", "once", "-db", "%s", "-peer", "http://127.0.0.1:1", "-key-file", key},
+		{"sync", "run", "-db", "%s", "-peer", "http://127.0.0.1:1", "-key-file", key, "-for", "1s"},
+		{"sync", "serve", "-db", "%s", "-addr", "127.0.0.1:0", "-key-file", key},
+	} {
+		dir := t.TempDir()
+		db := filepath.Join(dir, "desktop.md")
+		a := make([]string, len(args))
+		for i, s := range args {
+			a[i] = strings.ReplaceAll(s, "%s", db)
+		}
+		code, _, errOut := runCLI(t, "", a...)
+		if code != exitNoDatabase || !strings.Contains(errOut, "no such database") || !strings.Contains(errOut, "-create") {
+			t.Errorf("%v: exit %d, stderr %q (want exit %d, the words \"no such database\" and a mention of -create)", a[:2], code, errOut, exitNoDatabase)
+		}
+		if left, _ := filepath.Glob(filepath.Join(dir, "*")); len(left) != 0 {
+			t.Errorf("%v: left files behind: %v", a[:2], left)
+		}
+	}
+}
+
+func TestSyncCreateStartsANewReplicaAndSaysSo(t *testing.T) {
+	t.Setenv("OFFGRID_DB", "")
+	t.Setenv("OFFGRID_NODE", "")
+	key := filepath.Join(t.TempDir(), "key")
+	if err := os.WriteFile(key, []byte("0123456789abcdef0123456789abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(t.TempDir(), "new.db")
+	// The peer is unreachable on purpose: only the creating matters here.
+	code, _, errOut := runCLI(t, "", "sync", "once", "-create", "-db", db, "-peer", "http://127.0.0.1:1", "-key-file", key, "-timeout", "3s")
+	if code == exitNoDatabase {
+		t.Fatalf("-create was refused: %s", errOut)
+	}
+	if _, err := os.Stat(db); err != nil {
+		t.Errorf("-create did not create the database: %v", err)
+	}
+	if !strings.Contains(errOut, "creating a NEW replica at "+db) {
+		t.Errorf("stderr should announce the new replica, got %q", errOut)
+	}
+	// An existing database is opened as usual, with no announcement.
+	_, _, errOut = runCLI(t, "", "sync", "once", "-create", "-db", db, "-peer", "http://127.0.0.1:1", "-key-file", key, "-timeout", "3s")
+	if strings.Contains(errOut, "creating a NEW replica") {
+		t.Errorf("announced a new replica for an existing database: %q", errOut)
+	}
+}
