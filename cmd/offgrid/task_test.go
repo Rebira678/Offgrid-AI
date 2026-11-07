@@ -119,7 +119,7 @@ func TestSyncRunReportsOfflineThenSyncsWhenTheSwitchIsFlipped(t *testing.T) {
 	var out lockedBuf
 	done := make(chan int, 1)
 	go func() {
-		done <- run([]string{"sync", "run", "-db", filepath.Join(dir, "b.db"), "-peer", srv.URL, "-key-file", keyFile,
+		done <- run([]string{"sync", "run", "-create", "-db", filepath.Join(dir, "b.db"), "-peer", srv.URL, "-key-file", keyFile,
 			"-every", "100ms", "-for", "6s", "-name", "B", "-fault-file", faultFile}, &out, &out)
 	}()
 	waitFor(t, &out, "OFFLINE", 4*time.Second)
