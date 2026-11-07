@@ -187,6 +187,11 @@ Peak RSS is the largest resident memory of the whole process during that row (co
 
 - **No real devices, no real network.** Everything ran on one HP EliteBook
   over localhost. Network cuts are simulated by the fault-injection transport.
+  [`docs/real-device-report.md`](docs/real-device-report.md) is where the first
+  real-device results go (a second machine, real WiFi, router and power cuts, a
+  cold-boot clock). Until a row there is filled in with a date and the hardware,
+  it has **not** run on real hardware. `offgrid doctor` and `make kill9-test` check
+  a node before and after; a killed process is not a power cut.
 - **Sync is signed, not encrypted** (HMAC with a shared key). Use a trusted
   network or put TLS in front. The signature has a five-minute clock window,
   and an op stamped more than an hour in the future is refused.
@@ -289,14 +294,15 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 | 28 | Ship-ready repo: CI on Go 1.22/stable, release workflow (amd64/arm64), linters, licence, starter issues | `make lint` / `make release-local` |
 | 29 | Front page that works: visual architecture, trade-off matrix, fresh-clone test harness, demo replay GIF | `make fresh-test` / `make demo-gif` |
 | 30 | Launch: pre-flight launch verification, personalized outreach drafts, claims ledger | `make launch-check` / `docs/day-30.md` |
-| 31 | Safe database opening (MustExist/ErrNoDatabase, exit 3), WebAssembly merge portability, v1.0 beta product spec | `make wasm` / `make wasm-test` |
+| 31 | Reads never create a database (typed `ErrNoDatabase`, exit 3); one-page product spec; merge packages kept buildable as WebAssembly | `make wasm-test` / `docs/day-31.md` |
+| 32 | Real-device kit: `offgrid doctor`, a power-pull test with acknowledgements kept off the node, timeouts on network calls | `offgrid doctor` / `docs/day-32.md` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
 ## Layout
 
 ```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync, doctor
 internal/ollama/        HTTP client for Ollama: streaming, typed errors
 internal/bench/         benchmark method and report writers
 internal/sysinfo/       reads CPU and RAM so every result names its hardware
@@ -309,6 +315,7 @@ internal/task/storetest shared contract tests every store must pass
 internal/tools/         the closed menu of tools and the registry
 internal/agent/         tiered loop: rules first, model second
 internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
+internal/doctor         field-readiness checks: clock, disk, ports, SQLite integrity (read-only)
 internal/connectivity   state machine, probers and the monitor goroutine
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
