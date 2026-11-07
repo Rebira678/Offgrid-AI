@@ -84,14 +84,22 @@ func openExistingStore(ctx context.Context, path string, opt sqlstore.Options) (
 	return sqlstore.Open(ctx, path, opt)
 }
 
+// syncCreateHint is what a sync command adds when the database is missing.
+const syncCreateHint = "To start a NEW, empty replica at this path that fills from a peer, add -create. Otherwise check the path."
+
 // noDatabaseExit reports a missing database the same way for every command and
 // returns exitNoDatabase. ok is false when err is something else, so the caller
 // handles it as before.
 func noDatabaseExit(stderr io.Writer, err error) (code int, ok bool) {
+	return noDatabaseExitHint(stderr, err, "Check the path, or start a database with: offgrid exec -db FILE ...")
+}
+
+// noDatabaseExitHint is noDatabaseExit with a command-specific second line.
+func noDatabaseExitHint(stderr io.Writer, err error, hint string) (code int, ok bool) {
 	if !errors.Is(err, sqlstore.ErrNoDatabase) {
 		return 0, false
 	}
 	fmt.Fprintf(stderr, "error: %v\n", err)
-	fmt.Fprintln(stderr, "Nothing was created. Check the path, or start a database with: offgrid exec -db FILE ...")
+	fmt.Fprintf(stderr, "Nothing was created. %s\n", hint)
 	return exitNoDatabase, true
 }
