@@ -1,0 +1,8 @@
+{
+  "name": "Offgrid phone check",
+  "short_name": "Offgrid",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafaf7",
+  "theme_color": "#fafaf7"
+}
