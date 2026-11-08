@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/app.css">
+<title>Offgrid phone check</title>
+</head>
+<body>
+<main>
+  <h1>Offgrid phone check</h1>
+  <p class="lede">This page tests what a phone needs to run Offgrid without internet. Nothing here is a secret: it only reports how your browser behaved.</p>
+
+  <section id="verdict" class="verdict" aria-live="polite">Running checks…</section>
+
+  <h2>Checks</h2>
+  <ul id="checks" class="checks"></ul>
+
+  <h2>Now the real test: offline</h2>
+  <ol class="steps">
+    <li>Wait until every check above has finished.</li>
+    <li>Turn on <strong>airplane mode</strong> and then turn Wi-Fi back on <em>only if you want the node reachable</em>; for the cleanest test, stop the node instead (Ctrl-C on the laptop) so nothing can answer.</li>
+    <li>Reload this page, or open it from the browser's history.</li>
+    <li>If it loads and says <strong>OFFLINE LOAD</strong> below, the service worker served it from the phone's own storage.</li>
+    <li>Reconnect and reload once: the page sends the result to the node by itself.</li>
+  </ol>
+  <section id="offline" class="offline"></section>
+
+  <h2>Result</h2>
+  <div class="row">
+    <button id="send" type="button">Send result to the node</button>
+    <button id="copy" type="button">Copy as text</button>
+  </div>
+  <p id="sendstate" class="muted"></p>
+  <pre id="json" class="json" tabindex="0"></pre>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
