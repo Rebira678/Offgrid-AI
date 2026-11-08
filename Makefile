@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test doctor kill9-test
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test doctor kill9-test phone-selftest
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -182,3 +182,7 @@ doctor: build
 # Day 32: rehearse the power-pull test on this machine by killing the writer (N rounds). Not a power cut: see docs/day-32.md.
 kill9-test: build
 	scripts/real-device/kill9-test.sh $(or $(N),10)
+
+# Day 33: rehearse the phone check in a desktop Chromium (needs: pip install playwright && playwright install chromium). Not a phone test.
+phone-selftest: build
+	OFFGRID_BIN=./bin/offgrid python3 scripts/real-device/phone-check-selftest.py
