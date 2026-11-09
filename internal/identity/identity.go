@@ -19,6 +19,7 @@
 package identity
 
 import (
+	"bytes"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -200,6 +201,9 @@ func parseKeyFile(data []byte) (*Identity, error) {
 	}
 	if len(data) == 0 || data[len(data)-1] != '\n' || strings.Count(string(data), "\n") != 1 {
 		return nil, corrupt("it is not exactly one line")
+	}
+	if bytes.Contains(data, []byte("\r")) {
+		return nil, corrupt("it contains carriage returns (CRLF)")
 	}
 	f := strings.Split(string(data[:len(data)-1]), " ")
 	if len(f) != 4 || f[0] != fileMagic {
