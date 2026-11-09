@@ -18,3 +18,4 @@ my_perispective_not_tracked_by_git/
 *.bak
 scratch/
 *.jpg
+*.key
