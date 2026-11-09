@@ -460,3 +460,50 @@ func TestParseKeyFileAcceptsTheFormatItWrites(t *testing.T) {
 	}
 }
 
+func FuzzParseKeyFile(f *testing.F) {
+	g, _ := Generate()
+	good := g.encode()
+	f.Add(good)
+	f.Add([]byte(""))
+	f.Add([]byte("offgrid-key v1 ecdsa-p256 \n"))
+	f.Add([]byte("offgrid-key v2 ed25519 AAAA\n"))
+	f.Add(append(append([]byte(nil), good...), good...))
+	f.Add(good[:len(good)/2])
+	f.Fuzz(func(t *testing.T, data []byte) {
+		id, err := parseKeyFile(data)
+		if err != nil {
+			if !errors.Is(err, ErrCorrupt) && !errors.Is(err, ErrUnsupported) {
+				t.Fatalf("untyped error %v", err)
+			}
+			if id != nil {
+				t.Fatal("an identity came back with an error")
+			}
+			return
+		}
+		// Whatever parses must be a usable key whose encoding parses back to itself.
+		again, err := parseKeyFile(id.encode())
+		if err != nil || again.ID() != id.ID() {
+			t.Fatalf("a parsed key does not survive re-encoding: %v", err)
+		}
+		sig, err := id.Sign([]byte("x"))
+		if err != nil || Verify(id.PublicKey(), []byte("x"), sig) != nil {
+			t.Fatal("a parsed key cannot sign")
+		}
+	})
+}
+
+func FuzzDeviceID(f *testing.F) {
+	f.Add("ecdsa-p256:BGsX0fLhLEJH-Lzm5WOkQPJ3A32BLeszoPShOUXYmMKWT-NC4v4af5uO5-tKfA-eFivOM1drMV7Oy7ZAaDe_UfU")
+	f.Add("")
+	f.Add("ecdsa-p256:")
+	f.Add("x:y:z")
+	f.Fuzz(func(t *testing.T, s string) {
+		id, err := DeviceID(s)
+		if err == nil && !idRe.MatchString(id) {
+			t.Fatalf("bad ID %q for %q", id, s)
+		}
+		if err := Verify(s, []byte("m"), make([]byte, 64)); err == nil {
+			t.Fatal("an all-zero signature verified")
+		}
+	})
+}
