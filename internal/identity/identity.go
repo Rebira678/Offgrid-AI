@@ -255,3 +255,55 @@ func Load(path string) (*Identity, error) {
 	}
 	return id, nil
 }
+
+// Create makes a new identity and writes it to path, which must not exist. The
+// folder is made with mode 0700. The file is written whole to a private
+// temporary file, synced, and only then linked into place, so a reader never
+// sees half a key, and of several processes creating at once exactly one wins.
+func Create(path string) (*Identity, error) {
+	id, err := Generate()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("identity: make folder %s: %w", dir, err)
+	}
+	var rnd [6]byte
+	if _, err := rand.Read(rnd[:]); err != nil {
+		return nil, err
+	}
+	tmp := filepath.Join(dir, "."+filepath.Base(path)+".tmp-"+hex.EncodeToString(rnd[:]))
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("identity: create %s: %w", tmp, err)
+	}
+	defer os.Remove(tmp)
+	_, werr := f.Write(id.encode())
+	if werr == nil {
+		werr = f.Sync()
+	}
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return nil, fmt.Errorf("identity: write %s: %w", tmp, werr)
+	}
+	if err := os.Link(tmp, path); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return nil, fmt.Errorf("%w at %s", ErrExists, path)
+		}
+		// A filesystem without hard links: fall back to rename, with a check first.
+		if _, serr := os.Lstat(path); serr == nil {
+			return nil, fmt.Errorf("%w at %s", ErrExists, path)
+		}
+		if rerr := os.Rename(tmp, path); rerr != nil {
+			return nil, fmt.Errorf("identity: put the key at %s: %w", path, rerr)
+		}
+	}
+	if d, err := os.Open(dir); err == nil { // make the new name durable
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return id, nil
+}
