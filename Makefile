@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test doctor kill9-test phone-selftest
+.PHONY: build test test-race vet fmt check models bench bench-system bench-models bench-quick bench-store bench-crdt demo demo-checkpoint1 partition-demo drain-demo top-demo release clock-demo lww-demo prove-merge orset-demo sync-demo converge-demo two-brains-demo ai-suggests-demo sim sim-quick web-demo web-check tamper-demo lint release-local good-first-issues fresh-test demo-gif launch-check wasm wasm-test doctor kill9-test phone-selftest fuzz-smoke vuln
 
 build:
 	go build -o bin/offgrid ./cmd/offgrid
@@ -186,3 +186,16 @@ kill9-test: build
 # Day 33: rehearse the phone check in a desktop Chromium (needs: pip install playwright && playwright install chromium). Not a phone test.
 phone-selftest: build
 	OFFGRID_BIN=./bin/offgrid python3 scripts/real-device/phone-check-selftest.py
+
+# Day 34: run every fuzz target for FUZZTIME each (default 10s; CI runs ten minutes nightly). Seeds already run in "make test".
+FUZZTIME ?= 10s
+fuzz-smoke:
+	go test -run '^$$' -fuzz '^FuzzApplyRemoteOp$$'  -fuzztime $(FUZZTIME) ./internal/store/sqlstore
+	go test -run '^$$' -fuzz '^FuzzSyncRequestBody$$' -fuzztime $(FUZZTIME) ./internal/syncer
+	go test -run '^$$' -fuzz '^FuzzSyncAuth$$'        -fuzztime $(FUZZTIME) ./internal/syncer
+	go test -run '^$$' -fuzz '^FuzzParseKeyFile$$'    -fuzztime $(FUZZTIME) ./internal/identity
+	go test -run '^$$' -fuzz '^FuzzDeviceID$$'        -fuzztime $(FUZZTIME) ./internal/identity
+
+# Day 34: known vulnerabilities in what Offgrid calls (needs network for the vulnerability database).
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
