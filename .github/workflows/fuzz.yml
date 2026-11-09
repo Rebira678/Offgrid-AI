@@ -1,0 +1,53 @@
+# Day 34. Each fuzz target runs for ten minutes every night, in its own job.
+# The seed corpora also run as ordinary tests in ci.yml on every push; this is the long run.
+# A crash is uploaded as an artifact: copy its file into the package's testdata/fuzz/<Target>/ and commit it,
+# and it becomes a regression test that runs on every push.
+name: fuzz
+
+on:
+  schedule:
+    - cron: "23 1 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "How long per target (a Go duration)"
+        default: "10m"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { pkg: ./internal/store/sqlstore, target: FuzzApplyRemoteOp }
+          - { pkg: ./internal/syncer,         target: FuzzSyncRequestBody }
+          - { pkg: ./internal/syncer,         target: FuzzSyncAuth }
+          - { pkg: ./internal/identity,       target: FuzzParseKeyFile }
+          - { pkg: ./internal/identity,       target: FuzzDeviceID }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+      # Keep what the fuzzer learned, so each night starts where the last one ended.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-${{ matrix.target }}-
+      - name: fuzz
+        run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime '${{ github.event.inputs.fuzztime || '10m' }}' ${{ matrix.pkg }}
+      - name: keep the crashing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-${{ matrix.target }}
+          path: "**/testdata/fuzz/${{ matrix.target }}/*"
+          if-no-files-found: ignore
