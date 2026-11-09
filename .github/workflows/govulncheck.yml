@@ -1,0 +1,31 @@
+# Day 34. Known vulnerabilities in the code Offgrid actually calls (dependencies and the standard library).
+# Runs on every push and pull request, and weekly: a new advisory can appear without any change here.
+name: govulncheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest   # has gcc, which mattn/go-sqlite3 needs
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # "stable", not go.mod's 1.22: standard-library findings should describe a toolchain
+          # people can actually install today, not the oldest one the module still builds with.
+          go-version: stable
+          check-latest: true
+      - name: install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - name: scan
+        run: govulncheck ./...
