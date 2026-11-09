@@ -97,6 +97,9 @@ func deviceID(raw []byte) string {
 // ID is the device ID: "dev_" and 32 hex characters of the SHA-256 of the
 // 65-byte public key. The phone check page (Day 33) derives it the same way.
 func (i *Identity) ID() string {
+	if i == nil {
+		return ""
+	}
 	return i.id
 }
 
@@ -105,12 +108,18 @@ func (i *Identity) Algorithm() string { return AlgECDSAP256 }
 
 // PublicKey is the tagged public key: "ecdsa-p256:" and the base64url of the 65 raw bytes.
 func (i *Identity) PublicKey() string {
+	if i == nil || len(i.pub) == 0 {
+		return ""
+	}
 	return AlgECDSAP256 + ":" + base64.RawURLEncoding.EncodeToString(i.pub)
 }
 
 // Sign signs msg (SHA-256 then ECDSA) and returns the 64-byte raw r||s form,
 // which is what WebCrypto produces, so a phone and a node agree on the format.
 func (i *Identity) Sign(msg []byte) ([]byte, error) {
+	if i == nil || i.key == nil {
+		return nil, errors.New("identity: key is not initialized")
+	}
 	h := sha256.Sum256(msg)
 	r, s, err := ecdsa.Sign(rand.Reader, i.key, h[:])
 	if err != nil {
@@ -129,6 +138,9 @@ func parsePublic(tagged string) (*ecdsa.PublicKey, []byte, error) {
 	}
 	if alg != AlgECDSAP256 {
 		return nil, nil, fmt.Errorf("%w: public key algorithm %q", ErrUnsupported, trunc(alg))
+	}
+	if len(enc) != 87 {
+		return nil, nil, errors.New("public key is not 65 bytes of base64url")
 	}
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(enc)
 	if err != nil || len(raw) != 65 {
@@ -228,6 +240,7 @@ func DefaultPath() (string, error) {
 // read (the mode of the file that is actually opened counts, so a symlink to a
 // readable file is refused too). It never creates or changes anything.
 func Load(path string) (*Identity, error) {
+	path = filepath.Clean(path)
 	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -263,6 +276,7 @@ func Load(path string) (*Identity, error) {
 // temporary file, synced, and only then linked into place, so a reader never
 // sees half a key, and of several processes creating at once exactly one wins.
 func Create(path string) (*Identity, error) {
+	path = filepath.Clean(path)
 	id, err := Generate()
 	if err != nil {
 		return nil, err
@@ -314,6 +328,7 @@ func Create(path string) (*Identity, error) {
 // not exist. A file that is wrongly protected, corrupt or unsupported is an
 // error, never replaced. created is true only for the caller that made the key.
 func LoadOrCreate(path string) (id *Identity, created bool, err error) {
+	path = filepath.Clean(path)
 	id, err = Load(path)
 	if err == nil {
 		return id, false, nil
@@ -342,11 +357,17 @@ func (i Identity) Format(f fmt.State, _ rune) {
 
 // LogValue makes slog print the device ID and algorithm, nothing secret.
 func (i *Identity) LogValue() slog.Value {
+	if i == nil {
+		return slog.Value{}
+	}
 	return slog.GroupValue(slog.String("id", i.id), slog.String("algorithm", AlgECDSAP256))
 }
 
 // MarshalJSON writes the public facts only.
 func (i *Identity) MarshalJSON() ([]byte, error) {
+	if i == nil {
+		return []byte("null"), nil
+	}
 	return json.Marshal(struct {
 		ID        string `json:"id"`
 		Algorithm string `json:"algorithm"`
