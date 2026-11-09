@@ -19,7 +19,14 @@
 package identity
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
+	"fmt"
 )
 
 // AlgECDSAP256 is the only algorithm this build can make.
@@ -45,3 +52,47 @@ var (
 	// ErrUnsupported: a well-formed file or key with a version or algorithm this build does not know.
 	ErrUnsupported = errors.New("identity key uses an unsupported version or algorithm")
 )
+
+// Identity is a device's key. The zero value is not usable.
+type Identity struct {
+	key *ecdsa.PrivateKey
+	pub []byte // 65 bytes: 0x04 || X || Y
+	id  string
+}
+
+func newIdentity(k *ecdsa.PrivateKey) (*Identity, error) {
+	e, err := k.PublicKey.ECDH()
+	if err != nil {
+		return nil, err
+	}
+	raw := e.Bytes()
+	return &Identity{key: k, pub: raw, id: deviceID(raw)}, nil
+}
+
+// Generate makes a new identity in memory. Nothing is written.
+func Generate() (*Identity, error) {
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("identity: generate key: %w", err)
+	}
+	return newIdentity(k)
+}
+
+func deviceID(raw []byte) string {
+	h := sha256.Sum256(raw)
+	return idPrefix + hex.EncodeToString(h[:])[:idHexChars]
+}
+
+// ID is the device ID: "dev_" and 32 hex characters of the SHA-256 of the
+// 65-byte public key. The phone check page (Day 33) derives it the same way.
+func (i *Identity) ID() string {
+	return i.id
+}
+
+// Algorithm is the tag of the key's algorithm.
+func (i *Identity) Algorithm() string { return AlgECDSAP256 }
+
+// PublicKey is the tagged public key: "ecdsa-p256:" and the base64url of the 65 raw bytes.
+func (i *Identity) PublicKey() string {
+	return AlgECDSAP256 + ":" + base64.RawURLEncoding.EncodeToString(i.pub)
+}
