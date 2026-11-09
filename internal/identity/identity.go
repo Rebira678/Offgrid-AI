@@ -24,6 +24,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -162,4 +163,47 @@ func Verify(tagged string, msg, sig []byte) error {
 		return errors.New("signature does not verify")
 	}
 	return nil
+}
+
+// The file is one line: "offgrid-key v1 ecdsa-p256 <base64url PKCS#8, no padding>\n".
+func (i *Identity) encode() []byte {
+	der, err := x509.MarshalPKCS8PrivateKey(i.key)
+	if err != nil { // cannot happen for a P-256 key
+		panic("identity: " + err.Error())
+	}
+	return []byte(fileMagic + " " + fileVersion + " " + AlgECDSAP256 + " " + base64.RawURLEncoding.EncodeToString(der) + "\n")
+}
+
+func parseKeyFile(data []byte) (*Identity, error) {
+	corrupt := func(why string) error { return fmt.Errorf("%w: %s", ErrCorrupt, why) }
+	if len(data) > maxFileSize {
+		return nil, corrupt("it is too large to be a key")
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' || strings.Count(string(data), "\n") != 1 {
+		return nil, corrupt("it is not exactly one line")
+	}
+	f := strings.Split(string(data[:len(data)-1]), " ")
+	if len(f) != 4 || f[0] != fileMagic {
+		return nil, corrupt("it does not start with \"" + fileMagic + " <version> <algorithm> <key>\"")
+	}
+	if f[1] != fileVersion || f[2] != AlgECDSAP256 {
+		return nil, fmt.Errorf("%w: version %q, algorithm %q (this build reads %s %s); the file may come from a newer Offgrid", ErrUnsupported, trunc(f[1]), trunc(f[2]), fileVersion, AlgECDSAP256)
+	}
+	der, err := base64.RawURLEncoding.Strict().DecodeString(f[3])
+	if err != nil {
+		return nil, corrupt("the key is not base64url")
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(der)
+	if err != nil {
+		return nil, corrupt("the key is not a PKCS#8 private key")
+	}
+	k, ok := parsed.(*ecdsa.PrivateKey)
+	if !ok || k.Curve != elliptic.P256() {
+		return nil, corrupt("the key is not an ECDSA P-256 key")
+	}
+	id, err := newIdentity(k)
+	if err != nil {
+		return nil, corrupt("the key is not usable")
+	}
+	return id, nil
 }
