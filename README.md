@@ -297,13 +297,14 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 | 31 | Reads never create a database (typed `ErrNoDatabase`, exit 3); one-page product spec; merge packages kept buildable as WebAssembly | `make wasm-test` / `docs/day-31.md` |
 | 32 | Real-device kit: `offgrid doctor`, a power-pull test with acknowledgements kept off the node, timeouts on network calls | `offgrid doctor` / `docs/day-32.md` |
 | 33 | Phone spike: a private certificate authority limited to private names, a phone check page (service worker, offline reload, device key), `offgrid ca` | `offgrid ca help` / `docs/day-33.md` |
+| 34 | Identity and the security baseline: one ECDSA P-256 key per device, device ID from its public key, `SECURITY.md`, `govulncheck` in CI, first fuzz targets | `offgrid identity show` / `docs/day-34.md` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
 ## Layout
 
 ```
-cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync, doctor, ca
+cmd/offgrid/            the CLI: models, bench, ask, parse, eval, exec, tools, agent, store, task, net, queue, drain, answers, suggestions, fault, top, clock, lww, orset, sync, doctor, ca, identity
 internal/ollama/        HTTP client for Ollama: streaming, typed errors
 internal/bench/         benchmark method and report writers
 internal/sysinfo/       reads CPU and RAM so every result names its hardware
@@ -318,6 +319,7 @@ internal/agent/         tiered loop: rules first, model second
 internal/store/sqlstore SQLite store: op log, migrations, rebuild, verify
 internal/doctor         field-readiness checks: clock, disk, ports, SQLite integrity (read-only)
 internal/pki            a small private certificate authority (crypto/x509): name-constrained, key kept off the node
+internal/identity       a device's key (ECDSA P-256), its ID, signing; mode 600 enforced; never printed
 internal/spike          the Day 33 phone check page and its report endpoint
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
