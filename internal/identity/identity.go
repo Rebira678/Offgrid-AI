@@ -29,7 +29,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"math/big"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -204,6 +209,49 @@ func parseKeyFile(data []byte) (*Identity, error) {
 	id, err := newIdentity(k)
 	if err != nil {
 		return nil, corrupt("the key is not usable")
+	}
+	return id, nil
+}
+
+// DefaultPath is where a device keeps its key unless told otherwise.
+func DefaultPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("identity: cannot find a config folder (%w); give the key path explicitly", err)
+	}
+	return filepath.Join(dir, "offgrid", "device.key"), nil
+}
+
+// Load reads the key at path. It refuses a file that anyone but its owner can
+// read (the mode of the file that is actually opened counts, so a symlink to a
+// readable file is refused too). It never creates or changes anything.
+func Load(path string) (*Identity, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%w at %s", ErrNotFound, path)
+		}
+		return nil, fmt.Errorf("identity: open %s: %w", path, err)
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("identity: stat %s: %w", path, err)
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s is not a regular file", ErrCorrupt, path)
+	}
+	// Windows reports 0666 or 0444 whatever the ACL says, so the bits mean nothing there.
+	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+		return nil, fmt.Errorf("%w: %s has mode %04o, but it holds a private key and must be readable by its owner only; fix it with: chmod 600 %q", ErrPermissions, path, fi.Mode().Perm(), path)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxFileSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("identity: read %s: %w", path, err)
+	}
+	id, err := parseKeyFile(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return id, nil
 }
