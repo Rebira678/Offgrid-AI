@@ -27,10 +27,12 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -306,4 +308,48 @@ func Create(path string) (*Identity, error) {
 		_ = d.Close()
 	}
 	return id, nil
+}
+
+// LoadOrCreate returns the identity at path, making one only if the file does
+// not exist. A file that is wrongly protected, corrupt or unsupported is an
+// error, never replaced. created is true only for the caller that made the key.
+func LoadOrCreate(path string) (id *Identity, created bool, err error) {
+	id, err = Load(path)
+	if err == nil {
+		return id, false, nil
+	}
+	if !errors.Is(err, ErrNotFound) {
+		return nil, false, err
+	}
+	id, err = Create(path)
+	if err == nil {
+		return id, true, nil
+	}
+	if errors.Is(err, ErrExists) { // someone else won the race
+		id, err = Load(path)
+		return id, false, err
+	}
+	return nil, false, err
+}
+
+// String, GoString and Format are the same on purpose: whatever verb is used,
+// the private key is never printed.
+func (i Identity) String() string   { return "Identity{ID: " + i.id + ", key: [redacted]}" }
+func (i Identity) GoString() string { return i.String() }
+func (i Identity) Format(f fmt.State, _ rune) {
+	_, _ = io.WriteString(f, i.String())
+}
+
+// LogValue makes slog print the device ID and algorithm, nothing secret.
+func (i *Identity) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("id", i.id), slog.String("algorithm", AlgECDSAP256))
+}
+
+// MarshalJSON writes the public facts only.
+func (i *Identity) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		ID        string `json:"id"`
+		Algorithm string `json:"algorithm"`
+		PublicKey string `json:"public_key"`
+	}{i.id, AlgECDSAP256, i.PublicKey()})
 }
