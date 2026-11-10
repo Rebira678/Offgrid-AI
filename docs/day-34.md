@@ -5,7 +5,7 @@
 | Criterion | State |
 |---|---|
 | Key survives restart | Done and tested (`TestKeySurvivesRestartAndIDIsStable`; three fresh loads, an old signature still verifies, a new one from the reloaded key verifies against the original public key) |
-| Wrong permissions refuse to start | Done for the identity commands and `LoadOrCreate`. **Nothing in the node reads the key yet**, so `sync serve` cannot refuse on it until Day 35 wires it in |
+| Wrong permissions refuse to start | Done for the identity commands and `LoadOrCreate`. **Nothing in the node reads the key yet**, so `sync serve` cannot refuse on it until Day 36 wires it in |
 | Device ID is stable | Done and tested, with an independent vector (the P-256 generator point, hashed with Python) |
 | No key bytes in any log | Done and tested (below) |
 | Fuzzers clean for 10 minutes | **Not shown here.** Each target ran 20 to 60 seconds in my sandbox, clean. The 10-minute run is the nightly workflow's job, or yours: `make fuzz-smoke FUZZTIME=10m` |
@@ -20,11 +20,11 @@ offgrid identity show [-json]    # changes nothing; with no key it exits 3
 
 The key lives at `-key FILE`, else `$OFFGRID_IDENTITY_KEY`, else the config folder (`~/.config/offgrid/device.key` on Linux).
 
-**Decision to check: `show` never creates the key.** The roadmap says "generate on first run". Day 31 taught that a command which only looks must not create things, and a key is worse than a database: a stray one is a second identity. So generation is the explicit `identity init`, and Day 35's commands that need a key will call `LoadOrCreate` only where you say so. If you would rather it appeared on first use, it is one line.
+**Decision to check: `show` never creates the key.** The roadmap says "generate on first run". Day 31 taught that a command which only looks must not create things, and a key is worse than a database: a stray one is a second identity. So generation is the explicit `identity init`, and Day 36's commands that need a key will call `LoadOrCreate` only where you say so. If you would rather it appeared on first use, it is one line.
 
 | Piece | Choice and why |
 |---|---|
-| Key | ECDSA P-256, `crypto/ecdsa` and `crypto/rand` only. One per **device**, not per person: attribution is to a device with a human label from enrollment (Day 35). Cost: a lost phone means revoking a key |
+| Key | ECDSA P-256, `crypto/ecdsa` and `crypto/rand` only. One per **device**, not per person: attribution is to a device with a human label from enrollment (Day 38). Cost: a lost phone means revoking a key |
 | File | One line: `offgrid-key v1 ecdsa-p256 <base64url PKCS#8>`. The **algorithm tag is in the file and in every public key** (`ecdsa-p256:<base64url>`), so a later algorithm is a new tag and old data still reads. A file with an unknown version or algorithm is `ErrUnsupported` ("may come from a newer Offgrid"), never "corrupt" |
 | Device ID | `dev_` and the first 32 hex characters (128 bits) of the SHA-256 of the 65-byte public key. It cannot disagree with the key. The Day 33 phone page hashes the same bytes, so a phone and a node will agree |
 | Signatures | SHA-256 then ECDSA, as the 64-byte raw `r\|\|s` form that WebCrypto produces. The Go side verifies what the browser side signs |
@@ -72,9 +72,9 @@ One mutant I ran **hung the test run** (removing the rollback leaves the single 
 
 ## 5. Things I noticed and did not change
 
-1. **The sync key file's permissions are not checked**, while the new identity key's are. `LoadKey` reads any readable file. It is the secret every replica shares, so it deserves the same rule; it is a small change for Day 35, which touches that path anyway. `SECURITY.md` says so.
+1. **The sync key file's permissions are not checked**, while the new identity key's are. `LoadKey` reads any readable file. It is the secret every replica shares, so it deserves the same rule; it is a small change for Day 36, which touches that path anyway. `SECURITY.md` says so.
 2. **`.gitignore` has nothing for keys.** `ca.key`, `node.key` and `device.key` could be committed by accident (you already commit `spike-results.jsonl`). Add `*.key`.
-3. **The identity key is not used by anything yet.** Today the key is a fact on disk. Day 35 uses it.
+3. **The identity key is not used by anything yet.** Today the key is a fact on disk. Day 36 uses it.
 4. **Windows:** the permission check is skipped there (the mode bits mean nothing), and `os.Link` is assumed to work on the filesystem, with a rename fallback that has a tiny race. I did not run on Windows.
 5. **Trailing data after a request body is accepted** by the sync request decoder (`{"ops":[]} junk` is a valid push), while the op payload decoder rejects it. It is authenticated input and harmless, but inconsistent; I left it.
 
