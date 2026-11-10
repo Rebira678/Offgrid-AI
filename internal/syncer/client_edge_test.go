@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -99,5 +100,47 @@ func TestClientSync_NilPeerSummaryPushSafety(t *testing.T) {
 	}
 	if rep.Pulled != 0 || rep.Pushed != 0 {
 		t.Errorf("unexpected sync report: %+v", rep)
+	}
+}
+
+func TestClientConcurrentAnonymousNodeIsRaceFree(t *testing.T) {
+	ctx := context.Background()
+	key := []byte("0123456789abcdef0123456789abcdef")
+
+	st, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "peer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	srv := httptest.NewServer(Handler(st, ServerOptions{Key: key}))
+	defer srv.Close()
+
+	client := &Client{
+		Peer: srv.URL,
+		Key:  key,
+		HTTP: srv.Client(),
+	}
+
+	const workers = 8
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	errCh := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := client.PeerSummary(ctx)
+			if err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatalf("concurrent PeerSummary failed: %v", err)
+	}
+	if client.Node != "" {
+		t.Errorf("concurrent calls mutated Client.Node to %q", client.Node)
 	}
 }
