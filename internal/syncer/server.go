@@ -30,13 +30,13 @@ type ServerOptions struct {
 
 // Handler serves the sync endpoints for rep.
 func Handler(rep Replica, opt ServerOptions) http.Handler {
-	if opt.Window == 0 {
+	if opt.Window <= 0 {
 		opt.Window = DefaultWindow
 	}
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
-	if opt.MaxBatch == 0 {
+	if opt.MaxBatch <= 0 {
 		opt.MaxBatch = DefaultBatch
 	}
 	s := &server{rep: rep, opt: opt}
