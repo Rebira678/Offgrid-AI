@@ -7,10 +7,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"offgrid/internal/task"
 )
 
 func TestPrivateFileCancelledContextCreatesNoFile(t *testing.T) {
@@ -200,5 +203,140 @@ func TestPrivateFileDirectoryAndUnwritableParentErrors(t *testing.T) {
 		if ents, rerr := os.ReadDir(roDir); rerr != nil || len(ents) != 0 {
 			t.Fatalf("read-only dir should have no created files, got %v (err=%v)", ents, rerr)
 		}
+	}
+}
+
+func TestPrivateFileDanglingAndValidSymlinks(t *testing.T) {
+	old := syscall.Umask(0o022)
+	defer syscall.Umask(old)
+
+	dir := t.TempDir()
+	missingTarget := filepath.Join(dir, "never_created.db")
+	dangling := filepath.Join(dir, "dangling.db")
+	if err := os.Symlink(missingTarget, dangling); err != nil {
+		t.Skip("symlinks not supported:", err)
+	}
+
+	s, err := Open(context.Background(), dangling, Options{NodeID: "n1"})
+	if err == nil || !strings.Contains(err.Error(), "dangling symlink") {
+		if s != nil {
+			s.Close()
+		}
+		t.Fatalf("expected dangling symlink refusal, got store=%v err=%v", s, err)
+	}
+	if _, statErr := os.Stat(missingTarget); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("dangling symlink Open created target file! statErr=%v", statErr)
+	}
+
+	// Symlink to an already-existing 0600 database continues to work cleanly.
+	realDB := filepath.Join(dir, "real.db")
+	sReal, err := Open(context.Background(), realDB, Options{NodeID: "real"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sReal.Close()
+	validLink := filepath.Join(dir, "valid.db")
+	if err := os.Symlink(realDB, validLink); err != nil {
+		t.Fatal(err)
+	}
+	sLink, err := Open(context.Background(), validLink, Options{})
+	if err != nil {
+		t.Fatalf("opening valid symlink failed: %v", err)
+	}
+	sLink.Close()
+}
+
+func TestPrivateFileRefusesNamedPipeFIFOImmediately(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "pipe.db")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skip("mkfifo not supported:", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		s, err := Open(context.Background(), fifo, Options{MustExist: true})
+		if s != nil {
+			s.Close()
+		}
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			t.Fatalf("expected non-regular file refusal, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Open blocked on FIFO instead of failing cleanly")
+	}
+}
+
+func TestPrivateFileCorruptNonSQLiteFilePreservesModeAndBytes(t *testing.T) {
+	dir := t.TempDir()
+	badDB := filepath.Join(dir, "corrupt.db")
+	garbage := []byte("NOT A SQLITE DATABASE AT ALL")
+	if err := os.WriteFile(badDB, garbage, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, mustExist := range []bool{false, true} {
+		s, err := Open(context.Background(), badDB, Options{MustExist: mustExist})
+		if err == nil {
+			s.Close()
+			t.Fatalf("MustExist=%v: expected error opening non-sqlite file", mustExist)
+		}
+		fi, serr := os.Stat(badDB)
+		if serr != nil {
+			t.Fatal(serr)
+		}
+		if fi.Mode().Perm() != 0o640 {
+			t.Errorf("MustExist=%v changed mode to %04o", mustExist, fi.Mode().Perm())
+		}
+		if got, _ := os.ReadFile(badDB); string(got) != string(garbage) {
+			t.Errorf("MustExist=%v modified corrupt file bytes: %q", mustExist, got)
+		}
+	}
+}
+
+func TestRebuildSinglePassStateHashAndCountParity(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, ":memory:", Options{NodeID: "rebuild-parity"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	t1, _, err := s.Create(ctx, task.NewTask{Title: "Inspect pump", Site: "A", Priority: task.PriorityHigh})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddNote(ctx, t1.ID, "note one"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddNote(ctx, t1.ID, "note two"); err != nil {
+		t.Fatal(err)
+	}
+	t2, _, err := s.Create(ctx, task.NewTask{Title: "Temp task", Priority: task.PriorityLow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteTask(ctx, t2.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	hashBefore, err := s.StateHash(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := s.Rebuild(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Tasks != 1 {
+		t.Errorf("Rebuild Tasks = %d, want 1", rep.Tasks)
+	}
+	if rep.Hash != hashBefore {
+		t.Errorf("Rebuild Hash mismatch: got %s, want %s", rep.Hash, hashBefore)
 	}
 }
