@@ -144,3 +144,38 @@ func TestClientConcurrentAnonymousNodeIsRaceFree(t *testing.T) {
 		t.Errorf("concurrent calls mutated Client.Node to %q", client.Node)
 	}
 }
+
+func TestHandlerNegativeOptionsFallbackToDefaults(t *testing.T) {
+	ctx := context.Background()
+	key := []byte("0123456789abcdef0123456789abcdef")
+
+	st, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "srv"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	srv := httptest.NewServer(Handler(st, ServerOptions{
+		Key:      key,
+		Window:   -5 * time.Minute,
+		MaxBatch: -10,
+	}))
+	defer srv.Close()
+
+	clientSt, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "cli"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientSt.Close()
+
+	cl := &Client{
+		Peer:  srv.URL,
+		Node:  "cli",
+		Key:   key,
+		HTTP:  srv.Client(),
+		Batch: -1,
+	}
+	if _, err := cl.Once(ctx, clientSt); err != nil {
+		t.Fatalf("sync with negative ServerOptions.Window/MaxBatch failed: %v", err)
+	}
+}
