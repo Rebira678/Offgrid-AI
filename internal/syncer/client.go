@@ -89,12 +89,13 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	if err != nil {
 		return err
 	}
-	if c.Node == "" {
-		c.Node = "anonymous"
+	node := c.Node
+	if node == "" {
+		node = "anonymous"
 	}
 	unix := c.now().Unix()
-	sig := SignRequest(c.Key, method, path, c.Node, unix, body)
-	req.Header.Set(HeaderNode, c.Node)
+	sig := SignRequest(c.Key, method, path, node, unix, body)
+	req.Header.Set(HeaderNode, node)
 	req.Header.Set(HeaderTime, strconv.FormatInt(unix, 10))
 	req.Header.Set(HeaderSig, sig)
 	req.Header.Set("Content-Type", "application/json")
