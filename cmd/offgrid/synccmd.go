@@ -118,6 +118,14 @@ func newSyncServer(h http.Handler) *http.Server {
 	}
 }
 
+func requirePositive(stderr io.Writer, flagName string, d time.Duration) bool {
+	if d <= 0 {
+		fmt.Fprintf(stderr, "error: %s must be positive\n", flagName)
+		return false
+	}
+	return true
+}
+
 func cmdSyncServe(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -134,6 +142,9 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !requirePositive(stderr, "-window", *window) {
 		return 2
 	}
 	key, err := syncer.LoadKey(*keyFile)
@@ -195,6 +206,9 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	if *peer == "" {
 		fmt.Fprintln(stderr, "error: -peer URL is required")
+		return 2
+	}
+	if !requirePositive(stderr, "-timeout", *timeout) {
 		return 2
 	}
 	key, err := syncer.LoadKey(*keyFile)
@@ -293,6 +307,12 @@ func cmdSyncSummary(args []string, stdout, stderr io.Writer) int {
 // meanwhile, because the ops are in the log and the next round sends whatever
 // is missing.
 func cmdSyncRun(args []string, stdout, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return cmdSyncRunContext(ctx, args, stdout, stderr)
+}
+
+func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("sync run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	db := fs.String("db", "", dbHelp)
@@ -313,13 +333,14 @@ func cmdSyncRun(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: -peer URL is required")
 		return 2
 	}
+	if !requirePositive(stderr, "-every", *every) || !requirePositive(stderr, "-round-timeout", *roundTimeout) {
+		return 2
+	}
 	key, err := syncer.LoadKey(*keyFile)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if *forDur > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
