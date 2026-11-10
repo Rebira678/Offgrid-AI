@@ -62,22 +62,37 @@ func fail(status int, code, msg string) reply {
 	return reply{status, ErrorResponse{Code: code, Error: msg}}
 }
 
-// wrap reads the body, checks the signature, runs h, and signs the response.
-// Nothing reaches h unless the request is authentic and fresh.
+func (s *server) sendAuthError(w http.ResponseWriter, r *http.Request, err error) {
+	code, msg := CodeUnauthorized, err.Error()
+	var ae *authError
+	if errors.As(err, &ae) {
+		code, msg = ae.Code, ae.Msg
+	}
+	s.logf("refused %s %s: %s", r.Method, r.URL.Path, msg)
+	// An unauthenticated caller gets no signature: it could not be checked by them either.
+	s.send(w, "", fail(http.StatusUnauthorized, code, msg))
+}
+
+// wrap checks header syntax before reading the body, checks the signature, runs
+// h, and signs the response. Nothing reaches h unless authentic and fresh.
 func (s *server) wrap(h func(ctx context.Context, node string, body []byte) reply) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
-		if err != nil || len(body) > maxBody {
-			s.send(w, "", fail(http.StatusRequestEntityTooLarge, CodeBadRequest, "the request body is too large or unreadable"))
+		if _, _, _, err := parseAuthHeaders(r); err != nil {
+			s.sendAuthError(w, r, err)
 			return
+		}
+		var body []byte
+		if r.Body != nil {
+			var err error
+			body, err = io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+			if err != nil || len(body) > maxBody {
+				s.send(w, "", fail(http.StatusRequestEntityTooLarge, CodeBadRequest, "the request body is too large or unreadable"))
+				return
+			}
 		}
 		node, err := verifyRequest(s.opt.Key, r, body, s.opt.Now(), s.opt.Window)
 		if err != nil {
-			var ae *authError
-			errors.As(err, &ae)
-			s.logf("refused %s %s: %s", r.Method, r.URL.Path, ae.Msg)
-			// An unauthenticated caller gets no signature: it could not be checked by them either.
-			s.send(w, "", fail(http.StatusUnauthorized, ae.Code, ae.Msg))
+			s.sendAuthError(w, r, err)
 			return
 		}
 		rep := h(r.Context(), node, body)
