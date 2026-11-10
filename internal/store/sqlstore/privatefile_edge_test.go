@@ -185,4 +185,20 @@ func TestPrivateFileDirectoryAndUnwritableParentErrors(t *testing.T) {
 		s.Close()
 		t.Fatal("expected error opening db inside missing parent directory")
 	}
+
+	if os.Geteuid() != 0 {
+		roDir := filepath.Join(dir, "readonly")
+		if err := os.Mkdir(roDir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		defer os.Chmod(roDir, 0o700)
+		roDB := filepath.Join(roDir, "tasks.db")
+		if s, err := Open(context.Background(), roDB, Options{NodeID: "n1"}); err == nil {
+			s.Close()
+			t.Fatal("expected error opening db inside read-only directory")
+		}
+		if ents, rerr := os.ReadDir(roDir); rerr != nil || len(ents) != 0 {
+			t.Fatalf("read-only dir should have no created files, got %v (err=%v)", ents, rerr)
+		}
+	}
 }
