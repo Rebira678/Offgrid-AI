@@ -89,9 +89,13 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if opt.NodeID != "" && !nodeIDRe.MatchString(opt.NodeID) {
 		return nil, fmt.Errorf("sqlstore: node ID %q must be 1 to 64 letters, digits, '.', '_' or '-'", opt.NodeID)
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("sqlstore: %w", err)
+	}
 	conn := dsn(path)
+	var created bool
 	if !opt.MustExist {
-		createPrivate(path)
+		created = createPrivate(path)
 	}
 	if opt.MustExist && path != ":memory:" {
 		if err := requireFile(path); err != nil {
@@ -101,6 +105,9 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	}
 	db, err := sql.Open(driverName, conn)
 	if err != nil {
+		if created {
+			removeDBFiles(path)
+		}
 		return nil, fmt.Errorf("sqlstore: open %s: %w", path, err)
 	}
 	// One connection: SQLite has one writer anyway, and it makes ":memory:"
@@ -114,6 +121,9 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	s.clock = hlc.New(hlc.Config{Now: s.now, MaxDrift: opt.MaxDrift})
 	if err := s.init(ctx, opt); err != nil {
 		db.Close()
+		if created {
+			removeDBFiles(path)
+		}
 		if opt.MustExist && path != ":memory:" {
 			// The file was there a moment ago; if it is gone now, say so plainly.
 			if gone := requireFile(path); gone != nil {
@@ -130,15 +140,23 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 // umask), and it gives the -wal and -shm files the main file's mode: so on a
 // shared or stolen machine every local user could read the tasks. An existing
 // file is never touched, and any failure is left for SQLite to report in its
-// own words.
-func createPrivate(path string) {
-	if path == ":memory:" || strings.HasPrefix(path, "file:") {
-		return
+// own words. It reports whether this call created the file.
+func createPrivate(path string) bool {
+	if path == ":memory:" {
+		return false
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err == nil {
-		_ = f.Close()
+	if err != nil {
+		return false
 	}
+	_ = f.Close()
+	return true
+}
+
+func removeDBFiles(path string) {
+	_ = os.Remove(path)
+	_ = os.Remove(path + "-wal")
+	_ = os.Remove(path + "-shm")
 }
 
 // requireFile returns ErrNoDatabase (naming the path) if path is not an
