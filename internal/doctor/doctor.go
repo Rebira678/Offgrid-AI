@@ -413,7 +413,11 @@ func dbChecks(ctx context.Context, o Options, db *sql.DB) []Check {
 			msgs = append(msgs, m)
 		}
 	}
+	rerr := rows.Err()
 	rows.Close()
+	if rerr != nil {
+		return append(out, mk("database", Fail, "integrity check failed to read: "+rerr.Error(), "restore from a backup"))
+	}
 	if len(msgs) > 0 {
 		if len(msgs) > 3 {
 			msgs = append(msgs[:3], fmt.Sprintf("(%d more)", len(msgs)-3))
