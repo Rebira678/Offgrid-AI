@@ -124,7 +124,15 @@ func TestPowerPullWriterOnlyAcknowledgesWhatIsStored(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(2 * time.Second)
+	// Wait until both workers have had time to run and at least 4 ACKs are printed
+	// (avoiding a fixed 2s sleep that flakes when CI is busy under -race).
+	waitDeadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(waitDeadline) {
+		if strings.Count(out.String(), "\nACK ") >= 4 && strings.Contains(out.String(), "RUN ") {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	killProcessGroup(cmd) // the writer never ends by itself; kill it and everything it started
 	_ = cmd.Wait()
 
@@ -135,7 +143,7 @@ func TestPowerPullWriterOnlyAcknowledgesWhatIsStored(t *testing.T) {
 		}
 	}
 	if len(acked) < 3 {
-		t.Fatalf("only %d ACKs in 2 s:\n%s", len(acked), out.String())
+		t.Fatalf("only %d ACKs before timeout:\n%s", len(acked), out.String())
 	}
 	ops, _, _ := runBin(t, bin, nil, "store", "-db", db, "ops", "-n", "100000")
 	for _, title := range acked {

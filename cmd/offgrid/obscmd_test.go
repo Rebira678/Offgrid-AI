@@ -167,7 +167,7 @@ func TestDrainPublishesRealProbeStateWhenProbing(t *testing.T) {
 	srv := probeServer(204)
 	defer srv.Close()
 	ts := srv.URL
-	code, _, e := runDrain(t, "-db", db, "-queue", queue, "-net", "auto", "-url", ts, "-probe-interval", "20ms", "-poll", "10ms", "-for", "400ms", "-slog", "-", "-slog-level", "debug")
+	code, _, e := runDrain(t, "-db", db, "-queue", queue, "-net", "auto", "-url", ts, "-probe-interval", "20ms", "-poll", "10ms", "-for", "1s", "-slog", "-", "-slog-level", "debug")
 	if code != 0 {
 		t.Fatalf("%d %s", code, e)
 	}

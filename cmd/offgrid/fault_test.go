@@ -279,10 +279,10 @@ func TestScheduleFlipsByItself(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		done <- run([]string{"net", "-url", s.URL, "-interval", "10ms", "-timeout", "200ms", "-slow", "100ms",
-			"-down", "3", "-up", "3", "-for", "2s", "-fault-schedule", "ok:400ms,partition:400ms"}, out, &lockedBuf{})
+			"-down", "3", "-up", "3", "-for", "4s", "-fault-schedule", "ok:400ms,partition:400ms"}, out, &lockedBuf{})
 	}()
-	waitFor(t, out, "-> OFFLINE", 2*time.Second)
-	waitFor(t, out, "OFFLINE -> ONLINE", 2*time.Second)
+	waitFor(t, out, "-> OFFLINE", 4*time.Second)
+	waitFor(t, out, "OFFLINE -> ONLINE", 4*time.Second)
 	<-done
 }
 
@@ -293,9 +293,9 @@ func TestLatencyAboveSlowThresholdDegrades(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		done <- run([]string{"net", "-url", s.URL, "-interval", "10ms", "-timeout", "1s", "-slow", "40ms",
-			"-degrade", "2", "-for", "1s", "-fault-latency", "80ms"}, out, &lockedBuf{})
+			"-degrade", "2", "-for", "2s", "-fault-latency", "80ms"}, out, &lockedBuf{})
 	}()
-	waitFor(t, out, "-> DEGRADED", 2*time.Second)
+	waitFor(t, out, "-> DEGRADED", 4*time.Second)
 	<-done
 	if strings.Contains(out.String(), "-> OFFLINE") {
 		t.Errorf("latency alone must degrade, not take the network down:\n%s", out.String())

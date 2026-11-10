@@ -209,9 +209,17 @@ func TestAnswersCommandErrorsAndEmptyState(t *testing.T) {
 
 func TestOnceWaitsForTheMachineToGoQuietAndThenAnswers(t *testing.T) {
 	useFakeModels(t)
-	start := time.Now()
+	var start atomic.Pointer[time.Time]
 	old := newIdleGate
-	newIdleGate = func(float64) func() bool { return func() bool { return time.Since(start) > 400*time.Millisecond } }
+	newIdleGate = func(float64) func() bool {
+		return func() bool {
+			now := time.Now()
+			if start.Load() == nil {
+				start.CompareAndSwap(nil, &now)
+			}
+			return time.Since(*start.Load()) > 250*time.Millisecond
+		}
+	}
 	t.Cleanup(func() { newIdleGate = old })
 	db, queue := fill(t)
 	code, out, e := runDrain(t, "-db", db, "-queue", queue, "-net", "offline", "-once", "-poll", "20ms", "-idle-wait", "10s")

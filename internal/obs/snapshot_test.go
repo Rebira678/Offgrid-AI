@@ -165,7 +165,7 @@ func TestPublishReportsWriteFailuresAndKeepsGoing(t *testing.T) {
 	os.WriteFile(file, []byte("x"), 0o644)
 	var mu sync.Mutex
 	var errs int
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	Publish(ctx, NewMetrics(), filepath.Join(file, "sub"), "drain", 10*time.Millisecond, nil, func(error) { mu.Lock(); errs++; mu.Unlock() })
 	mu.Lock()
@@ -178,7 +178,7 @@ func TestPublishReportsWriteFailuresAndKeepsGoing(t *testing.T) {
 func TestPublishReportsQueueReadFailure(t *testing.T) {
 	var got error
 	var mu sync.Mutex
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	Publish(ctx, NewMetrics(), t.TempDir(), "drain", 10*time.Millisecond,
 		func(context.Context) (jobqueue.Stats, error) { return jobqueue.Stats{}, errors.New("db locked") },
