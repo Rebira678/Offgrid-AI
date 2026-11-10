@@ -73,21 +73,21 @@ func TestWorkerIdleGateAllowsForegroundJobsWhenBusy(t *testing.T) {
 	fg2 := e.add("k-fg-2", KindInterpret)
 	bgJob := e.add("k-bg-slow", KindDeepThink)
 
-	fgHandled := 0
-	bgHandled := 0
+	// Two foreground jobs run on two worker goroutines at once, so these are atomic.
+	var fgHandled, bgHandled atomic.Int32
 
 	specs := map[string]Spec{
 		KindInterpret: {
 			Background: false,
 			Handle: func(ctx context.Context, j jobqueue.Job, p Progress) (string, error) {
-				fgHandled++
+				fgHandled.Add(1)
 				return "fast answer", nil
 			},
 		},
 		KindDeepThink: {
 			Background: true,
 			Handle: func(ctx context.Context, j jobqueue.Job, p Progress) (string, error) {
-				bgHandled++
+				bgHandled.Add(1)
 				return "slow answer", nil
 			},
 		},
@@ -113,16 +113,16 @@ func TestWorkerIdleGateAllowsForegroundJobsWhenBusy(t *testing.T) {
 	}
 
 	// Foreground jobs must be completed
-	if fgHandled != 2 {
-		t.Fatalf("expected 2 foreground jobs to complete, got %d", fgHandled)
+	if n := fgHandled.Load(); n != 2 {
+		t.Fatalf("expected 2 foreground jobs to complete, got %d", n)
 	}
 	if e.get(fg1.ID).Status != jobqueue.Done || e.get(fg2.ID).Status != jobqueue.Done {
 		t.Fatalf("foreground jobs not marked Done: fg1=%s fg2=%s", e.get(fg1.ID).Status, e.get(fg2.ID).Status)
 	}
 
 	// Background job must NOT have run and must still be Queued with 0 attempts
-	if bgHandled != 0 {
-		t.Fatalf("background job ran despite busy host: %d", bgHandled)
+	if n := bgHandled.Load(); n != 0 {
+		t.Fatalf("background job ran despite busy host: %d", n)
 	}
 	bj := e.get(bgJob.ID)
 	if bj.Status != jobqueue.Queued || bj.Attempts != 0 {
