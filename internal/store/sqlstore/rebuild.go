@@ -73,18 +73,14 @@ func (s *Store) Rebuild(ctx context.Context) (rep RebuildReport, err error) {
 	if err = setMeta(ctx, tx, "projection_version", projectionVersion); err != nil {
 		return rep, err
 	}
-	hash, err := stateHash(ctx, tx)
-	if err != nil {
-		return rep, err
-	}
-	tasks, err := listTasks(ctx, tx, task.Filter{})
+	hash, taskCount, err := stateHashWithCount(ctx, tx)
 	if err != nil {
 		return rep, err
 	}
 	if err = tx.Commit(); err != nil {
 		return rep, err
 	}
-	return RebuildReport{Ops: n, Tasks: len(tasks), Hash: hash}, nil
+	return RebuildReport{Ops: n, Tasks: taskCount, Hash: hash}, nil
 }
 
 // canonical forms for hashing: explicit fields in a fixed order, times as
@@ -110,15 +106,20 @@ type canonTask struct {
 // replicas, or one replica before and after a rebuild, have the same hash if and
 // only if they hold the same state. (Day 20 uses this to prove convergence.)
 func stateHash(ctx context.Context, x execer) (string, error) {
+	h, _, err := stateHashWithCount(ctx, x)
+	return h, err
+}
+
+func stateHashWithCount(ctx context.Context, x execer) (string, int, error) {
 	tasks, err := listTasks(ctx, x, task.Filter{})
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	canon := make([]canonTask, 0, len(tasks))
 	for _, t := range tasks {
 		c := canonTask{
 			ID: t.ID, Title: t.Title, Site: t.Site, Priority: string(t.Priority), Status: string(t.Status),
-			Created: nanos(t.CreatedAt), Updated: nanos(t.UpdatedAt), Notes: []canonNote{},
+			Created: nanos(t.CreatedAt), Updated: nanos(t.UpdatedAt), Notes: make([]canonNote, 0, len(t.Notes)),
 		}
 		if !t.DoneAt.IsZero() {
 			c.Done = nanos(t.DoneAt)
@@ -130,11 +131,11 @@ func stateHash(ctx context.Context, x execer) (string, error) {
 	}
 	answers, err := listAnswers(ctx, x)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	sugs, err := canonSuggestions(ctx, x)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	var payload any = canon
 	if len(answers) > 0 || len(sugs) > 0 { // omitted when empty, so older databases keep their old hashes
@@ -146,10 +147,10 @@ func stateHash(ctx context.Context, x execer) (string, error) {
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), nil
+	return hex.EncodeToString(sum[:]), len(tasks), nil
 }
 
 // StateHash fingerprints the current materialized view.
