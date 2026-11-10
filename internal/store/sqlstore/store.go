@@ -94,7 +94,10 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	}
 	conn := dsn(path)
 	var created bool
-	if !opt.MustExist {
+	if !opt.MustExist && path != ":memory:" {
+		if err := checkNonDanglingSymlink(path); err != nil {
+			return nil, err
+		}
 		created = createPrivate(path)
 	}
 	if opt.MustExist && path != ":memory:" {
@@ -106,7 +109,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	db, err := sql.Open(driverName, conn)
 	if err != nil {
 		if created {
-			removeDBFiles(path)
+			removeEmptyDBStub(path)
 		}
 		return nil, fmt.Errorf("sqlstore: open %s: %w", path, err)
 	}
@@ -122,7 +125,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if err := s.init(ctx, opt); err != nil {
 		db.Close()
 		if created {
-			removeDBFiles(path)
+			removeEmptyDBStub(path)
 		}
 		if opt.MustExist && path != ":memory:" {
 			// The file was there a moment ago; if it is gone now, say so plainly.
@@ -133,6 +136,20 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// checkNonDanglingSymlink refuses creating a brand-new database through a
+// dangling symlink (which would bypass O_CREATE|O_EXCL 0600 creation and
+// let SQLite create the target world-readable).
+func checkNonDanglingSymlink(path string) error {
+	lfi, err := os.Lstat(path)
+	if err != nil || lfi.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("sqlstore: refusing to create database through dangling symlink %s", path)
+	}
+	return nil
 }
 
 // createPrivate makes the database file, mode 0600, if it does not exist yet.
@@ -153,7 +170,13 @@ func createPrivate(path string) bool {
 	return true
 }
 
-func removeDBFiles(path string) {
+// removeEmptyDBStub deletes path (and WAL/SHM sidecars) only if it is still an
+// empty 0-byte stub, avoiding clobbering a file populated by a racing opener.
+func removeEmptyDBStub(path string) {
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() != 0 {
+		return
+	}
 	_ = os.Remove(path)
 	_ = os.Remove(path + "-wal")
 	_ = os.Remove(path + "-shm")
@@ -170,6 +193,8 @@ func requireFile(path string) error {
 		return fmt.Errorf("sqlstore: %w", err)
 	case fi.IsDir():
 		return fmt.Errorf("sqlstore: %s is a folder, not a database file", path)
+	case !fi.Mode().IsRegular():
+		return fmt.Errorf("sqlstore: %s is not a regular file", path)
 	}
 	return nil
 }
