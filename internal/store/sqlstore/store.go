@@ -90,6 +90,9 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		return nil, fmt.Errorf("sqlstore: node ID %q must be 1 to 64 letters, digits, '.', '_' or '-'", opt.NodeID)
 	}
 	conn := dsn(path)
+	if !opt.MustExist {
+		createPrivate(path)
+	}
 	if opt.MustExist && path != ":memory:" {
 		if err := requireFile(path); err != nil {
 			return nil, err
@@ -120,6 +123,22 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// createPrivate makes the database file, mode 0600, if it does not exist yet.
+// SQLite would create it with the process's default mode (0644 under the usual
+// umask), and it gives the -wal and -shm files the main file's mode: so on a
+// shared or stolen machine every local user could read the tasks. An existing
+// file is never touched, and any failure is left for SQLite to report in its
+// own words.
+func createPrivate(path string) {
+	if path == ":memory:" || strings.HasPrefix(path, "file:") {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		_ = f.Close()
+	}
 }
 
 // requireFile returns ErrNoDatabase (naming the path) if path is not an
