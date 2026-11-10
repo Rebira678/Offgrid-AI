@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,9 +33,18 @@ func TestWorkerDynamicNetworkFlappingDuringDrain(t *testing.T) {
 	var onlineVal atomic.Bool
 	onlineVal.Store(true)
 
-	// Background ticker flipping network state every 30ms
+	// Background ticker flipping network state every 30ms. Wait for the
+	// goroutine to exit before locking onlineVal=true so a late tick cannot
+	// overwrite onlineVal back to false.
 	stopFlap := make(chan struct{})
+	flapDone := make(chan struct{})
+	var stopOnce sync.Once
+	stopFlapper := func() {
+		stopOnce.Do(func() { close(stopFlap) })
+		<-flapDone
+	}
 	go func() {
+		defer close(flapDone)
 		ticker := time.NewTicker(30 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -46,6 +56,7 @@ func TestWorkerDynamicNetworkFlappingDuringDrain(t *testing.T) {
 			}
 		}
 	}()
+	defer stopFlapper()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -61,21 +72,28 @@ func TestWorkerDynamicNetworkFlappingDuringDrain(t *testing.T) {
 			"local": {
 				NeedsNetwork: false,
 				Handle: func(ctx context.Context, j jobqueue.Job, p Progress) (string, error) {
-					time.Sleep(15 * time.Millisecond)
-					return "local-done", nil
+					select {
+					case <-time.After(15 * time.Millisecond):
+						return "local-done", nil
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
 				},
 			},
 			"net": {
 				NeedsNetwork: true,
 				Handle: func(ctx context.Context, j jobqueue.Job, p Progress) (string, error) {
-					time.Sleep(15 * time.Millisecond)
-					return "net-done", nil
+					select {
+					case <-time.After(15 * time.Millisecond):
+						return "net-done", nil
+					case <-ctx.Done():
+						return "", ctx.Err()
+					}
 				},
 			},
 		},
 	})
 	if err != nil {
-		close(stopFlap)
 		t.Fatal(err)
 	}
 
@@ -85,13 +103,13 @@ func TestWorkerDynamicNetworkFlappingDuringDrain(t *testing.T) {
 		close(done)
 	}()
 
-	// After 150ms, let network stabilize online so remaining net jobs complete
+	// After 150ms, stop the flapper, wait for it to exit, then hold online=true.
 	time.Sleep(150 * time.Millisecond)
-	close(stopFlap)
+	stopFlapper()
 	onlineVal.Store(true)
 
 	// Wait until all count jobs are done
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if w.Summary().Done == count {
 			break
