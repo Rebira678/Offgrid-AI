@@ -93,17 +93,27 @@ type authError struct {
 
 func (e *authError) Error() string { return e.Msg }
 
-// verifyRequest checks the headers of r against key. body is the full body.
-func verifyRequest(key []byte, r *http.Request, body []byte, now time.Time, window time.Duration) (node string, err error) {
+// parseAuthHeaders validates the presence and integer syntax of the sync auth
+// headers without reading the request body or revealing the server's clock.
+func parseAuthHeaders(r *http.Request) (node, sig string, unix int64, err error) {
 	node = r.Header.Get(HeaderNode)
 	ts := r.Header.Get(HeaderTime)
-	sig := r.Header.Get(HeaderSig)
+	sig = r.Header.Get(HeaderSig)
 	if node == "" || ts == "" || sig == "" {
-		return "", &authError{CodeUnauthorized, "the request is not signed (missing " + HeaderSig + "); both replicas need the same sync key"}
+		return "", "", 0, &authError{CodeUnauthorized, "the request is not signed (missing " + HeaderSig + "); both replicas need the same sync key"}
 	}
 	unix, perr := strconv.ParseInt(ts, 10, 64)
 	if perr != nil {
-		return "", &authError{CodeUnauthorized, "the request time is not a number"}
+		return "", "", 0, &authError{CodeUnauthorized, "the request time is not a number"}
+	}
+	return node, sig, unix, nil
+}
+
+// verifyRequest checks the headers of r against key. body is the full body.
+func verifyRequest(key []byte, r *http.Request, body []byte, now time.Time, window time.Duration) (node string, err error) {
+	node, sig, unix, err := parseAuthHeaders(r)
+	if err != nil {
+		return "", err
 	}
 	want := SignRequest(key, r.Method, r.URL.Path, node, unix, body)
 	if !sigEqual(sig, want) {
