@@ -268,7 +268,11 @@ func (w *world) pull(dst, src, batch int, f fault) (more bool, err error) {
 			return more, &notAtomic{fmt.Sprintf("a refused batch (%v) changed what %s holds: %v -> %v", err, nodeName(dst), have, after)}
 		}
 		if gapHash != "" {
-			if h, _ := w.st[dst].StateHash(ctx); h != gapHash {
+			h, herr := w.st[dst].StateHash(ctx)
+			if herr != nil {
+				return more, herr
+			}
+			if h != gapHash {
 				return more, &notAtomic{fmt.Sprintf("a refused batch (%v) changed the state of %s", err, nodeName(dst))}
 			}
 			if errors.Is(err, sqlstore.ErrGap) || errors.Is(err, sqlstore.ErrBadOp) {
