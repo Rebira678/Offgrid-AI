@@ -298,6 +298,7 @@ Feature work after launch goes through issues; see [CONTRIBUTING.md](CONTRIBUTIN
 | 32 | Real-device kit: `offgrid doctor`, a power-pull test with acknowledgements kept off the node, timeouts on network calls | `offgrid doctor` / `docs/day-32.md` |
 | 33 | Phone spike: a private certificate authority limited to private names, a phone check page (service worker, offline reload, device key), `offgrid ca` | `offgrid ca help` / `docs/day-33.md` |
 | 34 | Identity and the security baseline: one ECDSA P-256 key per device, device ID from its public key, `SECURITY.md`, `govulncheck` in CI, first fuzz targets | `offgrid identity show` / `docs/day-34.md` |
+| 35 | Threat model v2 (38 threats, each mitigated, planned or accepted), ADRs 001 to 006, week review: two bugs fixed (world-readable new databases, empty state hash on error) | `docs/threat-model.md` / `docs/adr/` |
 
 Keep tasks between runs with `-db FILE` (or `export OFFGRID_DB=~/offgrid/tasks.db`).
 
@@ -321,6 +322,7 @@ internal/doctor         field-readiness checks: clock, disk, ports, SQLite integ
 internal/pki            a small private certificate authority (crypto/x509): name-constrained, key kept off the node
 internal/identity       a device's key (ECDSA P-256), its ID, signing; mode 600 enforced; never printed
 internal/spike          the Day 33 phone check page and its report endpoint
+internal/connectivity   state machine, probers and the monitor goroutine
 internal/jobqueue       durable job queue: backoff, jitter, leases, dead-letter
 internal/router         answer now or defer: complexity gate, output validity, connectivity
 internal/netfault       fault-injecting http.RoundTripper: latency, drop %, partition (file, schedule, flag)
