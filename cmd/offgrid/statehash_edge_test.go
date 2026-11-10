@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -203,5 +204,45 @@ func TestSyncSummaryEmptyVsMissingAndHashFormat(t *testing.T) {
 	}
 	if !regexp.MustCompile(`state hash:\s+[0-9a-f]{64}`).MatchString(out) {
 		t.Errorf("expected 64-char hex state hash in summary:\n%s", out)
+	}
+}
+
+func TestSyncOnceAdversarialFailuresLeaveStoreClean(t *testing.T) {
+	t.Setenv("OFFGRID_DB", "")
+	_, keyFile := setupSyncKeyFile(t)
+
+	db := filepath.Join(t.TempDir(), "local.db")
+	if code, _, e := runCLI(t, "", "exec", "-db", db, `{"intent":"create_task","title":"local task"}`); code != 0 {
+		t.Fatalf("exec: %d %s", code, e)
+	}
+	_, sumBefore, errOut := runCLI(t, "", "sync", "summary", "-db", db)
+	if errOut != "" {
+		t.Fatalf("summary failed: %s", errOut)
+	}
+
+	// 1. Rogue peer returns unsigned 200 OK JSON: CLI must exit 1 and not mutate store.
+	badSigSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"node":"rogue","protocol":1,"summary":{}}`))
+	}))
+	defer badSigSrv.Close()
+
+	code, out, errOut := runCLI(t, "", "sync", "once", "-db", db, "-peer", badSigSrv.URL, "-key-file", keyFile, "-timeout", "3s")
+	if code != 1 {
+		t.Fatalf("expected exit 1 on unsigned peer reply, got %d (out=%q err=%q)", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "not signed") {
+		t.Errorf("expected signature failure on stderr, got %q", errOut)
+	}
+
+	// 2. Malformed URL fails cleanly with exit 1.
+	code, _, errOut = runCLI(t, "", "sync", "once", "-db", db, "-peer", "://bad-url", "-key-file", keyFile, "-timeout", "3s")
+	if code != 1 || errOut == "" {
+		t.Fatalf("expected exit 1 on bad peer URL, got %d (%q)", code, errOut)
+	}
+
+	_, sumAfter, errOut := runCLI(t, "", "sync", "summary", "-db", db)
+	if errOut != "" || sumAfter != sumBefore {
+		t.Fatalf("store changed after failed syncs:\nbefore:\n%s\nafter:\n%s", sumBefore, sumAfter)
 	}
 }
