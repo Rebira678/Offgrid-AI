@@ -231,8 +231,13 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	hash, _ := st.StateHash(ctx)
+	hash, herr := st.StateHash(ctx)
 	fmt.Fprintf(stdout, "synced with %s: pulled %d, pushed %d (%d requests, %s)\n", rep.Peer, rep.Pulled, rep.Pushed, rep.Requests, rep.Duration.Round(time.Millisecond))
+	if herr != nil {
+		// The hash is what two machines compare to see that they converged: never print an empty one.
+		fmt.Fprintf(stderr, "error: the sync finished, but the state hash could not be computed: %v\n", herr)
+		return 1
+	}
 	if rep.Rebuilt {
 		fmt.Fprintln(stdout, "an older edit arrived: the task view was rebuilt in timestamp order")
 	}
@@ -262,7 +267,11 @@ func cmdSyncSummary(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
-	hash, _ := st.StateHash(ctx)
+	hash, herr := st.StateHash(ctx)
+	if herr != nil {
+		fmt.Fprintf(stderr, "error: the state hash could not be computed: %v\n", herr)
+		return 1
+	}
 	fmt.Fprintf(stdout, "node:        %s\n", st.NodeID())
 	nodes := make([]string, 0, len(sum))
 	for n := range sum {
@@ -351,10 +360,13 @@ func cmdSyncRun(args []string, stdout, stderr io.Writer) int {
 		rctx, cancel := context.WithTimeout(ctx, *roundTimeout)
 		rep, err := cl.Once(rctx, st)
 		cancel()
-		hash, _ := st.StateHash(ctx)
+		hash, herr := st.StateHash(ctx)
 		short := hash
 		if len(short) > 12 {
 			short = short[:12]
+		}
+		if herr != nil && ctx.Err() == nil {
+			short = "UNAVAILABLE (" + herr.Error() + ")" // never a blank that could look equal to another blank
 		}
 		var msg string
 		switch {
