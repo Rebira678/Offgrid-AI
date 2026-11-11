@@ -74,6 +74,9 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "database           %s\n", *dbPath)
 		fmt.Fprintf(stdout, "node id            %s\n", info.NodeID)
+		if info.DeviceID != "" {
+			fmt.Fprintf(stdout, "device id          %s\n", info.DeviceID)
+		}
 		fmt.Fprintf(stdout, "schema version     %d\n", info.SchemaVersion)
 		fmt.Fprintf(stdout, "projection version %s\n", info.ProjectionVersion)
 		fmt.Fprintf(stdout, "ops in the log     %d (last position %d, view applied through %d)\n", info.Ops, info.LastPos, info.AppliedPos)
@@ -93,6 +96,9 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "ok: the hash chain of all %d ops matches (%d replicas)\n", rep.Ops, len(rep.ChainHeads))
 			if rep.ChainRetro > 0 {
 				fmt.Fprintf(stdout, "    %d of them were chained when this database was upgraded to Day 27, not when they were written:\n    an edit made before that cannot be seen.\n", rep.ChainRetro)
+			}
+			if rep.SignedOps > 0 || rep.AttestedOps > 0 {
+				fmt.Fprintf(stdout, "ok: all signatures verified (%d signed ops, %d ops trusted as of migration via genesis attestation)\n", rep.SignedOps, rep.AttestedOps)
 			}
 			fmt.Fprintf(stdout, "ok: replayed %d ops into a scratch database and got the same state\n", rep.Ops)
 			fmt.Fprintf(stdout, "state hash %s\n", rep.LiveHash)
