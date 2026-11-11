@@ -22,8 +22,11 @@ You never need hardware-backed keys or browsers. Then Ed25519 is simpler.
 
 - Why P-256 and not Ed25519: it is the curve WebCrypto offers everywhere, and Day 33 showed a non-extractable P-256 key signing and verifying on a real phone.
 - Day 34: `internal/identity`. Mode 600 enforced, algorithm tag in the key file and in every public key (`ecdsa-p256:...`), device ID is `dev_` and 32 hex characters of the SHA-256 of the public key, a signature is 64 bytes raw `r||s` so Go and WebCrypto agree.
-- **Gap to close on Day 36:** this ADR says the tag is in every *signature*. `identity.Sign` returns the bare 64 bytes. The `op_sigs` table must store the algorithm beside each signature, or the promise is only half kept.
+- Day 36: Full signed operations integration. The `op_sigs` and `genesis_attestations` tables store the algorithm tag (`ecdsa-p256`) and `device_id` beside every signature. WireOp protocol carries tagged public keys and signatures.
 
 ## Where the implementation stands
 
-Done: key, ID, file format, signing and verifying. Not yet: anything uses the key, and signatures are untagged.
+Implemented and verified on Day 36:
+- Device keys loaded or created at `~/.config/offgrid/device.key` (mode 0600 enforced).
+- Every CRDT op writes an append-only row to `op_sigs` with algorithm tag, device ID, public key, and 64-byte signature.
+- Parallel verification pool scales signature validation across all available CPU cores.
