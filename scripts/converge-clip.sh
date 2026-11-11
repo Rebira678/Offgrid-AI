@@ -22,7 +22,7 @@ START_DELAY=${START_DELAY:-4}
 S=offgrid-clip
 D=$(mktemp -d /tmp/offgrid-clip.XXXXXX)
 tmux kill-session -t $S 2>/dev/null || true
-head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$D/key"; echo ok > "$D/fault"
+head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$D/key"; chmod 600 "$D/key"; echo ok > "$D/fault"
 
 tmux new-session -d -s $S -x "${COLUMNS_OVERRIDE:-200}" -y "${LINES_OVERRIDE:-52}" -c "$D"
 PL=$(tmux display -p -t $S '#{pane_id}')

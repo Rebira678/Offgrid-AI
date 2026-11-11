@@ -29,6 +29,7 @@ hash_of() { local n=node-a; [ "$1" = "$B" ] && n=node-b; OFFGRID_NODE=$n "$BIN" 
 list_of() { OFFGRID_NODE=$2 "$BIN" task -db "$1" list | grep -v '^state hash'; }
 
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$KEY"
+chmod 600 "$KEY"
 echo ok > "$FAULT"
 
 say "A has three tasks (one with a note). B is empty."

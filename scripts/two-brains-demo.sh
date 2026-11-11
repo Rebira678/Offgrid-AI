@@ -37,6 +37,7 @@ say() { printf '\n\033[1m== %s\033[0m\n' "$*"; sleep "$PAUSE"; }
 export OFFGRID_QUEUE="$WORK/queue.db"
 LAPTOP="$WORK/laptop.db"; PHONE="$WORK/phone.db"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$WORK/key"
+chmod 600 "$WORK/key"
 
 HOSTFLAG=()
 if [ "$STANDIN" = "1" ]; then

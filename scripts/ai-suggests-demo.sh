@@ -29,6 +29,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 LAPTOP="$WORK/laptop.db"; PHONE="$WORK/phone.db"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$WORK/key"
+chmod 600 "$WORK/key"
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; sleep "$PAUSE"; }
 on_laptop() { OFFGRID_NODE=laptop "$@"; }
 on_phone()  { OFFGRID_NODE=phone "$@"; }

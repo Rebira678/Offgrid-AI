@@ -29,6 +29,7 @@ fail() { echo "FAIL: $*"; FAILED=1; }
 laptop() { OFFGRID_NODE=laptop "$BIN" "$@"; }
 phone()  { OFFGRID_NODE=phone  "$BIN" "$@"; }
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$D/key"
+chmod 600 "$D/key"
 
 # python plays the editor: tamper DB 'rewrite' also recomputes the chain (the careful attacker)
 editor() { python3 - "$@" <<'PY'

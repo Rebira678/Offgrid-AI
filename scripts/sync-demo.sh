@@ -8,6 +8,7 @@ BIN=${BIN:-bin/offgrid}
 D=$(mktemp -d)
 trap 'kill $SRV 2>/dev/null || true; rm -rf "$D"' EXIT
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$D/key"
+chmod 600 "$D/key"
 
 echo "== Lidia has two tasks; Beka is empty"
 $BIN exec -db "$D/a.db" '{"intent":"create_task","title":"Leaking pump","site":"4","priority":"high"}' >/dev/null
