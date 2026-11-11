@@ -6,8 +6,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -35,11 +38,38 @@ var ErrKey = errors.New("sync key is missing or shorter than 16 bytes")
 
 // LoadKey reads the shared key from a file, or, when path is empty, from the
 // environment variable OFFGRID_SYNC_KEY. Surrounding whitespace is trimmed.
+// It refuses a file that anyone but its owner can read (mode 600 or 400).
 // The key is never printed by this package.
 func LoadKey(path string) ([]byte, error) {
 	var raw string
 	if path != "" {
-		b, err := os.ReadFile(path)
+		path = filepath.Clean(path)
+		lst, err := os.Lstat(path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the sync key file: %w", err)
+		}
+		if lst.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("sync key file %s is a symlink, which is not allowed for secrets", path)
+		}
+		if !lst.Mode().IsRegular() {
+			return nil, fmt.Errorf("sync key file %s is not a regular file", path)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the sync key file: %w", err)
+		}
+		defer f.Close()
+		fi, err := f.Stat()
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the sync key file: %w", err)
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("sync key file %s is not a regular file", path)
+		}
+		if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("sync key file %s has mode %04o, but it holds a shared secret and must be readable by its owner only; fix it with: chmod 600 %q", path, fi.Mode().Perm(), path)
+		}
+		b, err := io.ReadAll(io.LimitReader(f, 4096))
 		if err != nil {
 			return nil, fmt.Errorf("cannot read the sync key file: %w", err)
 		}
