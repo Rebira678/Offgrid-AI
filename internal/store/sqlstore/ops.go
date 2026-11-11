@@ -55,6 +55,15 @@ type Op struct {
 	// filled in when ops are read to be sent or shown; an op built by hand may
 	// leave it empty, and ApplyRemote then chains the op without a cross-check.
 	Hash string `json:"hash,omitempty"`
+
+	// Sig is the 64-byte ECDSA P-256 raw r||s signature over Hash.
+	Sig []byte `json:"sig,omitempty"`
+	// PubKey is the author's tagged public key ("ecdsa-p256:<base64url>").
+	PubKey string `json:"pub_key,omitempty"`
+	// DeviceID is "dev_" and 32 hex chars of the SHA-256 of the public key.
+	DeviceID string `json:"device_id,omitempty"`
+	// Alg is the algorithm tag, e.g. "ecdsa-p256".
+	Alg string `json:"alg,omitempty"`
 }
 
 // Payloads carry every decision made at write time. That is the rule that makes
