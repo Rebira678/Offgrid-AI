@@ -163,11 +163,14 @@ var ErrDiverged = errors.New("the materialized view does not match the op log")
 
 // VerifyReport says what Verify checked.
 type VerifyReport struct {
-	ChainHeads []Head // the newest hash-chain entry of every replica, once the chain has been recomputed
-	ChainRetro int    // ops chained when the database was upgraded, not when written (see ChainReport)
-	Ops        int
-	LiveHash   string // hash of the view in the database
-	ReplayHash string // hash of the view recomputed from the log in a scratch database
+	ChainHeads   []Head // the newest hash-chain entry of every replica, once the chain has been recomputed
+	ChainRetro   int    // ops chained when the database was upgraded, not when written (see ChainReport)
+	Ops          int
+	LiveHash     string // hash of the view in the database
+	ReplayHash   string // hash of the view recomputed from the log in a scratch database
+	SignedOps    int    // ops whose cryptographic signatures were individually verified
+	AttestedOps  int    // ops covered and trusted under a genesis attestation
+	Attestations int    // number of replica genesis attestations verified
 }
 
 // Verify recomputes the view from the log in a separate scratch database and
@@ -187,6 +190,13 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 		return rep, err
 	}
 	rep.ChainHeads, rep.ChainRetro = chain.Heads, chain.Retro
+	sigRep, err := s.VerifySignatures(ctx)
+	if err != nil {
+		return rep, err
+	}
+	rep.SignedOps = sigRep.SignedOps
+	rep.AttestedOps = sigRep.AttestedOps
+	rep.Attestations = len(sigRep.Attestations)
 	scratch, err := sql.Open(driverName, dsn(":memory:"))
 	if err != nil {
 		return rep, err
@@ -237,6 +247,8 @@ func (s *Store) checkSequences(ctx context.Context) error {
 // Info describes the store.
 type Info struct {
 	NodeID            string
+	DeviceID          string
+	PublicKey         string
 	SchemaVersion     int
 	ProjectionVersion string
 	Ops               int
@@ -244,6 +256,8 @@ type Info struct {
 	AppliedPos        int64
 	Tasks             int
 	StateHash         string
+	SignedOps         int
+	AttestedOps       int
 	// NewestStamp is the newest op timestamp in the log (zero if empty), and
 	// ClockAhead how far it is beyond the physical clock now. A large
 	// ClockAhead means an op was once stamped from a clock that was far ahead
@@ -253,7 +267,11 @@ type Info struct {
 }
 
 func (s *Store) Info(ctx context.Context) (Info, error) {
-	info := Info{NodeID: s.node}
+	info := Info{
+		NodeID:    s.node,
+		DeviceID:  s.DeviceID(),
+		PublicKey: s.PublicKey(),
+	}
 	var err error
 	if info.SchemaVersion, err = schemaVersion(ctx, s.db); err != nil {
 		return info, err
@@ -270,6 +288,10 @@ func (s *Store) Info(ctx context.Context) (Info, error) {
 	}
 	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE deleted = 0`).Scan(&info.Tasks); err != nil {
 		return info, err
+	}
+	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM op_sigs`).Scan(&info.SignedOps)
+	if v, ok, _ := getMeta(ctx, s.db, metaGenesisAttestedOps); ok {
+		info.AttestedOps, _ = strconv.Atoi(v)
 	}
 	if info.NewestStamp, err = s.newestStamp(ctx, s.db); err != nil {
 		return info, err
