@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"offgrid/internal/hlc"
+	"offgrid/internal/identity"
 	"offgrid/internal/task"
 )
 
@@ -42,6 +43,10 @@ type Store struct {
 	// clock stamps every op this replica records. It is restored from the
 	// newest stored timestamp on open, so a restart can never go backwards.
 	clock *hlc.Clock
+
+	// id is this device's cryptographic identity used to sign ops.
+	id  *identity.Identity
+	opt Options
 }
 
 var _ task.Store = (*Store)(nil)
@@ -68,6 +73,13 @@ type Options struct {
 	// (mode=rw), so a file deleted between the check and the open cannot be
 	// recreated either.
 	MustExist bool
+	// Identity is this device's cryptographic identity used to sign ops.
+	// If nil, Open will attempt to load or create one from IdentityPath or default path.
+	Identity *identity.Identity
+	// IdentityPath overrides the location of the device key file.
+	IdentityPath string
+	// RequireSignedOps enforces that any incoming remote op must carry a valid signature.
+	RequireSignedOps bool
 }
 
 // ErrNoDatabase means there is no database at the path and the caller asked
@@ -117,7 +129,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	// databases behave (each connection to ":memory:" is a separate database).
 	db.SetMaxOpenConns(1)
 
-	s := &Store{db: db, now: opt.Now}
+	s := &Store{db: db, now: opt.Now, opt: opt}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -210,6 +222,10 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_chain'`).Scan(&hadChain); err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
 	}
+	var hadSigs int
+	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_sigs'`).Scan(&hadSigs); err != nil {
+		return fmt.Errorf("sqlstore: %w", err)
+	}
 	if err := migrate(ctx, s.db, migrations); err != nil {
 		return err
 	}
@@ -223,6 +239,14 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 		return err
 	}
 	s.node = node
+	if err := s.settleIdentity(ctx, opt); err != nil {
+		return err
+	}
+	if hadSigs == 0 {
+		if err := s.backfillGenesisAttestations(ctx); err != nil {
+			return err
+		}
+	}
 	if err := s.restoreClock(ctx); err != nil {
 		return err
 	}
@@ -284,6 +308,91 @@ func (s *Store) settleNodeID(ctx context.Context, want string) (string, error) {
 		return "", err
 	}
 	return want, nil
+}
+
+func (s *Store) settleIdentity(ctx context.Context, opt Options) error {
+	if opt.Identity != nil {
+		s.id = opt.Identity
+		_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+		_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+		return nil
+	}
+	if opt.IdentityPath != "" {
+		id, err := identity.Load(opt.IdentityPath)
+		if err == nil {
+			s.id = id
+			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+			return nil
+		}
+		if !opt.MustExist && errors.Is(err, identity.ErrNotFound) {
+			id, _, err := identity.LoadOrCreate(opt.IdentityPath)
+			if err != nil {
+				return err
+			}
+			s.id = id
+			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+			return nil
+		}
+		return err
+	}
+	envPath := os.Getenv("OFFGRID_IDENTITY_KEY")
+	var keyPath string
+	if envPath != "" {
+		keyPath = envPath
+	} else if defPath, err := identity.DefaultPath(); err == nil {
+		keyPath = defPath
+	}
+
+	if keyPath != "" {
+		id, err := identity.Load(keyPath)
+		if err == nil {
+			s.id = id
+			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+			return nil
+		}
+		if errors.Is(err, identity.ErrPermissions) || errors.Is(err, identity.ErrCorrupt) || errors.Is(err, identity.ErrUnsupported) {
+			return err
+		}
+		if !opt.MustExist {
+			if id, _, err := identity.LoadOrCreate(keyPath); err == nil {
+				s.id = id
+				_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+				_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+				return nil
+			}
+		}
+	}
+
+	id, err := identity.Generate()
+	if err != nil {
+		return fmt.Errorf("sqlstore: generate transient identity: %w", err)
+	}
+	s.id = id
+	_ = setMeta(ctx, s.db, "device_id", s.id.ID())
+	_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
+	return nil
+}
+
+// Identity returns this replica's device cryptographic identity.
+func (s *Store) Identity() *identity.Identity { return s.id }
+
+// DeviceID returns this replica's device ID ("dev_" and 32 hex chars).
+func (s *Store) DeviceID() string {
+	if s.id != nil {
+		return s.id.ID()
+	}
+	return ""
+}
+
+// PublicKey returns this replica's tagged public key ("ecdsa-p256:...").
+func (s *Store) PublicKey() string {
+	if s.id != nil {
+		return s.id.PublicKey()
+	}
+	return ""
 }
 
 // ensureProjection makes the materialized view usable: it rebuilds from the log
@@ -413,8 +522,25 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 		return err
 	}
 	op := Op{Pos: pos, NodeID: s.node, Seq: seq, TS: stamp.Time(), Counter: stamp.Counter, Kind: kind, Payload: raw}
-	if _, err := chainAppend(ctx, tx, op); err != nil {
+	hash, err := chainAppend(ctx, tx, op)
+	if err != nil {
 		return err
+	}
+	op.Hash = hash
+	if s.id != nil {
+		sig, err := s.id.Sign([]byte(hash))
+		if err != nil {
+			return fmt.Errorf("sqlstore: sign op %s/%d: %w", s.node, seq, err)
+		}
+		op.Sig = sig
+		op.PubKey = s.id.PublicKey()
+		op.DeviceID = s.id.ID()
+		op.Alg = s.id.Algorithm()
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO op_sigs (node_id, seq, device_id, algorithm, pub_key, sig) VALUES (?, ?, ?, ?, ?, ?)`,
+			s.node, seq, s.id.ID(), s.id.Algorithm(), s.id.PublicKey(), sig); err != nil {
+			return fmt.Errorf("sqlstore: record op signature %s/%d: %w", s.node, seq, err)
+		}
 	}
 	if err := applyOp(ctx, tx, op); err != nil {
 		return err
