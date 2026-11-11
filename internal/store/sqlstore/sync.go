@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"offgrid/internal/hlc"
+	"offgrid/internal/identity"
 	"offgrid/internal/task"
 )
 
@@ -105,8 +106,11 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 			continue
 		}
 		rows, err := s.db.QueryContext(ctx,
-			`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, '')
-			 FROM ops o LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
+			`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, ''),
+			        s.sig, COALESCE(s.pub_key, ''), COALESCE(s.device_id, ''), COALESCE(s.algorithm, '')
+			 FROM ops o
+			 LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
+			 LEFT JOIN op_sigs s ON s.node_id = o.node_id AND s.seq = o.seq
 			 WHERE o.node_id = ? AND o.seq > ? ORDER BY o.seq LIMIT ?`,
 			node, have[node], limit+1)
 		if err != nil {
@@ -135,7 +139,7 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 func scanOps(rows *sql.Rows) ([]Op, error) { return scanOpRows(rows, false) }
 
 // scanOpRows reads ops from rows of pos, node, seq, ts, counter, kind, payload,
-// and also hash when withHash is set.
+// and also hash and signatures when withHash is set.
 func scanOpRows(rows *sql.Rows, withHash bool) ([]Op, error) {
 	defer rows.Close()
 	var out []Op
@@ -144,14 +148,22 @@ func scanOpRows(rows *sql.Rows, withHash bool) ([]Op, error) {
 		var ts int64
 		var payload string
 		dst := []any{&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload}
+		var sig []byte
+		var pubKey, devID, alg sql.NullString
 		if withHash {
-			dst = append(dst, &op.Hash)
+			dst = append(dst, &op.Hash, &sig, &pubKey, &devID, &alg)
 		}
 		if err := rows.Scan(dst...); err != nil {
 			return nil, err
 		}
 		op.TS = fromNanos(ts)
 		op.Payload = json.RawMessage(payload)
+		if withHash {
+			op.Sig = sig
+			op.PubKey = pubKey.String
+			op.DeviceID = devID.String
+			op.Alg = alg.String
+		}
 		out = append(out, op)
 	}
 	return out, rows.Err()
@@ -357,6 +369,30 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 			return res, fmt.Errorf("%w: %s/%d arrived with hash %.12s but this replica computes %.12s from its own copy of the earlier ops", ErrChain, fresh[i].NodeID, fresh[i].Seq, claimed, mine)
 		}
 		fresh[i].Hash = mine
+	}
+
+	if err := s.verifyBatchSignatures(ctx, fresh); err != nil {
+		return res, err
+	}
+
+	for _, op := range fresh {
+		if len(op.Sig) > 0 {
+			devID := op.DeviceID
+			if devID == "" && op.PubKey != "" {
+				devID, _ = identity.DeviceID(op.PubKey)
+			}
+			alg := op.Alg
+			if alg == "" {
+				alg = identity.AlgECDSAP256
+			}
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO op_sigs (node_id, seq, device_id, algorithm, pub_key, sig)
+				VALUES (?, ?, ?, ?, ?, ?)
+			`, op.NodeID, op.Seq, devID, alg, op.PubKey, op.Sig)
+			if err != nil {
+				return res, fmt.Errorf("sqlstore: record remote signature %s/%d: %w", op.NodeID, op.Seq, err)
+			}
+		}
 	}
 	sort.Slice(fresh, func(i, j int) bool { return keyOf(fresh[i]).less(keyOf(fresh[j])) })
 	res.Applied = len(fresh)
