@@ -73,6 +73,35 @@ BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: updates are not allowed'); E
 CREATE TRIGGER op_chain_append_only_delete BEFORE DELETE ON op_chain
 BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: deletes are not allowed'); END;
 `},
+	{5, "signed operations: signatures and genesis attestations beside the ops", `
+CREATE TABLE op_sigs (
+	node_id   TEXT    NOT NULL,
+	seq       INTEGER NOT NULL CHECK (seq >= 1),
+	device_id TEXT    NOT NULL,
+	algorithm TEXT    NOT NULL,
+	pub_key   TEXT    NOT NULL,
+	sig       BLOB    NOT NULL,
+	PRIMARY KEY (node_id, seq)
+) WITHOUT ROWID;
+CREATE TRIGGER op_sigs_append_only_update BEFORE UPDATE ON op_sigs
+BEGIN SELECT RAISE(ABORT, 'op_sigs is append-only: updates are not allowed'); END;
+CREATE TRIGGER op_sigs_append_only_delete BEFORE DELETE ON op_sigs
+BEGIN SELECT RAISE(ABORT, 'op_sigs is append-only: deletes are not allowed'); END;
+
+CREATE TABLE genesis_attestations (
+	node_id   TEXT    PRIMARY KEY,
+	seq       INTEGER NOT NULL CHECK (seq >= 1),
+	hash      TEXT    NOT NULL,
+	device_id TEXT    NOT NULL,
+	algorithm TEXT    NOT NULL,
+	pub_key   TEXT    NOT NULL,
+	sig       BLOB    NOT NULL
+) WITHOUT ROWID;
+CREATE TRIGGER genesis_attestations_append_only_update BEFORE UPDATE ON genesis_attestations
+BEGIN SELECT RAISE(ABORT, 'genesis_attestations is append-only: updates are not allowed'); END;
+CREATE TRIGGER genesis_attestations_append_only_delete BEFORE DELETE ON genesis_attestations
+BEGIN SELECT RAISE(ABORT, 'genesis_attestations is append-only: deletes are not allowed'); END;
+`},
 }
 
 // ErrNewerSchema means the database was written by a newer Offgrid than this
