@@ -19,6 +19,7 @@ package syncer
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"time"
 
@@ -52,20 +53,40 @@ var _ Replica = (*sqlstore.Store)(nil)
 // WireOp is an op as it travels. The local log position is not sent: it means
 // nothing on another replica.
 type WireOp struct {
-	Node    string          `json:"node"`
-	Seq     int64           `json:"seq"`
-	TS      int64           `json:"ts"` // nanoseconds since the Unix epoch
-	Counter uint32          `json:"counter"`
-	Kind    string          `json:"kind"`
-	Payload json.RawMessage `json:"payload"`
-	Hash    string          `json:"hash,omitempty"` // the op's hash-chain entry; the receiver checks it against its own
+	Node     string          `json:"node"`
+	Seq      int64           `json:"seq"`
+	TS       int64           `json:"ts"` // nanoseconds since the Unix epoch
+	Counter  uint32          `json:"counter"`
+	Kind     string          `json:"kind"`
+	Payload  json.RawMessage `json:"payload"`
+	Hash     string          `json:"hash,omitempty"` // the op's hash-chain entry; the receiver checks it against its own
+	Sig      string          `json:"sig,omitempty"`
+	PubKey   string          `json:"pub_key,omitempty"`
+	DeviceID string          `json:"device_id,omitempty"`
+	Alg      string          `json:"alg,omitempty"`
 }
 
 // ToWire converts store ops for sending.
 func ToWire(ops []sqlstore.Op) []WireOp {
 	out := make([]WireOp, len(ops))
 	for i, op := range ops {
-		out[i] = WireOp{op.NodeID, op.Seq, op.TS.UnixNano(), op.Counter, op.Kind, op.Payload, op.Hash}
+		var sigStr string
+		if len(op.Sig) > 0 {
+			sigStr = base64.RawURLEncoding.EncodeToString(op.Sig)
+		}
+		out[i] = WireOp{
+			Node:     op.NodeID,
+			Seq:      op.Seq,
+			TS:       op.TS.UnixNano(),
+			Counter:  op.Counter,
+			Kind:     op.Kind,
+			Payload:  op.Payload,
+			Hash:     op.Hash,
+			Sig:      sigStr,
+			PubKey:   op.PubKey,
+			DeviceID: op.DeviceID,
+			Alg:      op.Alg,
+		}
 	}
 	return out
 }
@@ -74,7 +95,27 @@ func ToWire(ops []sqlstore.Op) []WireOp {
 func FromWire(ops []WireOp) []sqlstore.Op {
 	out := make([]sqlstore.Op, len(ops))
 	for i, w := range ops {
-		out[i] = sqlstore.Op{NodeID: w.Node, Seq: w.Seq, TS: time.Unix(0, w.TS).UTC(), Counter: w.Counter, Kind: w.Kind, Payload: w.Payload, Hash: w.Hash}
+		var sigBytes []byte
+		if w.Sig != "" {
+			if b, err := base64.RawURLEncoding.DecodeString(w.Sig); err == nil {
+				sigBytes = b
+			} else if b, err := base64.StdEncoding.DecodeString(w.Sig); err == nil {
+				sigBytes = b
+			}
+		}
+		out[i] = sqlstore.Op{
+			NodeID:   w.Node,
+			Seq:      w.Seq,
+			TS:       time.Unix(0, w.TS).UTC(),
+			Counter:  w.Counter,
+			Kind:     w.Kind,
+			Payload:  w.Payload,
+			Hash:     w.Hash,
+			Sig:      sigBytes,
+			PubKey:   w.PubKey,
+			DeviceID: w.DeviceID,
+			Alg:      w.Alg,
+		}
 	}
 	return out
 }
@@ -126,6 +167,7 @@ const (
 	CodeFork         = "fork"
 	CodeChain        = "chain"
 	CodeBadOp        = "bad_op"
+	CodeBadSignature = "bad_signature"
 	CodeIDCollision  = "id_collision"
 	CodeClockDrift   = "clock_drift"
 	CodeInternal     = "internal"
