@@ -188,6 +188,8 @@ func classify(err error) (int, string) {
 		return http.StatusConflict, CodeIDCollision
 	case errors.Is(err, sqlstore.ErrClockDrift):
 		return http.StatusUnprocessableEntity, CodeClockDrift
+	case errors.Is(err, sqlstore.ErrBadSignature):
+		return http.StatusForbidden, CodeBadSignature
 	case errors.Is(err, sqlstore.ErrBadOp):
 		return http.StatusUnprocessableEntity, CodeBadOp
 	}
