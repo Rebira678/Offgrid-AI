@@ -22,9 +22,9 @@ import (
 
 const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
 
-  offgrid sync serve   -db FILE [-create] [-require-signed] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
-  offgrid sync once    -db FILE [-create] [-require-signed] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
-  offgrid sync run     -db FILE [-create] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
+  offgrid sync serve   -db FILE [-create] [-allow-unsigned] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
+  offgrid sync once    -db FILE [-create] [-allow-unsigned] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
+  offgrid sync run     -db FILE [-create] [-allow-unsigned] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
 
 once and run take the -fault-* flags (see "offgrid fault"), so the connection can
@@ -32,11 +32,15 @@ be broken on purpose: start with -fault-file F, then "offgrid fault set -file F 
 
 A database file that does not exist is an error, so a mistyped path cannot make a replica; add -create to start a new one.
 
-Both replicas need the same key: -key-file FILE, or $OFFGRID_SYNC_KEY
-(at least 16 bytes; make one with: openssl rand -hex 32).
+Both replicas need a sync key: -key-file FILE, or $OFFGRID_SYNC_KEY
+(at least 16 bytes; make one with: openssl rand -hex 32). Note: shared HMAC keys are
+deprecated since Day 37 in favor of per-device signatures.
 
 Every request is HMAC-SHA256 signed. A request whose timestamp is further than
 -window from this computer's clock is refused (replay defense).
+
+Incoming ops are verified against their device signatures by default (Day 37).
+To accept unsigned ops from a legacy database, pass -allow-unsigned.
 
 sync never sends anything beyond -peer. It is designed for links that go away:
 re-running it after a break brings both replicas into step.`
@@ -81,22 +85,32 @@ func openSyncStoreExisting(ctx context.Context, db string) (*sqlstore.Store, err
 // decision, not the result of a mistyped path (found on real hardware on Day 32:
 // -db desktop.md for desktop.db made a second, empty replica without a word).
 // With create, a file that is not there yet is announced on stderr.
-func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift time.Duration, create, requireSigned bool) (*sqlstore.Store, error) {
+func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift time.Duration, create bool, explicitRequireSigned *bool, allowUnsigned bool) (*sqlstore.Store, error) {
 	if db == "" {
 		db = os.Getenv("OFFGRID_DB")
 	}
 	if db == "" {
 		return nil, errors.New("-db FILE is required (or set $OFFGRID_DB)")
 	}
-	opt, err := withDeviceSigner(sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift, RequireSigned: requireSigned})
+	opt, err := withDeviceSigner(sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift})
 	if err != nil {
 		return nil, err
 	}
-	if opt.Signer == nil {
-		if requireSigned {
+	if allowUnsigned || os.Getenv("OFFGRID_ALLOW_UNSIGNED") == "1" {
+		opt.RequireSigned = false
+	} else if explicitRequireSigned != nil {
+		opt.RequireSigned = *explicitRequireSigned
+		if *explicitRequireSigned && opt.Signer == nil {
 			return nil, errors.New("-require-signed needs a device key, and there is none. Make one with: offgrid identity init")
 		}
-		fmt.Fprintln(stderr, "warning: no device key, so the ops this replica writes are NOT signed and peers cannot tell who wrote them. Make one with: offgrid identity init")
+	} else {
+		// Day 37: signed sync by default if this device has a key loaded
+		if opt.Signer != nil {
+			opt.RequireSigned = true
+		} else {
+			opt.RequireSigned = false
+			fmt.Fprintln(stderr, "warning: no device key, so the ops this replica writes are NOT signed and peers cannot tell who wrote them. Make one with: offgrid identity init")
+		}
 	}
 	if !create {
 		opt.MustExist = true
@@ -154,6 +168,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
 	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
+	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -165,7 +180,13 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
+	var explicitRequireSigned *bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "require-signed" {
+			explicitRequireSigned = requireSigned
+		}
+	})
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, explicitRequireSigned, *allowUnsigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
@@ -182,7 +203,16 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
 		fmt.Fprintln(stderr, "warning: listening beyond this computer. Requests are signed but NOT encrypted; use a trusted network or TLS.")
 	}
-	srv := newSyncServer(syncer.Handler(st, syncer.ServerOptions{Key: key, Window: *window, Log: log.New(stderr, "sync: ", log.LstdFlags)}))
+	var devID string
+	if st.Signer() != nil {
+		devID = st.Signer().ID()
+	}
+	srv := newSyncServer(syncer.Handler(st, syncer.ServerOptions{
+		Key:      key,
+		Window:   *window,
+		Log:      log.New(stderr, "sync: ", log.LstdFlags),
+		DeviceID: devID,
+	}))
 	// Scripts and tests read this line to learn the port when -addr ends in :0.
 	fmt.Fprintf(stdout, "offgrid sync: node %s serving on http://%s\n", st.NodeID(), ln.Addr())
 	done := make(chan error, 1)
@@ -213,6 +243,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
 	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
+	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
 	timeout := fs.Duration("timeout", 2*time.Minute, "give up after this long")
 	faults := addFaultFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -232,7 +263,13 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
+	var explicitRequireSigned *bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "require-signed" {
+			explicitRequireSigned = requireSigned
+		}
+	})
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, explicitRequireSigned, *allowUnsigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
@@ -241,7 +278,11 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer st.Close()
-	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch}
+	var devID string
+	if st.Signer() != nil {
+		devID = st.Signer().ID()
+	}
+	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch, DeviceID: devID}
 	ftr, fdesc, ferr := faults.build()
 	if ferr != nil {
 		fmt.Fprintln(stderr, "error:", ferr)
@@ -336,6 +377,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
 	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
+	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
 	every := fs.Duration("every", 2*time.Second, "time between rounds")
 	roundTimeout := fs.Duration("round-timeout", 10*time.Second, "give up on one round after this long")
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
@@ -361,7 +403,13 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
 		defer cancel()
 	}
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
+	var explicitRequireSigned *bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "require-signed" {
+			explicitRequireSigned = requireSigned
+		}
+	})
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, explicitRequireSigned, *allowUnsigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
@@ -374,7 +422,11 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	if label == "" {
 		label = st.NodeID()
 	}
-	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch}
+	var devID string
+	if st.Signer() != nil {
+		devID = st.Signer().ID()
+	}
+	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch, DeviceID: devID}
 	ftr, fdesc, ferr := faults.build()
 	if ferr != nil {
 		fmt.Fprintln(stderr, "error:", ferr)
