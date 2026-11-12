@@ -23,6 +23,7 @@ trap cleanup EXIT
 LAPTOP="$WORK/tasks.db"; PHONE="$WORK/phone.db"
 export OFFGRID_DB="$LAPTOP" OFFGRID_QUEUE="$WORK/queue.db"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$WORK/key"
+chmod 600 "$WORK/key"
 on_laptop() { OFFGRID_NODE=laptop "$@"; }
 on_phone()  { OFFGRID_NODE=phone "$@"; }
 

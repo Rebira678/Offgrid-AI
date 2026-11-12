@@ -41,6 +41,7 @@ $BIN exec -db "$DB" '{"intent":"update_task","task_ref":"Deploy production relea
 echo "==> Simulating peer nodes sync (field-tablet-alpha and substation-edge-04)..."
 SYNC_KEY="/tmp/offgrid-seed-sync.key"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$SYNC_KEY"
+chmod 600 "$SYNC_KEY"
 
 # Start temporary sync server on local db
 $BIN sync serve -db "$DB" -addr 127.0.0.1:9877 -key-file "$SYNC_KEY" >/dev/null 2>&1 &

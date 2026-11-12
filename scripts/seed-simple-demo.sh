@@ -84,6 +84,7 @@ echo " 3. Simulating Peer Devices Sync (P2P Mesh)"
 echo "=================================================="
 SYNC_KEY="/tmp/offgrid-simple-sync.key"
 head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$SYNC_KEY"
+chmod 600 "$SYNC_KEY"
 
 # Start temporary sync listener
 $BIN sync serve -db "$DB" -addr 127.0.0.1:9879 -key-file "$SYNC_KEY" >/dev/null 2>&1 &
