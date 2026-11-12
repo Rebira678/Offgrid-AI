@@ -17,12 +17,13 @@ import (
 
 // Client runs sync rounds against one peer.
 type Client struct {
-	Peer  string // base URL, e.g. http://127.0.0.1:7878
-	Key   []byte
-	Node  string       // this replica's node ID, sent in the X-Offgrid-Node header
-	HTTP  *http.Client // nil means a client with a 30 s timeout; tests and netfault wrap this
-	Batch int          // ops per request; zero means DefaultBatch
-	Now   func() time.Time
+	Peer     string // base URL, e.g. http://127.0.0.1:7878
+	Key      []byte
+	Node     string       // this replica's node ID, sent in the X-Offgrid-Node header
+	DeviceID string       // this replica's device ID, sent in X-Offgrid-Device-ID (Day 37)
+	HTTP     *http.Client // nil means a client with a 30 s timeout; tests and netfault wrap this
+	Batch    int          // ops per request; zero means DefaultBatch
+	Now      func() time.Time
 }
 
 // Report says what one round did.
@@ -98,6 +99,9 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	req.Header.Set(HeaderNode, node)
 	req.Header.Set(HeaderTime, strconv.FormatInt(unix, 10))
 	req.Header.Set(HeaderSig, sig)
+	if c.DeviceID != "" {
+		req.Header.Set(HeaderDeviceID, c.DeviceID)
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http().Do(req)
