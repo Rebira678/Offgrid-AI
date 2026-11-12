@@ -1,0 +1,10 @@
+{
+  "about": "Made with the Day 30 code (schema version 4, before op_sigs) by two replicas, laptop and pi, that wrote and synced once. Never regenerate it: its whole value is that it was written by the old program.",
+  "node": "laptop",
+  "ops": 5,
+  "state_hash": "416cc1155f8a181b95e60af11111e415889c1060169e7a9819197bcc37a8f4f7",
+  "heads": [
+    {"Node": "laptop", "Seq": 4, "Hash": "6c13a119a56c04dfb9bead261429fb4179fc42e80a3b85a61bbdcafdcd260597"},
+    {"Node": "pi", "Seq": 1, "Hash": "519ca2553a4f500c51c23bda10a2b7f595c2355b17fb5451b3e755a0c8a5ec90"}
+  ]
+}
