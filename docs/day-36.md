@@ -1,5 +1,7 @@
 # Day 36: signed ops
 
+> **Correction, found on Day 37.** The Day 36 zip signed ops and verified them in the store, but the syncer's own wire struct (`WireOp`) had no signature field, so **signed ops crossed the network unsigned** and the receiver stored them as legacy history. The Day 36 tests drove the store directly and never went through the syncer. Fixed on Day 37 (`TestSignaturesSurviveTheWire`, `TestTwoSignedReplicasSyncOverHTTP...`), found by running two real processes. Day 36 is only complete with the Day 37 zip applied.
+
 **Done when** (the roadmap's list), and where each stands:
 
 | Criterion | State |
