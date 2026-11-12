@@ -73,34 +73,43 @@ BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: updates are not allowed'); E
 CREATE TRIGGER op_chain_append_only_delete BEFORE DELETE ON op_chain
 BEGIN SELECT RAISE(ABORT, 'op_chain is append-only: deletes are not allowed'); END;
 `},
-	{5, "signed operations: signatures and genesis attestations beside the ops", `
+	{Version: 5, Name: "signed ops: a signature per op, the keys that made them, and which device a replica signs with", SQL: `
+-- One row per signed op: the signature over the op's chain hash. A separate table,
+-- like op_chain, so ops never changes shape and old logs migrate without a rewrite.
+-- Ops written before this migration simply have no row: they are "legacy", and
+-- stay unsigned until an attestation covers them (docs/day-36.md).
 CREATE TABLE op_sigs (
 	node_id   TEXT    NOT NULL,
 	seq       INTEGER NOT NULL CHECK (seq >= 1),
+	alg       TEXT    NOT NULL,
 	device_id TEXT    NOT NULL,
-	algorithm TEXT    NOT NULL,
-	pub_key   TEXT    NOT NULL,
-	sig       BLOB    NOT NULL,
+	sig       BLOB    NOT NULL CHECK (length(sig) > 0),
 	PRIMARY KEY (node_id, seq)
+) WITHOUT ROWID;
+-- The public key of every device that has signed an op here, by device ID. The ID
+-- is a hash of the key, so a row can be checked without trusting it.
+CREATE TABLE device_keys (
+	device_id  TEXT PRIMARY KEY,
+	public_key TEXT NOT NULL
+) WITHOUT ROWID;
+-- Which device signs for which replica: fixed by the first signed op. Until
+-- enrollment (Day 38) this is trust on first use; after it the membership log decides.
+CREATE TABLE node_devices (
+	node_id   TEXT PRIMARY KEY,
+	device_id TEXT NOT NULL
 ) WITHOUT ROWID;
 CREATE TRIGGER op_sigs_append_only_update BEFORE UPDATE ON op_sigs
 BEGIN SELECT RAISE(ABORT, 'op_sigs is append-only: updates are not allowed'); END;
 CREATE TRIGGER op_sigs_append_only_delete BEFORE DELETE ON op_sigs
 BEGIN SELECT RAISE(ABORT, 'op_sigs is append-only: deletes are not allowed'); END;
-
-CREATE TABLE genesis_attestations (
-	node_id   TEXT    PRIMARY KEY,
-	seq       INTEGER NOT NULL CHECK (seq >= 1),
-	hash      TEXT    NOT NULL,
-	device_id TEXT    NOT NULL,
-	algorithm TEXT    NOT NULL,
-	pub_key   TEXT    NOT NULL,
-	sig       BLOB    NOT NULL
-) WITHOUT ROWID;
-CREATE TRIGGER genesis_attestations_append_only_update BEFORE UPDATE ON genesis_attestations
-BEGIN SELECT RAISE(ABORT, 'genesis_attestations is append-only: updates are not allowed'); END;
-CREATE TRIGGER genesis_attestations_append_only_delete BEFORE DELETE ON genesis_attestations
-BEGIN SELECT RAISE(ABORT, 'genesis_attestations is append-only: deletes are not allowed'); END;
+CREATE TRIGGER device_keys_append_only_update BEFORE UPDATE ON device_keys
+BEGIN SELECT RAISE(ABORT, 'device_keys is append-only: updates are not allowed'); END;
+CREATE TRIGGER device_keys_append_only_delete BEFORE DELETE ON device_keys
+BEGIN SELECT RAISE(ABORT, 'device_keys is append-only: deletes are not allowed'); END;
+CREATE TRIGGER node_devices_append_only_update BEFORE UPDATE ON node_devices
+BEGIN SELECT RAISE(ABORT, 'node_devices is append-only: updates are not allowed'); END;
+CREATE TRIGGER node_devices_append_only_delete BEFORE DELETE ON node_devices
+BEGIN SELECT RAISE(ABORT, 'node_devices is append-only: deletes are not allowed'); END;
 `},
 }
 
