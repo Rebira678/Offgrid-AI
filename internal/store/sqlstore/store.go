@@ -361,6 +361,9 @@ func (s *Store) Close() error { return s.db.Close() }
 // NodeID is this replica's identity.
 func (s *Store) NodeID() string { return s.node }
 
+// Signer returns the store's configured device key, or nil if none.
+func (s *Store) Signer() Signer { return s.signer }
+
 // ---- meta -------------------------------------------------------------------
 
 func getMeta(ctx context.Context, x execer, key string) (string, bool, error) {
