@@ -19,3 +19,5 @@ my_perispective_not_tracked_by_git/
 scratch/
 *.jpg
 *.key
+soak-*.stats
+soak-*.log
