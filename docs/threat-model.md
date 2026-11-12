@@ -126,6 +126,6 @@ Said plainly, because it is the useful half of a threat model:
 
 ## Summary
 
-38 threats: **21 mitigated**, **7 planned**, **10 accepted** (three moved from planned on Day 36). Several "mitigated" entries say where the mitigation stops; read those before relying on one.
+38 threats: **22 mitigated**, **6 planned**, **10 accepted** (three moved from planned on Day 36, and N2/N7 moved on Day 37). Several "mitigated" entries say where the mitigation stops; read those before relying on one.
 
 Review this file every Monday, and whenever a new way in is added (a relay, an update command, a new port).
