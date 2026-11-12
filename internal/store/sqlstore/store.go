@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"offgrid/internal/hlc"
-	"offgrid/internal/identity"
 	"offgrid/internal/task"
 )
 
@@ -44,9 +43,9 @@ type Store struct {
 	// newest stored timestamp on open, so a restart can never go backwards.
 	clock *hlc.Clock
 
-	// id is this device's cryptographic identity used to sign ops.
-	id  *identity.Identity
-	opt Options
+	// signer signs every op this replica writes (nil: unsigned, as before Day 36).
+	signer        Signer
+	requireSigned bool
 }
 
 var _ task.Store = (*Store)(nil)
@@ -73,13 +72,16 @@ type Options struct {
 	// (mode=rw), so a file deleted between the check and the open cannot be
 	// recreated either.
 	MustExist bool
-	// Identity is this device's cryptographic identity used to sign ops.
-	// If nil, Open will attempt to load or create one from IdentityPath or default path.
-	Identity *identity.Identity
-	// IdentityPath overrides the location of the device key file.
-	IdentityPath string
-	// RequireSignedOps enforces that any incoming remote op must carry a valid signature.
-	RequireSignedOps bool
+	// Signer is this device's key. With one, every op this replica writes is
+	// signed (sigs.go), and Open refuses a database whose ops were signed by a
+	// different device (ErrKeyChange). nil writes unsigned ops, unless the
+	// database has signed before: then writing is refused (ErrUnsigned), so a
+	// missing key file cannot quietly turn signing off.
+	Signer Signer
+	// RequireSigned makes ApplyRemote refuse ops that carry no signature
+	// (ErrUnsigned), and makes Open fail without a Signer. For a replica that
+	// has no legacy history to receive.
+	RequireSigned bool
 }
 
 // ErrNoDatabase means there is no database at the path and the caller asked
@@ -103,6 +105,14 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("sqlstore: %w", err)
+	}
+	if opt.RequireSigned && opt.Signer == nil {
+		return nil, errors.New("sqlstore: RequireSigned needs a device key (Signer)")
+	}
+	if opt.Signer != nil {
+		if err := checkSigner(opt.Signer); err != nil {
+			return nil, err
+		}
 	}
 	conn := dsn(path)
 	var created bool
@@ -129,7 +139,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	// databases behave (each connection to ":memory:" is a separate database).
 	db.SetMaxOpenConns(1)
 
-	s := &Store{db: db, now: opt.Now, opt: opt}
+	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -164,34 +174,29 @@ func checkNonDanglingSymlink(path string) error {
 	return nil
 }
 
+func removeEmptyDBStub(path string) {
+	fi, err := os.Stat(path)
+	if err == nil && fi.Size() == 0 {
+		_ = os.Remove(path)
+	}
+}
+
 // createPrivate makes the database file, mode 0600, if it does not exist yet.
 // SQLite would create it with the process's default mode (0644 under the usual
 // umask), and it gives the -wal and -shm files the main file's mode: so on a
 // shared or stolen machine every local user could read the tasks. An existing
 // file is never touched, and any failure is left for SQLite to report in its
-// own words. It reports whether this call created the file.
+// own words.
 func createPrivate(path string) bool {
-	if path == ":memory:" {
+	if path == ":memory:" || strings.HasPrefix(path, "file:") {
 		return false
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return false
+	if err == nil {
+		_ = f.Close()
+		return true
 	}
-	_ = f.Close()
-	return true
-}
-
-// removeEmptyDBStub deletes path (and WAL/SHM sidecars) only if it is still an
-// empty 0-byte stub, avoiding clobbering a file populated by a racing opener.
-func removeEmptyDBStub(path string) {
-	fi, err := os.Stat(path)
-	if err != nil || fi.Size() != 0 {
-		return
-	}
-	_ = os.Remove(path)
-	_ = os.Remove(path + "-wal")
-	_ = os.Remove(path + "-shm")
+	return false
 }
 
 // requireFile returns ErrNoDatabase (naming the path) if path is not an
@@ -222,10 +227,6 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_chain'`).Scan(&hadChain); err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
 	}
-	var hadSigs int
-	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'op_sigs'`).Scan(&hadSigs); err != nil {
-		return fmt.Errorf("sqlstore: %w", err)
-	}
 	if err := migrate(ctx, s.db, migrations); err != nil {
 		return err
 	}
@@ -239,13 +240,8 @@ func (s *Store) init(ctx context.Context, opt Options) error {
 		return err
 	}
 	s.node = node
-	if err := s.settleIdentity(ctx, opt); err != nil {
+	if err := s.checkBinding(ctx); err != nil {
 		return err
-	}
-	if hadSigs == 0 {
-		if err := s.backfillGenesisAttestations(ctx); err != nil {
-			return err
-		}
 	}
 	if err := s.restoreClock(ctx); err != nil {
 		return err
@@ -308,91 +304,6 @@ func (s *Store) settleNodeID(ctx context.Context, want string) (string, error) {
 		return "", err
 	}
 	return want, nil
-}
-
-func (s *Store) settleIdentity(ctx context.Context, opt Options) error {
-	if opt.Identity != nil {
-		s.id = opt.Identity
-		_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-		_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-		return nil
-	}
-	if opt.IdentityPath != "" {
-		id, err := identity.Load(opt.IdentityPath)
-		if err == nil {
-			s.id = id
-			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-			return nil
-		}
-		if !opt.MustExist && errors.Is(err, identity.ErrNotFound) {
-			id, _, err := identity.LoadOrCreate(opt.IdentityPath)
-			if err != nil {
-				return err
-			}
-			s.id = id
-			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-			return nil
-		}
-		return err
-	}
-	envPath := os.Getenv("OFFGRID_IDENTITY_KEY")
-	var keyPath string
-	if envPath != "" {
-		keyPath = envPath
-	} else if defPath, err := identity.DefaultPath(); err == nil {
-		keyPath = defPath
-	}
-
-	if keyPath != "" {
-		id, err := identity.Load(keyPath)
-		if err == nil {
-			s.id = id
-			_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-			_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-			return nil
-		}
-		if errors.Is(err, identity.ErrPermissions) || errors.Is(err, identity.ErrCorrupt) || errors.Is(err, identity.ErrUnsupported) {
-			return err
-		}
-		if !opt.MustExist {
-			if id, _, err := identity.LoadOrCreate(keyPath); err == nil {
-				s.id = id
-				_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-				_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-				return nil
-			}
-		}
-	}
-
-	id, err := identity.Generate()
-	if err != nil {
-		return fmt.Errorf("sqlstore: generate transient identity: %w", err)
-	}
-	s.id = id
-	_ = setMeta(ctx, s.db, "device_id", s.id.ID())
-	_ = setMeta(ctx, s.db, "public_key", s.id.PublicKey())
-	return nil
-}
-
-// Identity returns this replica's device cryptographic identity.
-func (s *Store) Identity() *identity.Identity { return s.id }
-
-// DeviceID returns this replica's device ID ("dev_" and 32 hex chars).
-func (s *Store) DeviceID() string {
-	if s.id != nil {
-		return s.id.ID()
-	}
-	return ""
-}
-
-// PublicKey returns this replica's tagged public key ("ecdsa-p256:...").
-func (s *Store) PublicKey() string {
-	if s.id != nil {
-		return s.id.PublicKey()
-	}
-	return ""
 }
 
 // ensureProjection makes the materialized view usable: it rebuilds from the log
@@ -526,21 +437,8 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 	if err != nil {
 		return err
 	}
-	op.Hash = hash
-	if s.id != nil {
-		sig, err := s.id.Sign([]byte(hash))
-		if err != nil {
-			return fmt.Errorf("sqlstore: sign op %s/%d: %w", s.node, seq, err)
-		}
-		op.Sig = sig
-		op.PubKey = s.id.PublicKey()
-		op.DeviceID = s.id.ID()
-		op.Alg = s.id.Algorithm()
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO op_sigs (node_id, seq, device_id, algorithm, pub_key, sig) VALUES (?, ?, ?, ?, ?, ?)`,
-			s.node, seq, s.id.ID(), s.id.Algorithm(), s.id.PublicKey(), sig); err != nil {
-			return fmt.Errorf("sqlstore: record op signature %s/%d: %w", s.node, seq, err)
-		}
+	if err := s.signLocal(ctx, tx, op, hash); err != nil {
+		return err
 	}
 	if err := applyOp(ctx, tx, op); err != nil {
 		return err
