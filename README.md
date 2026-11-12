@@ -12,13 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 30: Launch, feature freeze since Day 26.** Tasks are logged, updated and
-> reviewed offline; the data survives restarts and `kill -9`; the program knows
-> whether it is ONLINE, DEGRADED or OFFLINE; hard requests wait in a durable
-> queue; two replicas that edited the same task apart end with identical state
-> hashes; an edited log is noticed. **Not yet tested on real devices or a real
-> network:** sync has only run on localhost, with the cut simulated by fault
-> injection. See [Honest limits](#honest-limits).
+> Status: **Day 37: Security Checkpoint 1 complete.** Default operation signing across all writes with auto-provisioned ECDSA P-256 keys; wire sync peer identification (`X-Offgrid-Device-ID`); deprecated shared sync key in favor of cryptographic signatures; Trust On First Use (TOFU) replica binding; full replay and attestation proofs. See [docs/day-37.md](docs/day-37.md).
 
 ![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
 
