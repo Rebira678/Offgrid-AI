@@ -87,6 +87,9 @@ func TestSyncWarnsWithoutAKeyAndRequireSignedNeedsOne(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
 	_, _, errOut = runCLI(t, "", "sync", "once", "-db", db, "-peer", "http://127.0.0.1:1")
+	if !strings.Contains(errOut, "shared sync key is deprecated") {
+		t.Fatalf("sync once must warn that the shared key is deprecated: %q", errOut)
+	}
 	if !strings.Contains(errOut, "NOT signed") {
 		t.Fatalf("a sync without a key must say its ops are unsigned: %q", errOut)
 	}
