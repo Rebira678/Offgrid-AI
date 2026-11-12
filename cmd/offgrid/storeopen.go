@@ -51,7 +51,11 @@ func openTaskStore(ctx context.Context, dbPath string, clk *sessionClock) (task.
 			return nil, nil, fmt.Errorf("cannot create the folder for the database: %w", err)
 		}
 	}
-	st, err := sqlstore.Open(ctx, dbPath, sqlstore.Options{NodeID: nodeFromEnv(), Now: clk.Now})
+	opt, err := withDeviceSigner(sqlstore.Options{NodeID: nodeFromEnv(), Now: clk.Now})
+	if err != nil {
+		return nil, nil, err
+	}
+	st, err := sqlstore.Open(ctx, dbPath, opt)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -80,6 +84,10 @@ func openExistingStore(ctx context.Context, path string, opt sqlstore.Options) (
 	opt.MustExist = true
 	if opt.NodeID == "" {
 		opt.NodeID = nodeFromEnv()
+	}
+	opt, err := withDeviceSigner(opt)
+	if err != nil {
+		return nil, err
 	}
 	return sqlstore.Open(ctx, path, opt)
 }
