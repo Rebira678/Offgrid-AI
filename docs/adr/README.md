@@ -15,6 +15,14 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 
 Relay, storage engine, durability, log growth, attachments, phone web client, clocks on offline devices, history before signing, licence. The phone web client has the most new evidence (the Day 33 spike) and should be **ADR 007** next.
 
+## Dependencies added after the beta
+
+The rule is: no new dependency without a line here. One line each: what, why, what it costs, where it runs, what would remove it.
+
+| Dependency | Added | Why | Where it runs | Would be removed if |
+|---|---|---|---|---|
+| `go.uber.org/goleak` v1.3.0 (MIT) | Day 37 | Fails a test run when a goroutine outlives its test and prints the stack that leaked. The roadmap names it for the sync tests, and a hand-made checker would be less trusted and less complete. | **Tests only**: it is imported from `_test.go` files, so it is not linked into the `offgrid` binary (check: `go version -m ./bin/offgrid`). It has no dependencies of its own beyond the standard library and its test helpers. |
+
 ## Format
 
 Status and date, Decision, Rejected, What it costs, What would change it, Evidence so far, Where the implementation stands. To change a decision, write a new ADR that says it supersedes the old one; do not edit history.
