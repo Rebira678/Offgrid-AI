@@ -62,23 +62,15 @@ func fail(status int, code, msg string) reply {
 	return reply{status, ErrorResponse{Code: code, Error: msg}}
 }
 
-func (s *server) sendAuthError(w http.ResponseWriter, r *http.Request, err error) {
-	code, msg := CodeUnauthorized, err.Error()
-	var ae *authError
-	if errors.As(err, &ae) {
-		code, msg = ae.Code, ae.Msg
-	}
-	s.logf("refused %s %s: %s", r.Method, r.URL.Path, msg)
-	// An unauthenticated caller gets no signature: it could not be checked by them either.
-	s.send(w, "", fail(http.StatusUnauthorized, code, msg))
-}
-
-// wrap checks header syntax before reading the body, checks the signature, runs
-// h, and signs the response. Nothing reaches h unless authentic and fresh.
+// wrap reads the body, checks the signature, runs h, and signs the response.
+// Nothing reaches h unless the request is authentic and fresh.
 func (s *server) wrap(h func(ctx context.Context, node string, body []byte) reply) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, _, _, err := parseAuthHeaders(r); err != nil {
-			s.sendAuthError(w, r, err)
+			var ae *authError
+			errors.As(err, &ae)
+			s.logf("refused %s %s: %s", r.Method, r.URL.Path, ae.Msg)
+			s.send(w, "", fail(http.StatusUnauthorized, ae.Code, ae.Msg))
 			return
 		}
 		var body []byte
@@ -92,7 +84,11 @@ func (s *server) wrap(h func(ctx context.Context, node string, body []byte) repl
 		}
 		node, err := verifyRequest(s.opt.Key, r, body, s.opt.Now(), s.opt.Window)
 		if err != nil {
-			s.sendAuthError(w, r, err)
+			var ae *authError
+			errors.As(err, &ae)
+			s.logf("refused %s %s: %s", r.Method, r.URL.Path, ae.Msg)
+			// An unauthenticated caller gets no signature: it could not be checked by them either.
+			s.send(w, "", fail(http.StatusUnauthorized, ae.Code, ae.Msg))
 			return
 		}
 		rep := h(r.Context(), node, body)
@@ -189,7 +185,11 @@ func classify(err error) (int, string) {
 	case errors.Is(err, sqlstore.ErrClockDrift):
 		return http.StatusUnprocessableEntity, CodeClockDrift
 	case errors.Is(err, sqlstore.ErrBadSignature):
-		return http.StatusForbidden, CodeBadSignature
+		return http.StatusUnprocessableEntity, CodeBadSignature
+	case errors.Is(err, sqlstore.ErrKeyChange):
+		return http.StatusUnprocessableEntity, CodeKeyChange
+	case errors.Is(err, sqlstore.ErrUnsigned):
+		return http.StatusUnprocessableEntity, CodeUnsigned
 	case errors.Is(err, sqlstore.ErrBadOp):
 		return http.StatusUnprocessableEntity, CodeBadOp
 	}
