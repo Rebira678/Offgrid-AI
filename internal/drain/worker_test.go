@@ -555,10 +555,10 @@ func TestHeartbeatKeepsALongJobFromBeingTakenOver(t *testing.T) {
 	e := newEnv(t)
 	j := e.add("a", "work")
 	started := make(chan struct{})
-	e.start(Config{Lease: 120 * time.Millisecond, Specs: map[string]Spec{"work": {
+	e.start(Config{Lease: 240 * time.Millisecond, Specs: map[string]Spec{"work": {
 		Handle: func(ctx context.Context, jb jobqueue.Job, p Progress) (string, error) {
 			close(started)
-			time.Sleep(600 * time.Millisecond) // five times the lease
+			time.Sleep(1200 * time.Millisecond) // five times the lease
 			return "slow but finished", nil
 		}}}})
 	<-started // only now does the "other worker" start looking for work
