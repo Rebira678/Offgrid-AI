@@ -40,6 +40,10 @@ const (
 	// KindSuggestionResolved: a person accepted or dismissed a suggestion.
 	// Accepting is the only way a suggestion ever changes a task.
 	KindSuggestionResolved = "suggestion.resolved"
+	// KindHistoryAttested: a device signed the chain head of every replica it
+	// held at that moment, so older unsigned ops are "trusted as of" then. It
+	// changes no task. It must itself be signed (see sigs.go).
+	KindHistoryAttested = "history.attested"
 )
 
 // Op is one immutable entry in the log.
@@ -55,15 +59,10 @@ type Op struct {
 	// filled in when ops are read to be sent or shown; an op built by hand may
 	// leave it empty, and ApplyRemote then chains the op without a cross-check.
 	Hash string `json:"hash,omitempty"`
-
-	// Sig is the 64-byte ECDSA P-256 raw r||s signature over Hash.
-	Sig []byte `json:"sig,omitempty"`
-	// PubKey is the author's tagged public key ("ecdsa-p256:<base64url>").
-	PubKey string `json:"pub_key,omitempty"`
-	// DeviceID is "dev_" and 32 hex chars of the SHA-256 of the public key.
-	DeviceID string `json:"device_id,omitempty"`
-	// Alg is the algorithm tag, e.g. "ecdsa-p256".
-	Alg string `json:"alg,omitempty"`
+	// Sig is the signature of the device that wrote the op, over Hash (see
+	// sigs.go). Nil for an op written without a key. It travels with the op, so
+	// a relay can forward it untouched.
+	Sig *OpSig `json:"sig,omitempty"`
 }
 
 // Payloads carry every decision made at write time. That is the rule that makes

@@ -181,8 +181,10 @@ func (h Head) String() string { return fmt.Sprintf("%s %d %s", h.Node, h.Seq, h.
 
 // Heads lists the newest stored chain entry of every replica, by name. It
 // reads what is stored; Verify is what proves the stored hashes are right.
-func (s *Store) Heads(ctx context.Context) ([]Head, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT c.node_id, c.seq, c.hash FROM op_chain c
+func (s *Store) Heads(ctx context.Context) ([]Head, error) { return headsOf(ctx, s.db) }
+
+func headsOf(ctx context.Context, x execer) ([]Head, error) {
+	rows, err := x.QueryContext(ctx, `SELECT c.node_id, c.seq, c.hash FROM op_chain c
 		WHERE c.seq = (SELECT MAX(seq) FROM op_chain WHERE node_id = c.node_id) ORDER BY c.node_id`)
 	if err != nil {
 		return nil, err
