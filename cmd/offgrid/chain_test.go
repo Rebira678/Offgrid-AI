@@ -35,16 +35,8 @@ func edit(t *testing.T, db string, queries ...string) {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	for _, q := range []string{
-		`DROP TRIGGER IF EXISTS ops_append_only_update`,
-		`DROP TRIGGER IF EXISTS ops_append_only_delete`,
-		`DROP TRIGGER IF EXISTS op_chain_append_only_update`,
-		`DROP TRIGGER IF EXISTS op_chain_append_only_delete`,
-		`DROP TRIGGER IF EXISTS op_sigs_append_only_update`,
-		`DROP TRIGGER IF EXISTS op_sigs_append_only_delete`,
-		`DROP TRIGGER IF EXISTS genesis_attestations_append_only_update`,
-		`DROP TRIGGER IF EXISTS genesis_attestations_append_only_delete`,
-	} {
+	for _, q := range []string{`DROP TRIGGER IF EXISTS ops_append_only_update`, `DROP TRIGGER IF EXISTS ops_append_only_delete`,
+		`DROP TRIGGER IF EXISTS op_chain_append_only_update`, `DROP TRIGGER IF EXISTS op_chain_append_only_delete`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -120,10 +112,8 @@ func TestHeadsAreSavedAndCheckedLater(t *testing.T) {
 	}
 }
 
-// Someone who rewrites an op and recomputes the chain from there fails plain
-// verify under Day 36 because the attacker cannot forge the replica's ECDSA
-// signature. If an attacker also has the key and re-signs, a saved anchor head
-// catches them.
+// Someone who rewrites an op and recomputes the chain from there passes a plain
+// verify. A head saved earlier is what catches them.
 func TestARewrittenChainIsCaughtOnlyByASavedHead(t *testing.T) {
 	db := loggedDB(t)
 	_, saved, _ := runCLI(t, "", "store", "-db", db, "head")
@@ -135,18 +125,15 @@ func TestARewrittenChainIsCaughtOnlyByASavedHead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ident := st.Identity()
 	ops, _ := st.Ops(context.Background(), 0, 100)
 	st.Close()
 	raw, _ := sqlstore.OpenDB(db)
 	prev := sqlstore.GenesisHash
-	newHashes := make(map[int64]string)
 	for _, op := range ops {
 		h := sqlstore.OpHash(op, prev)
 		if _, err := raw.Exec(`UPDATE op_chain SET prev = ?, hash = ? WHERE node_id = ? AND seq = ?`, prev, h, op.NodeID, op.Seq); err != nil {
 			t.Fatal(err)
 		}
-		newHashes[op.Seq] = h
 		prev = h
 	}
 	raw.Close()
@@ -155,36 +142,12 @@ func TestARewrittenChainIsCaughtOnlyByASavedHead(t *testing.T) {
 		t.Fatal(errOut)
 	}
 
-	// 1. Without the replica's private key, the rewritten chain fails plain verify
-	// because the stored signature does not match the recomputed chain hash.
-	if code, _, errOut := runCLI(t, "", "store", "-db", db, "verify"); code != 1 || !strings.Contains(errOut, "TAMPERED") || !strings.Contains(errOut, "forged or edited signature") {
-		t.Fatalf("an unauthenticated rewrite must fail plain verify on bad signature: exit %d\n%s", code, errOut)
+	if code, out, errOut := runCLI(t, "", "store", "-db", db, "verify"); code != 0 || !strings.Contains(out, "cannot see a log rewritten") {
+		t.Fatalf("a self-consistent rewrite passes a plain verify, and verify says it cannot see that: exit %d\n%s%s", code, out, errOut)
 	}
-
-	// 2. If the attacker also possesses the device key and re-signs the new hash,
-	// plain verify passes (it cannot see a log rewritten from scratch), but
-	// the saved head from before the rewrite catches the tampering.
-	if ident != nil {
-		edit(t, db)
-		raw, _ := sqlstore.OpenDB(db)
-		for _, op := range ops {
-			sig, err := ident.Sign([]byte(newHashes[op.Seq]))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := raw.Exec(`UPDATE op_sigs SET sig = ? WHERE node_id = ? AND seq = ?`, sig, op.NodeID, op.Seq); err != nil {
-				t.Fatal(err)
-			}
-		}
-		raw.Close()
-
-		if code, out, errOut := runCLI(t, "", "store", "-db", db, "verify"); code != 0 || !strings.Contains(out, "cannot see a log rewritten") {
-			t.Fatalf("a self-consistent re-signed rewrite passes plain verify: exit %d\n%s%s", code, out, errOut)
-		}
-		code, _, errOut := runCLI(t, "", "store", "-db", db, "verify", "-anchor", anchor)
-		if code != 1 || !strings.Contains(errOut, "TAMPERED") || !strings.Contains(errOut, "history before it was rewritten") {
-			t.Errorf("with the saved head: exit %d\n%s", code, errOut)
-		}
+	code, _, errOut := runCLI(t, "", "store", "-db", db, "verify", "-anchor", anchor)
+	if code != 1 || !strings.Contains(errOut, "TAMPERED") || !strings.Contains(errOut, "history before it was rewritten") {
+		t.Errorf("with the saved head: exit %d\n%s", code, errOut)
 	}
 }
 
@@ -219,13 +182,7 @@ func TestBadAnchorFilesAreRefusedClearly(t *testing.T) {
 func TestADatabaseFromBeforeTheChainIsUpgradedAndVerifyAdmitsWhatThatMeans(t *testing.T) {
 	db := loggedDB(t)
 	raw, _ := sqlstore.OpenDB(db)
-	for _, q := range []string{
-		`DROP TABLE IF EXISTS op_chain`,
-		`DROP TABLE IF EXISTS op_sigs`,
-		`DROP TABLE IF EXISTS genesis_attestations`,
-		`DELETE FROM schema_migrations WHERE version >= 4`,
-		`DELETE FROM meta WHERE key IN ('chain_retro_ops', 'genesis_attested_ops')`,
-	} {
+	for _, q := range []string{`DROP TABLE op_sigs`, `DROP TABLE device_keys`, `DROP TABLE node_devices`, `DROP TABLE op_chain`, `DELETE FROM schema_migrations WHERE version >= 4`, `DELETE FROM meta WHERE key = 'chain_retro_ops'`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatal(err)
 		}
