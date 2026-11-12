@@ -22,6 +22,7 @@ command -v python3 >/dev/null || { echo "this demo needs python3"; exit 1; }
 make build >/dev/null
 D="$(mktemp -d)"; SRV=""
 export XDG_CONFIG_HOME="$D/config"
+export OFFGRID_ALLOW_UNSIGNED=1
 cleanup() { [ -z "$SRV" ] || kill "$SRV" 2>/dev/null || true; rm -rf "$D"; }
 trap cleanup EXIT
 FAILED=0
