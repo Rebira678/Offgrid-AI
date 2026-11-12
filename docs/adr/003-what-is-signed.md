@@ -26,4 +26,6 @@ Verification dominates catch-up time. Then verify in parallel, or sign checkpoin
 
 ## Where the implementation stands
 
-Done on Day 36: migration 5 (`op_sigs`, `device_keys`, `node_devices`), `Options.Signer`, verification in `ApplyRemote` in a pool bounded by `GOMAXPROCS`, `history.attested` for old ops, `store verify` and `store attest`. The signed bytes are `"offgrid-opsig-v1\x00" + chain hash`. Not yet: the device-to-node binding is trust on first use until enrollment (Day 38), and signing is opt-in until Day 37.
+- **Day 36**: migration 5 (`op_sigs`, `device_keys`, `node_devices`), `Options.Signer`, verification in `ApplyRemote` in a pool bounded by `GOMAXPROCS`, `history.attested` for old ops, `store verify` and `store attest`. The signed bytes are `"offgrid-opsig-v1\x00" + chain hash`.
+- **Day 37 (Security Checkpoint 1)**: Signing is made the default across all writes with auto-provisioned mode-0600 ECDSA P-256 keys on first write (`identity.LoadOrCreate`). Shared HMAC sync key deprecated; peer device ID transmitted via `X-Offgrid-Device-ID`. Signed sync enforced by default across `sync serve`, `sync once`, and `sync run` with `-allow-unsigned` for legacy migration. Wire serialization preserves signatures across HTTP rounds.
+- **Next**: The device-to-node binding is trust on first use until enrollment (Day 38).
