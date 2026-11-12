@@ -58,6 +58,9 @@ bench-crdt:
 demo: build
 	scripts/demo-offline.sh $(PAUSE)
 
+checkpoint1-demo: build
+	scripts/checkpoint1-security-demo.sh $(PAUSE)
+
 # Checkpoint 1 demo: WiFi off, the agent keeps working, the queue fills.
 demo-checkpoint1: build
 	scripts/checkpoint1-demo.sh $(PAUSE)
