@@ -26,6 +26,8 @@ type ServerOptions struct {
 	Log    *log.Logger      // nil means no logging
 	// MaxBatch caps how many ops one /sync/ops response holds (zero: DefaultBatch).
 	MaxBatch int
+	// DeviceID is this replica's device ID, sent in X-Offgrid-Device-ID (Day 37).
+	DeviceID string
 }
 
 // Handler serves the sync endpoints for rep.
@@ -106,6 +108,9 @@ func (s *server) send(w http.ResponseWriter, requestSig string, rep reply) {
 	if requestSig != "" {
 		w.Header().Set(HeaderSig, SignResponse(s.opt.Key, requestSig, rep.status, b))
 		w.Header().Set(HeaderNode, s.rep.NodeID())
+		if s.opt.DeviceID != "" {
+			w.Header().Set(HeaderDeviceID, s.opt.DeviceID)
+		}
 	}
 	w.WriteHeader(rep.status)
 	w.Write(b)
