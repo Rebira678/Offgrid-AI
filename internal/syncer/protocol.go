@@ -59,13 +59,23 @@ type WireOp struct {
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
 	Hash    string          `json:"hash,omitempty"` // the op's hash-chain entry; the receiver checks it against its own
+	Sig     *sqlstore.OpSig `json:"sig,omitempty"`  // device signature over the chain hash (Day 36, Day 37)
 }
 
 // ToWire converts store ops for sending.
 func ToWire(ops []sqlstore.Op) []WireOp {
 	out := make([]WireOp, len(ops))
 	for i, op := range ops {
-		out[i] = WireOp{op.NodeID, op.Seq, op.TS.UnixNano(), op.Counter, op.Kind, op.Payload, op.Hash}
+		out[i] = WireOp{
+			Node:    op.NodeID,
+			Seq:     op.Seq,
+			TS:      op.TS.UnixNano(),
+			Counter: op.Counter,
+			Kind:    op.Kind,
+			Payload: op.Payload,
+			Hash:    op.Hash,
+			Sig:     op.Sig,
+		}
 	}
 	return out
 }
@@ -74,7 +84,16 @@ func ToWire(ops []sqlstore.Op) []WireOp {
 func FromWire(ops []WireOp) []sqlstore.Op {
 	out := make([]sqlstore.Op, len(ops))
 	for i, w := range ops {
-		out[i] = sqlstore.Op{NodeID: w.Node, Seq: w.Seq, TS: time.Unix(0, w.TS).UTC(), Counter: w.Counter, Kind: w.Kind, Payload: w.Payload, Hash: w.Hash}
+		out[i] = sqlstore.Op{
+			NodeID:  w.Node,
+			Seq:     w.Seq,
+			TS:      time.Unix(0, w.TS).UTC(),
+			Counter: w.Counter,
+			Kind:    w.Kind,
+			Payload: w.Payload,
+			Hash:    w.Hash,
+			Sig:     w.Sig,
+		}
 	}
 	return out
 }
