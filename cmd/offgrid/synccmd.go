@@ -22,8 +22,8 @@ import (
 
 const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
 
-  offgrid sync serve   -db FILE [-create] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
-  offgrid sync once    -db FILE [-create] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
+  offgrid sync serve   -db FILE [-create] [-require-signed] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
+  offgrid sync once    -db FILE [-create] [-require-signed] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
   offgrid sync run     -db FILE [-create] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
 
@@ -81,14 +81,23 @@ func openSyncStoreExisting(ctx context.Context, db string) (*sqlstore.Store, err
 // decision, not the result of a mistyped path (found on real hardware on Day 32:
 // -db desktop.md for desktop.db made a second, empty replica without a word).
 // With create, a file that is not there yet is announced on stderr.
-func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift time.Duration, create bool) (*sqlstore.Store, error) {
+func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift time.Duration, create, requireSigned bool) (*sqlstore.Store, error) {
 	if db == "" {
 		db = os.Getenv("OFFGRID_DB")
 	}
 	if db == "" {
 		return nil, errors.New("-db FILE is required (or set $OFFGRID_DB)")
 	}
-	opt := sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift}
+	opt, err := withDeviceSigner(sqlstore.Options{NodeID: nodeFromEnv(), MaxDrift: maxDrift, RequireSigned: requireSigned})
+	if err != nil {
+		return nil, err
+	}
+	if opt.Signer == nil {
+		if requireSigned {
+			return nil, errors.New("-require-signed needs a device key, and there is none. Make one with: offgrid identity init")
+		}
+		fmt.Fprintln(stderr, "warning: no device key, so the ops this replica writes are NOT signed and peers cannot tell who wrote them. Make one with: offgrid identity init")
+	}
 	if !create {
 		opt.MustExist = true
 		return sqlstore.Open(ctx, db, opt)
@@ -98,6 +107,9 @@ func openSyncStore(ctx context.Context, stderr io.Writer, db string, maxDrift ti
 	}
 	return sqlstore.Open(ctx, db, opt)
 }
+
+// requireSignedHelp is the -require-signed flag's text, shared by the three commands.
+const requireSignedHelp = "refuse ops that carry no signature (needs a device key; a replica that must receive unsigned legacy history leaves it off)"
 
 // createHelp is the -create flag's text, shared by the three commands.
 const createHelp = "start a NEW replica if the database file does not exist (without it, a missing file is an error, so a mistyped path cannot make one)"
@@ -141,6 +153,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	window := fs.Duration("window", syncer.DefaultWindow, "how far a request's time may differ from this clock")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
+	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -152,7 +165,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
@@ -199,6 +212,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
+	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
 	timeout := fs.Duration("timeout", 2*time.Minute, "give up after this long")
 	faults := addFaultFlags(fs)
 	if err := fs.Parse(args); err != nil {
@@ -218,7 +232,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
@@ -321,6 +335,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
+	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
 	every := fs.Duration("every", 2*time.Second, "time between rounds")
 	roundTimeout := fs.Duration("round-timeout", 10*time.Second, "give up on one round after this long")
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
@@ -346,7 +361,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
 		defer cancel()
 	}
-	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create)
+	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, *requireSigned)
 	if err != nil {
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code

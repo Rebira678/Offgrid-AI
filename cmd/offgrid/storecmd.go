@@ -22,6 +22,7 @@ import (
 //	offgrid store -db FILE info      what is in it
 //	offgrid store -db FILE verify    check the hash chain, replay the log in a scratch database and compare
 //	offgrid store -db FILE verify -anchor FILE   also check heads saved earlier (see head)
+//	offgrid store -db FILE attest    sign the head of every replica held now: old unsigned ops become "trusted as of now" (needs a device key)
 //	offgrid store -db FILE head      print the newest hash of every replica; keep it somewhere safe
 //	offgrid store -db FILE rebuild   delete the tasks view and recompute it from the log
 //	offgrid store -db FILE ops -n 20 show the last ops
@@ -44,13 +45,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if sub == "" {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|head|rebuild|ops [-n N]")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "head", "rebuild", "ops", "fields":
+	case "info", "verify", "attest", "head", "rebuild", "ops", "fields":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, head, rebuild, ops or fields)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops or fields)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -74,9 +75,6 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "database           %s\n", *dbPath)
 		fmt.Fprintf(stdout, "node id            %s\n", info.NodeID)
-		if info.DeviceID != "" {
-			fmt.Fprintf(stdout, "device id          %s\n", info.DeviceID)
-		}
 		fmt.Fprintf(stdout, "schema version     %d\n", info.SchemaVersion)
 		fmt.Fprintf(stdout, "projection version %s\n", info.ProjectionVersion)
 		fmt.Fprintf(stdout, "ops in the log     %d (last position %d, view applied through %d)\n", info.Ops, info.LastPos, info.AppliedPos)
@@ -97,9 +95,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			if rep.ChainRetro > 0 {
 				fmt.Fprintf(stdout, "    %d of them were chained when this database was upgraded to Day 27, not when they were written:\n    an edit made before that cannot be seen.\n", rep.ChainRetro)
 			}
-			if rep.SignedOps > 0 || rep.AttestedOps > 0 {
-				fmt.Fprintf(stdout, "ok: all signatures verified (%d signed ops, %d ops trusted as of migration via genesis attestation)\n", rep.SignedOps, rep.AttestedOps)
-			}
+			printSignatureReport(stdout, rep.Sigs)
 			fmt.Fprintf(stdout, "ok: replayed %d ops into a scratch database and got the same state\n", rep.Ops)
 			fmt.Fprintf(stdout, "state hash %s\n", rep.LiveHash)
 			if *anchor != "" {
@@ -117,6 +113,10 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			}
 		case errors.Is(err, sqlstore.ErrTampered):
 			return tamperReport(stderr, err)
+		case errors.Is(err, sqlstore.ErrBadSignature), errors.Is(err, sqlstore.ErrKeyChange), errors.Is(err, sqlstore.ErrUnsigned):
+			fmt.Fprintf(stderr, "SIGNATURE PROBLEM: %v\n", err)
+			fmt.Fprintln(stderr, "The hash chain is intact, but this op's signature does not hold. Do not trust the op until you know why.")
+			return 1
 		case errors.Is(err, sqlstore.ErrDiverged):
 			fmt.Fprintf(stderr, "MISMATCH: %v\n", err)
 			fmt.Fprintln(stderr, "The tasks view differs from what the log says. The log is the truth: run  offgrid store -db "+*dbPath+" rebuild")
@@ -124,6 +124,14 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		default:
 			return storeError(stderr, err)
 		}
+
+	case "attest":
+		a, err := st.Attest(ctx)
+		if err != nil {
+			return storeError(stderr, err)
+		}
+		fmt.Fprintf(stdout, "ok: %s signed the chain head of %d replicas.\n", a.By, len(a.Heads))
+		fmt.Fprintln(stdout, "Ops written before they could be signed are now \"trusted as of this moment, by this device\". That is a statement about the past, not a proof of it. `store verify` says so.")
 
 	case "head":
 		if _, err := st.VerifyChain(ctx); err != nil { // never hand out heads of a chain that does not check out
@@ -251,4 +259,21 @@ func readAnchors(path string) ([]sqlstore.Head, error) {
 		return nil, fmt.Errorf("%s has no saved heads", path)
 	}
 	return out, nil
+}
+
+// printSignatureReport says plainly what is signed, what is only attested, and what is neither.
+func printSignatureReport(w io.Writer, r sqlstore.SigReport) {
+	fmt.Fprintf(w, "ok: %d of %d ops are signed, by %d device(s)\n", r.Signed, r.Ops, len(r.Devices))
+	for _, d := range r.Devices {
+		fmt.Fprintf(w, "      %s  %d ops\n", d.Device, d.Ops)
+	}
+	if r.Attested > 0 {
+		fmt.Fprintf(w, "    %d older ops are unsigned and trusted as of the migration, not proven:\n", r.Attested)
+		for _, a := range r.Attestations {
+			fmt.Fprintf(w, "      attested by %s at %s (%d ops, op %s/%d)\n", a.By, a.At.UTC().Format(time.RFC3339), a.Covers, a.Node, a.Seq)
+		}
+	}
+	if r.Unsigned > 0 {
+		fmt.Fprintf(w, "    WARNING: %d ops are unsigned and nothing vouches for them. Sign for them with: offgrid store attest\n", r.Unsigned)
+	}
 }
