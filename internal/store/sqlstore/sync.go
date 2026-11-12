@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"offgrid/internal/hlc"
-	"offgrid/internal/identity"
 	"offgrid/internal/task"
 )
 
@@ -106,11 +105,8 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 			continue
 		}
 		rows, err := s.db.QueryContext(ctx,
-			`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, ''),
-			        s.sig, COALESCE(s.pub_key, ''), COALESCE(s.device_id, ''), COALESCE(s.algorithm, '')
-			 FROM ops o
-			 LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
-			 LEFT JOIN op_sigs s ON s.node_id = o.node_id AND s.seq = o.seq
+			`SELECT o.pos, o.node_id, o.seq, o.ts, o.counter, o.kind, o.payload, COALESCE(c.hash, '')
+			 FROM ops o LEFT JOIN op_chain c ON c.node_id = o.node_id AND c.seq = o.seq
 			 WHERE o.node_id = ? AND o.seq > ? ORDER BY o.seq LIMIT ?`,
 			node, have[node], limit+1)
 		if err != nil {
@@ -131,15 +127,18 @@ func (s *Store) OpsSince(ctx context.Context, have Summary, limit int) (ops []Op
 	// unbroken run from have[node]+1.
 	sort.Slice(ops, func(i, j int) bool { return keyOf(ops[i]).less(keyOf(ops[j])) })
 	if len(ops) > limit {
-		return ops[:limit], true, nil
+		ops, more = ops[:limit], true
 	}
-	return ops, false, nil
+	if err := s.attachSigs(ctx, ops); err != nil {
+		return nil, false, err
+	}
+	return ops, more, nil
 }
 
 func scanOps(rows *sql.Rows) ([]Op, error) { return scanOpRows(rows, false) }
 
 // scanOpRows reads ops from rows of pos, node, seq, ts, counter, kind, payload,
-// and also hash and signatures when withHash is set.
+// and also hash when withHash is set.
 func scanOpRows(rows *sql.Rows, withHash bool) ([]Op, error) {
 	defer rows.Close()
 	var out []Op
@@ -148,22 +147,14 @@ func scanOpRows(rows *sql.Rows, withHash bool) ([]Op, error) {
 		var ts int64
 		var payload string
 		dst := []any{&op.Pos, &op.NodeID, &op.Seq, &ts, &op.Counter, &op.Kind, &payload}
-		var sig []byte
-		var pubKey, devID, alg sql.NullString
 		if withHash {
-			dst = append(dst, &op.Hash, &sig, &pubKey, &devID, &alg)
+			dst = append(dst, &op.Hash)
 		}
 		if err := rows.Scan(dst...); err != nil {
 			return nil, err
 		}
 		op.TS = fromNanos(ts)
 		op.Payload = json.RawMessage(payload)
-		if withHash {
-			op.Sig = sig
-			op.PubKey = pubKey.String
-			op.DeviceID = devID.String
-			op.Alg = alg.String
-		}
 		out = append(out, op)
 	}
 	return out, rows.Err()
@@ -177,7 +168,7 @@ type ApplyResult struct {
 }
 
 // knownKinds are the op kinds this version understands.
-var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true}
+var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true}
 
 func validateRemote(op Op) error {
 	switch {
@@ -191,6 +182,8 @@ func validateRemote(op Op) error {
 		return fmt.Errorf("%w: %s/%d: unknown kind %q (written by a newer version?)", ErrBadOp, op.NodeID, op.Seq, op.Kind)
 	case len(op.Payload) == 0 || len(op.Payload) > maxRemotePayload || !json.Valid(op.Payload):
 		return fmt.Errorf("%w: %s/%d: the payload is empty, too large or not JSON", ErrBadOp, op.NodeID, op.Seq)
+	case op.Kind == KindHistoryAttested && op.Sig == nil:
+		return fmt.Errorf("%w: %s/%d: an attestation must be signed (an unsigned one vouches for nothing)", ErrBadOp, op.NodeID, op.Seq)
 	}
 	return nil
 }
@@ -320,6 +313,15 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 		return res, tx.Commit()
 	}
 
+	// Signatures, before anything is written or the clock moves. The hashes the
+	// signatures cover are computed here from this replica's own copy of each
+	// node's earlier ops, never taken from the sender. The checks run in a
+	// bounded pool; the inserts below stay in this one transaction.
+	keys, verr := s.verifyFresh(ctx, tx, fresh)
+	if verr != nil {
+		return res, verr
+	}
+
 	// Move this replica's clock past everything it is about to hold. A far-future
 	// stamp is refused here, before anything is written.
 	var newest hlc.Timestamp
@@ -369,28 +371,9 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 			return res, fmt.Errorf("%w: %s/%d arrived with hash %.12s but this replica computes %.12s from its own copy of the earlier ops", ErrChain, fresh[i].NodeID, fresh[i].Seq, claimed, mine)
 		}
 		fresh[i].Hash = mine
-	}
-
-	if err := s.verifyBatchSignatures(ctx, fresh); err != nil {
-		return res, err
-	}
-
-	for _, op := range fresh {
-		if len(op.Sig) > 0 {
-			devID := op.DeviceID
-			if devID == "" && op.PubKey != "" {
-				devID, _ = identity.DeviceID(op.PubKey)
-			}
-			alg := op.Alg
-			if alg == "" {
-				alg = identity.AlgECDSAP256
-			}
-			_, err = tx.ExecContext(ctx, `
-				INSERT INTO op_sigs (node_id, seq, device_id, algorithm, pub_key, sig)
-				VALUES (?, ?, ?, ?, ?, ?)
-			`, op.NodeID, op.Seq, devID, alg, op.PubKey, op.Sig)
-			if err != nil {
-				return res, fmt.Errorf("sqlstore: record remote signature %s/%d: %w", op.NodeID, op.Seq, err)
+		if sg := fresh[i].Sig; sg != nil {
+			if err = storeSig(ctx, tx, fresh[i].NodeID, fresh[i].Seq, *sg, keys[sg.Device]); err != nil {
+				return res, err
 			}
 		}
 	}
