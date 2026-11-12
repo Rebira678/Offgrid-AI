@@ -26,6 +26,7 @@ const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
   offgrid sync once    -db FILE [-create] [-allow-unsigned] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
   offgrid sync run     -db FILE [-create] [-allow-unsigned] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
+  offgrid sync stats   FILE                                  judge a soak: did memory or goroutines grow? (serve and run write FILE with -stats FILE)
 
 once and run take the -fault-* flags (see "offgrid fault"), so the connection can
 be broken on purpose: start with -fault-file F, then "offgrid fault set -file F partition".
@@ -62,8 +63,10 @@ func cmdSync(args []string, stdout, stderr io.Writer) int {
 		return cmdSyncRun(args[1:], stdout, stderr)
 	case "summary":
 		return cmdSyncSummary(args[1:], stdout, stderr)
+	case "stats":
+		return cmdSyncStats(args[1:], stdout, stderr)
 	}
-	fmt.Fprintf(stderr, "error: unknown sync command %q (serve, once, run or summary)\n", args[0])
+	fmt.Fprintf(stderr, "error: unknown sync command %q (serve, once, run, summary or stats)\n", args[0])
 	return 2
 }
 
@@ -169,6 +172,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	create := fs.Bool("create", false, createHelp)
 	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
 	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
+	stats := addStatsFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -180,6 +184,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnSharedKey(stderr)
 	var explicitRequireSigned *bool
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "require-signed" {
@@ -195,6 +200,12 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		return 1
 	}
 	defer st.Close()
+	stopStats, err := stats.start(ctx, stderr, "serve", st, nil)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+	defer stopStats()
 	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
@@ -261,6 +272,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnSharedKey(stderr)
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	var explicitRequireSigned *bool
@@ -383,6 +395,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
 	name := fs.String("name", "", "label for each line (default: this replica's node ID)")
 	faults := addFaultFlags(fs)
+	stats := addStatsFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -398,6 +411,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
+	warnSharedKey(stderr)
 	if *forDur > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
@@ -418,6 +432,13 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		return 1
 	}
 	defer st.Close()
+	var wk work
+	stopStats, err := stats.start(ctx, stderr, "run", st, &wk)
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+	defer stopStats()
 	label := *name
 	if label == "" {
 		label = st.NodeID()
@@ -448,6 +469,12 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		rctx, cancel := context.WithTimeout(ctx, *roundTimeout)
 		rep, err := cl.Once(rctx, st)
 		cancel()
+		if ctx.Err() == nil {
+			wk.rounds.Add(1)
+			if err != nil {
+				wk.failures.Add(1)
+			}
+		}
 		hash, herr := st.StateHash(ctx)
 		short := hash
 		if len(short) > 12 {
