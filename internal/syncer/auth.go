@@ -16,11 +16,12 @@ import (
 	"time"
 )
 
-// Headers carrying the signature.
+// Headers carrying the signature and device identification.
 const (
-	HeaderNode = "X-Offgrid-Node"
-	HeaderTime = "X-Offgrid-Time"
-	HeaderSig  = "X-Offgrid-Sig"
+	HeaderNode     = "X-Offgrid-Node"
+	HeaderTime     = "X-Offgrid-Time"
+	HeaderSig      = "X-Offgrid-Sig"
+	HeaderDeviceID = "X-Offgrid-Device-ID"
 )
 
 // MinKeyLen is the shortest shared key accepted. A short key can be guessed
