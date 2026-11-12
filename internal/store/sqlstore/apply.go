@@ -344,6 +344,11 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			}
 		}
 
+	case KindHistoryAttested:
+		if _, err := decodeAttestation(op.Payload); err != nil {
+			return bad("bad attestation: %v", err)
+		}
+
 	default:
 		// Refuse, do not skip. A kind this program does not know may change the
 		// meaning of everything after it; guessing would silently diverge.

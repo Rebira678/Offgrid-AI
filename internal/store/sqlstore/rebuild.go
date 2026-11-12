@@ -73,14 +73,18 @@ func (s *Store) Rebuild(ctx context.Context) (rep RebuildReport, err error) {
 	if err = setMeta(ctx, tx, "projection_version", projectionVersion); err != nil {
 		return rep, err
 	}
-	hash, taskCount, err := stateHashWithCount(ctx, tx)
+	hash, err := stateHash(ctx, tx)
+	if err != nil {
+		return rep, err
+	}
+	tasks, err := listTasks(ctx, tx, task.Filter{})
 	if err != nil {
 		return rep, err
 	}
 	if err = tx.Commit(); err != nil {
 		return rep, err
 	}
-	return RebuildReport{Ops: n, Tasks: taskCount, Hash: hash}, nil
+	return RebuildReport{Ops: n, Tasks: len(tasks), Hash: hash}, nil
 }
 
 // canonical forms for hashing: explicit fields in a fixed order, times as
@@ -106,20 +110,15 @@ type canonTask struct {
 // replicas, or one replica before and after a rebuild, have the same hash if and
 // only if they hold the same state. (Day 20 uses this to prove convergence.)
 func stateHash(ctx context.Context, x execer) (string, error) {
-	h, _, err := stateHashWithCount(ctx, x)
-	return h, err
-}
-
-func stateHashWithCount(ctx context.Context, x execer) (string, int, error) {
 	tasks, err := listTasks(ctx, x, task.Filter{})
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	canon := make([]canonTask, 0, len(tasks))
 	for _, t := range tasks {
 		c := canonTask{
 			ID: t.ID, Title: t.Title, Site: t.Site, Priority: string(t.Priority), Status: string(t.Status),
-			Created: nanos(t.CreatedAt), Updated: nanos(t.UpdatedAt), Notes: make([]canonNote, 0, len(t.Notes)),
+			Created: nanos(t.CreatedAt), Updated: nanos(t.UpdatedAt), Notes: []canonNote{},
 		}
 		if !t.DoneAt.IsZero() {
 			c.Done = nanos(t.DoneAt)
@@ -131,11 +130,11 @@ func stateHashWithCount(ctx context.Context, x execer) (string, int, error) {
 	}
 	answers, err := listAnswers(ctx, x)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	sugs, err := canonSuggestions(ctx, x)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	var payload any = canon
 	if len(answers) > 0 || len(sugs) > 0 { // omitted when empty, so older databases keep their old hashes
@@ -147,10 +146,10 @@ func stateHashWithCount(ctx context.Context, x execer) (string, int, error) {
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:]), len(tasks), nil
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // StateHash fingerprints the current materialized view.
@@ -163,14 +162,12 @@ var ErrDiverged = errors.New("the materialized view does not match the op log")
 
 // VerifyReport says what Verify checked.
 type VerifyReport struct {
-	ChainHeads   []Head // the newest hash-chain entry of every replica, once the chain has been recomputed
-	ChainRetro   int    // ops chained when the database was upgraded, not when written (see ChainReport)
-	Ops          int
-	LiveHash     string // hash of the view in the database
-	ReplayHash   string // hash of the view recomputed from the log in a scratch database
-	SignedOps    int    // ops whose cryptographic signatures were individually verified
-	AttestedOps  int    // ops covered and trusted under a genesis attestation
-	Attestations int    // number of replica genesis attestations verified
+	ChainHeads []Head    // the newest hash-chain entry of every replica, once the chain has been recomputed
+	Sigs       SigReport // signatures checked (see VerifySignatures)
+	ChainRetro int       // ops chained when the database was upgraded, not when written (see ChainReport)
+	Ops        int
+	LiveHash   string // hash of the view in the database
+	ReplayHash string // hash of the view recomputed from the log in a scratch database
 }
 
 // Verify recomputes the view from the log in a separate scratch database and
@@ -190,13 +187,9 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 		return rep, err
 	}
 	rep.ChainHeads, rep.ChainRetro = chain.Heads, chain.Retro
-	sigRep, err := s.VerifySignatures(ctx)
-	if err != nil {
+	if rep.Sigs, err = s.VerifySignatures(ctx); err != nil {
 		return rep, err
 	}
-	rep.SignedOps = sigRep.SignedOps
-	rep.AttestedOps = sigRep.AttestedOps
-	rep.Attestations = len(sigRep.Attestations)
 	scratch, err := sql.Open(driverName, dsn(":memory:"))
 	if err != nil {
 		return rep, err
@@ -247,8 +240,6 @@ func (s *Store) checkSequences(ctx context.Context) error {
 // Info describes the store.
 type Info struct {
 	NodeID            string
-	DeviceID          string
-	PublicKey         string
 	SchemaVersion     int
 	ProjectionVersion string
 	Ops               int
@@ -256,8 +247,6 @@ type Info struct {
 	AppliedPos        int64
 	Tasks             int
 	StateHash         string
-	SignedOps         int
-	AttestedOps       int
 	// NewestStamp is the newest op timestamp in the log (zero if empty), and
 	// ClockAhead how far it is beyond the physical clock now. A large
 	// ClockAhead means an op was once stamped from a clock that was far ahead
@@ -267,11 +256,7 @@ type Info struct {
 }
 
 func (s *Store) Info(ctx context.Context) (Info, error) {
-	info := Info{
-		NodeID:    s.node,
-		DeviceID:  s.DeviceID(),
-		PublicKey: s.PublicKey(),
-	}
+	info := Info{NodeID: s.node}
 	var err error
 	if info.SchemaVersion, err = schemaVersion(ctx, s.db); err != nil {
 		return info, err
@@ -288,10 +273,6 @@ func (s *Store) Info(ctx context.Context) (Info, error) {
 	}
 	if err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks WHERE deleted = 0`).Scan(&info.Tasks); err != nil {
 		return info, err
-	}
-	_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM op_sigs`).Scan(&info.SignedOps)
-	if v, ok, _ := getMeta(ctx, s.db, metaGenesisAttestedOps); ok {
-		info.AttestedOps, _ = strconv.Atoi(v)
 	}
 	if info.NewestStamp, err = s.newestStamp(ctx, s.db); err != nil {
 		return info, err
