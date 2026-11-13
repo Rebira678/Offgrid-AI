@@ -33,6 +33,10 @@ const (
 	PathSummary = "/sync/summary"
 	PathOps     = "/sync/ops"
 	PathPush    = "/sync/push"
+	// PathEnroll is the one endpoint that is NOT behind the shared key: a device
+	// that is being enrolled does not have the key yet. It is guarded by the
+	// one-time invite instead (see enroll.go).
+	PathEnroll = "/v1/enroll"
 )
 
 // DefaultBatch is how many ops travel in one request or response.
@@ -59,23 +63,17 @@ type WireOp struct {
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
 	Hash    string          `json:"hash,omitempty"` // the op's hash-chain entry; the receiver checks it against its own
-	Sig     *sqlstore.OpSig `json:"sig,omitempty"`  // device signature over the chain hash (Day 36, Day 37)
+	// Sig is the writing device's signature over Hash (Day 36). Omitting it here
+	// silently turned every synced op into unsigned legacy history: it was found
+	// on Day 37 by running two real processes, not by the Day 36 store tests.
+	Sig *sqlstore.OpSig `json:"sig,omitempty"`
 }
 
 // ToWire converts store ops for sending.
 func ToWire(ops []sqlstore.Op) []WireOp {
 	out := make([]WireOp, len(ops))
 	for i, op := range ops {
-		out[i] = WireOp{
-			Node:    op.NodeID,
-			Seq:     op.Seq,
-			TS:      op.TS.UnixNano(),
-			Counter: op.Counter,
-			Kind:    op.Kind,
-			Payload: op.Payload,
-			Hash:    op.Hash,
-			Sig:     op.Sig,
-		}
+		out[i] = WireOp{Node: op.NodeID, Seq: op.Seq, TS: op.TS.UnixNano(), Counter: op.Counter, Kind: op.Kind, Payload: op.Payload, Hash: op.Hash, Sig: op.Sig}
 	}
 	return out
 }
@@ -84,16 +82,7 @@ func ToWire(ops []sqlstore.Op) []WireOp {
 func FromWire(ops []WireOp) []sqlstore.Op {
 	out := make([]sqlstore.Op, len(ops))
 	for i, w := range ops {
-		out[i] = sqlstore.Op{
-			NodeID:  w.Node,
-			Seq:     w.Seq,
-			TS:      time.Unix(0, w.TS).UTC(),
-			Counter: w.Counter,
-			Kind:    w.Kind,
-			Payload: w.Payload,
-			Hash:    w.Hash,
-			Sig:     w.Sig,
-		}
+		out[i] = sqlstore.Op{NodeID: w.Node, Seq: w.Seq, TS: time.Unix(0, w.TS).UTC(), Counter: w.Counter, Kind: w.Kind, Payload: w.Payload, Hash: w.Hash, Sig: w.Sig}
 	}
 	return out
 }
@@ -151,4 +140,9 @@ const (
 	CodeIDCollision  = "id_collision"
 	CodeClockDrift   = "clock_drift"
 	CodeInternal     = "internal"
+
+	CodeInviteInvalid   = "invite_invalid" // unknown, used, expired or wrongly proven: deliberately one answer
+	CodeAlreadyMember   = "already_member"
+	CodeNotAuthorized   = "not_authorized"
+	CodeTooManyAttempts = "too_many_attempts"
 )
