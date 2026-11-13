@@ -12,7 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 37: Security Checkpoint 1 complete.** Default operation signing across all writes with auto-provisioned ECDSA P-256 keys; wire sync peer identification (`X-Offgrid-Device-ID`); deprecated shared sync key in favor of cryptographic signatures; Trust On First Use (TOFU) replica binding; full replay and attestation proofs. See [docs/day-37.md](docs/day-37.md).
+> Status: **Day 38: Device Enrollment & Membership complete.** One-time salted-hash invites, log-folded membership (`member.add`), founding trust root (`store found`), single-use immutability triggers, receipt-verified enrollment (`POST /v1/enroll`), and 2-admin resilience checks. See [docs/day-38.md](docs/day-38.md).
 
 ![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
 
