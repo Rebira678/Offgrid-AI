@@ -265,10 +265,14 @@ func (i Invite) Link(fingerprint string) string {
 // ParseInviteLink reads what Link wrote.
 func ParseInviteLink(s string) (InviteLink, error) {
 	parts := strings.Split(strings.TrimSpace(s), "/")
-	if len(parts) != 5 || parts[0] != "og-invite" || parts[1] != "1" {
+	if (len(parts) != 4 && len(parts) != 5) || parts[0] != "og-invite" || parts[1] != "1" {
 		return InviteLink{}, errors.New("not an Offgrid invite (expected og-invite/1/DEVICE/TOKEN/FINGERPRINT)")
 	}
-	l := InviteLink{Admin: parts[2], Token: parts[3], Fingerprint: parts[4]}
+	var fp string
+	if len(parts) == 5 {
+		fp = parts[4]
+	}
+	l := InviteLink{Admin: parts[2], Token: parts[3], Fingerprint: fp}
 	if !strings.HasPrefix(l.Admin, "dev_") || len(l.Admin) != 36 {
 		return InviteLink{}, errors.New("the invite names no valid admin device")
 	}
