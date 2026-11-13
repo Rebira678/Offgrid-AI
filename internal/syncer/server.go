@@ -28,6 +28,9 @@ type ServerOptions struct {
 	MaxBatch int
 	// DeviceID is this replica's device ID, sent in X-Offgrid-Device-ID (Day 37).
 	DeviceID string
+	// Enroller, when set, turns on POST /v1/enroll. Only a node that holds the
+	// membership (an admin's node) should set it.
+	Enroller Enroller
 }
 
 // Handler serves the sync endpoints for rep.
@@ -46,12 +49,16 @@ func Handler(rep Replica, opt ServerOptions) http.Handler {
 	mux.HandleFunc("GET "+PathSummary, s.wrap(s.summary))
 	mux.HandleFunc("POST "+PathOps, s.wrap(s.ops))
 	mux.HandleFunc("POST "+PathPush, s.wrap(s.push))
+	if opt.Enroller != nil {
+		mux.HandleFunc("POST "+PathEnroll, s.enroll)
+	}
 	return mux
 }
 
 type server struct {
 	rep Replica
 	opt ServerOptions
+	lim failureLimiter
 }
 
 // reply is what a handler returns; wrap signs and writes it.
@@ -137,6 +144,10 @@ func decode(body []byte, into any) *reply {
 		r := fail(http.StatusBadRequest, CodeBadRequest, "the request body is not valid: "+err.Error())
 		return &r
 	}
+	if dec.More() {
+		r := fail(http.StatusBadRequest, CodeBadRequest, "the request body has extra data after the JSON")
+		return &r
+	}
 	return nil
 }
 
@@ -195,6 +206,8 @@ func classify(err error) (int, string) {
 		return http.StatusUnprocessableEntity, CodeKeyChange
 	case errors.Is(err, sqlstore.ErrUnsigned):
 		return http.StatusUnprocessableEntity, CodeUnsigned
+	case errors.Is(err, sqlstore.ErrNotAuthorized):
+		return http.StatusForbidden, CodeNotAuthorized
 	case errors.Is(err, sqlstore.ErrBadOp):
 		return http.StatusUnprocessableEntity, CodeBadOp
 	}
