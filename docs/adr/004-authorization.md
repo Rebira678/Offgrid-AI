@@ -2,6 +2,8 @@
 
 **Status:** accepted, 2026-11-09 (from the decisions table of the Days 31 to 60 plan)
 
+**Implementation (Day 38):** membership is a log of signed `member.add` ops, folded by a pure function; adds are enforced when ops arrive. Revocation and the pure `Authorize(state, op)` are Day 39.
+
 ## Decision
 
 **Membership is admin-signed enroll ops plus a grow-only set of revoked keys.** Roles are fixed at enrollment. A revoke op carries the **cutoff**: the last sequence number and hash the admin saw from that device.

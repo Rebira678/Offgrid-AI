@@ -2,6 +2,8 @@
 
 **Status:** accepted, 2026-11-09 (from the decisions table of the Days 31 to 60 plan)
 
+**Implementation (Day 38):** `store found` makes the first admin (self-signed); later devices need an admin's signature; invites pin the admin's device ID. The founder is still trust on first use: the person checks the founder's device ID once.
+
 ## Decision
 
 **A founder key**, with more admins added by admins. **Require a second admin before the pilot.**
