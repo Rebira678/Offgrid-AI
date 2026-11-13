@@ -16,6 +16,13 @@ The roadmap row: an admin makes a one-time invite; a new device presents it and 
 
 Tests came first for each layer. Store: founding, adding, refusal of non-admin adds (also when they arrive by sync), unsigned adds, payload checks, duplicates, fold determinism, tie-breaks, `verify`. Invites: hashed at rest, TTL bounds, expiry boundary (refused at the deadline, accepted one second before), reuse, wrong tokens, races, second admin. Syncer over real HTTP: success then sync, no oracle, rate limit and its window, 404 without an enroller, oversize body, the device refusing a wrong admin, a replayed answer for another device, a mismatched admin field. CLI: the whole flow including a second admin, the missing-key/label/invite errors, a lying node. Mutation checks on the new code were run; two survivors in the syncer and two in the CLI were turned into tests and then killed. One CLI survivor remains: `sopt.Signer = sg` in `store`, which is equivalent because the store opener loads the device key itself.
 
+## Measured benchmarks (AMD Ryzen 5 PRO 5650U, 12 cores)
+
+| Benchmark | Latency | Throughput / Cost |
+|---|---|---|
+| `BenchmarkCreateInvite` | 582 µs/op | ~1,700 invites/sec (random salt, SHA-256 hash, SQLite tx) |
+| `BenchmarkMembershipFold100` | 40.5 µs/op | Pure deterministic fold across 100 member ops |
+
 ## Honest limits
 
 - **Membership does not yet stop a non-member from writing or syncing.** Only `member.add` is checked. The pure `Authorize(state, op)` for every op is Day 39, mutual TLS is Day 40. Today the shared key still gates the connection.
