@@ -111,6 +111,29 @@ BEGIN SELECT RAISE(ABORT, 'node_devices is append-only: updates are not allowed'
 CREATE TRIGGER node_devices_append_only_delete BEFORE DELETE ON node_devices
 BEGIN SELECT RAISE(ABORT, 'node_devices is append-only: deletes are not allowed'); END;
 `},
+	{Version: 6, Name: "invites: one-time, short-lived, salted-hash enrollment tokens (local to the issuing node)", SQL: `
+CREATE TABLE invites (
+	id          TEXT    PRIMARY KEY,                      -- the public part of the token: finds the row
+	salt        BLOB    NOT NULL CHECK (length(salt) = 16),
+	hash        BLOB    NOT NULL CHECK (length(hash) = 32), -- SHA-256(salt || token): the token itself is never stored
+	role        TEXT    NOT NULL CHECK (role IN ('admin', 'member')),
+	label       TEXT    NOT NULL,
+	created_by  TEXT    NOT NULL,
+	created_at  INTEGER NOT NULL,
+	expires     INTEGER NOT NULL,
+	redeemed_at INTEGER,
+	redeemed_by TEXT
+) WITHOUT ROWID;
+CREATE TRIGGER invites_no_delete BEFORE DELETE ON invites
+BEGIN SELECT RAISE(ABORT, 'invites are kept: deletes are not allowed'); END;
+-- The only change an invite may ever see: its first redemption. A used invite cannot be un-used,
+-- and nothing else about it (token hash, role, expiry) can be edited.
+CREATE TRIGGER invites_redeem_only BEFORE UPDATE ON invites
+WHEN OLD.redeemed_at IS NOT NULL OR NEW.redeemed_at IS NULL
+  OR NEW.id <> OLD.id OR NEW.salt <> OLD.salt OR NEW.hash <> OLD.hash OR NEW.role <> OLD.role
+  OR NEW.label <> OLD.label OR NEW.created_by <> OLD.created_by OR NEW.created_at <> OLD.created_at OR NEW.expires <> OLD.expires
+BEGIN SELECT RAISE(ABORT, 'invites: only a first redemption may update a row'); END;
+`},
 }
 
 // ErrNewerSchema means the database was written by a newer Offgrid than this
