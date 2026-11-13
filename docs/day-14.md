@@ -18,7 +18,7 @@ The target list is **not in the zip**: it is outreach preparation and does not b
 
 ## Concepts
 
-**An architecture document is a claim you can check.** The useful kind does not describe boxes; it states what is *guaranteed* and points at the test that would fail if it stopped being true. That is the table in section 6 of `ARCHITECTURE.md`: "a killed worker loses nothing and duplicates nothing" is not a promise, it is `TestKill9MidDrainLosesNothingAndDuplicatesNothing`. A reader (or an interviewer) can pick any row and verify it in a minute.
+**An architecture document is a claim you can check.** The useful kind does not describe boxes; it states what is *guaranteed* and points at the test that would fail if it stopped being true. That is the table in section 6 of `ARCHITECTURE.md`: "a killed worker loses nothing and duplicates nothing" is not a promise, it is `TestKill9MidDrainLosesNothingAndDuplicatesNothing`. A reader (or an auditor) can pick any row and verify it in a minute.
 
 **Say what you did not build.** The document has a "Not promised" paragraph and a "Known limits" section, and it says plainly that the CRDT, the hybrid clock and sync do not exist yet. Readers trust the guarantees *because* the limits are stated next to them. The roadmap says the same for a README: honesty about limits is what a CTO scans for.
 

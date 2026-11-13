@@ -1,6 +1,6 @@
 # Senior-Level Architectural Concepts
 
-This document captures the deep, senior-level architectural decisions, trade-offs, and design patterns used throughout the Offgrid project. This is intended to act as a reference for interviews, documentation, and technical deep-dives.
+This document captures the deep, senior-level architectural decisions, trade-offs, and design patterns used throughout the Offgrid project. This is intended to act as a reference for system architecture, documentation, and technical deep-dives.
 
 ---
 

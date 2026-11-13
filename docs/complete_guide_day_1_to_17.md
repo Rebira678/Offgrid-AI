@@ -4,7 +4,7 @@
 >
 > **Self-Contained Design:** To make studying effortless, **every single day contains its own dedicated technical term definitions right under that day's heading**—you do NOT have to scroll to the end of the document to look up concepts.
 >
-> Use this guide for system understanding, architectural documentation, stakeholder presentations, and technical interviews.
+> Use this guide for system understanding, architectural documentation, stakeholder presentations, and system architecture deep-dives.
 
 ---
 
@@ -138,7 +138,7 @@ Every day below includes:
 2. **Technical Terms Explained** (Exact Industry Definition + Concrete implementation in Offgrid)
 3. **Under the Hood** (Go implementation details)
 4. **Architectural Trade-offs** (What we gained vs. what we sacrificed)
-5. **Interview Talking Point** (How to present this in senior-level interviews)
+5. **Architectural Invariant** (Senior system design principle)
 
 ---
 
@@ -158,7 +158,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Realistic engineering constraints (knowing that an edge laptop can execute 1,100 durable writes/sec and run a 1.5B model at 40 tokens/sec).
   - *Sacrificed:* Development velocity on Day 1 (spending time measuring hardware rather than prototyping features).
-* **Interview Point:** *"We never optimize based on vibes or theoretical assumptions. We benchmarked our hardware first to establish hard performance budgets."*
+* **Architectural Invariant:** *"We never optimize based on vibes or theoretical assumptions. We benchmarked our hardware first to establish hard performance budgets."*
 
 ---
 
@@ -186,7 +186,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Complete decoupling of domain code from Ollama; lightning-fast tests (sub-millisecond unit tests).
   - *Sacrificed:* Access to Ollama-specific proprietary features (e.g., model downloading or GPU VRAM controls) inside the agent layer.
-* **Interview Point:** *"Go proverbs state: 'The bigger the interface, the weaker the abstraction.' Our LLM interface has exactly one method, satisfying the Interface Segregation Principle and making tests frictionless."*
+* **Architectural Invariant:** *"Go proverbs state: 'The bigger the interface, the weaker the abstraction.' Our LLM interface has exactly one method, satisfying the Interface Segregation Principle and making tests frictionless."*
 
 ---
 
@@ -207,7 +207,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Near 100% structured reliability without external bloated Python frameworks (LangChain).
   - *Sacrificed:* Slightly higher latency on malformed responses due to retry roundtrips.
-* **Interview Point:** *"We don't trust prompt engineering alone. We use grammar-constrained decoding at the engine level backed by a bounded reflection loop, mathematically proven using Wilson Confidence Intervals."*
+* **Architectural Invariant:** *"We don't trust prompt engineering alone. We use grammar-constrained decoding at the engine level backed by a bounded reflection loop, mathematically proven using Wilson Confidence Intervals."*
 
 ---
 
@@ -229,7 +229,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Zero risk of arbitrary code execution or prompt injection corrupting the database.
   - *Sacrificed:* Dynamic open-ended agent flexibility (the model cannot invent new tools on the fly).
-* **Interview Point:** *"The model proposes; the Go runtime disposes. The LLM is treated as an untrusted user input form."*
+* **Architectural Invariant:** *"The model proposes; the Go runtime disposes. The LLM is treated as an untrusted user input form."*
 
 ---
 
@@ -251,7 +251,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* 90% of routine user requests execute in microseconds with 0% battery/GPU drain; contract tests guarantee storage engines can be swapped without regression.
   - *Sacrificed:* Regex maintenance overhead for the Tier 0 rule set.
-* **Interview Point:** *"A senior engineer doesn't use AI for everything. Tier 0 rules execute in 2 microseconds; Tier 1 runs only when linguistic judgment is required."*
+* **Architectural Invariant:** *"A senior engineer doesn't use AI for everything. Tier 0 rules execute in 2 microseconds; Tier 1 runs only when linguistic judgment is required."*
 
 ---
 
@@ -277,7 +277,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Complete auditability, zero risk of data loss, trivial rollbacks, and foundation for distributed sync.
   - *Sacrificed:* Log growth requires disk space; replay cost increases with millions of historical ops (mitigated by snapshots).
-* **Interview Point:** *"In Offgrid, the log is the truth; the tables are just a cache. If someone tampers with the tasks table, `Store.Verify()` detects it instantly and `Store.Rebuild()` reconstructs it in milliseconds."*
+* **Architectural Invariant:** *"In Offgrid, the log is the truth; the tables are just a cache. If someone tampers with the tasks table, `Store.Verify()` detects it instantly and `Store.Rebuild()` reconstructs it in milliseconds."*
 
 ---
 
@@ -297,7 +297,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* A single, self-contained binary with zero external runtime dependencies.
   - *Sacrificed:* No graphical user interface (terminal-first).
-* **Interview Point:** *"The `cmd/offgrid` package acts as the pure Composition Root. No internal package knows about CLI flags or terminal formatting."*
+* **Architectural Invariant:** *"The `cmd/offgrid` package acts as the pure Composition Root. No internal package knows about CLI flags or terminal formatting."*
 
 ---
 
@@ -323,7 +323,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* 100% accurate connectivity state without UI lag or network flapping.
   - *Sacrificed:* Periodic background HTTP requests consume minor network bandwidth (~几 KB/minute).
-* **Interview Point:** *"We never trust the OS 'Wi-Fi Connected' icon. We probe for HTTP 204 and use asymmetric hysteresis to prevent state flapping on weak satellite links."*
+* **Architectural Invariant:** *"We never trust the OS 'Wi-Fi Connected' icon. We probe for HTTP 204 and use asymmetric hysteresis to prevent state flapping on weak satellite links."*
 
 ---
 
@@ -348,7 +348,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Total crash resistance and protection against zombie/slow worker duplicate writes.
   - *Sacrificed:* Requires explicit lease heartbeats for long-running jobs.
-* **Interview Point:** *"We achieve exactly-once outcome recording using the attempt number as a distributed fencing token, ensuring zombie workers cannot corrupt completed tasks."*
+* **Architectural Invariant:** *"We achieve exactly-once outcome recording using the attempt number as a distributed fencing token, ensuring zombie workers cannot corrupt completed tasks."*
 
 ---
 
@@ -374,7 +374,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Deterministic, predictable routing with zero LLM overhead for routing decisions.
   - *Sacrificed:* Cannot catch subtle, nuanced complexity that falls outside the closed vocabulary.
-* **Interview Point:** *"Routing decisions must be deterministic and explainable. We use a closed vocabulary gate rather than spending 2 seconds asking an LLM to route an LLM call."*
+* **Architectural Invariant:** *"Routing decisions must be deterministic and explainable. We use a closed vocabulary gate rather than spending 2 seconds asking an LLM to route an LLM call."*
 
 ---
 
@@ -394,7 +394,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Reproducible, deterministic chaos testing that runs in standard `go test` suites.
   - *Sacrificed:* Only intercepts Go HTTP traffic, not low-level raw TCP/UDP sockets outside the transport layer.
-* **Interview Point:** *"We don't hope our system survives network failure; we built an internal `http.RoundTripper` fault-injector to mathematically simulate flaky satellite links in CI."*
+* **Architectural Invariant:** *"We don't hope our system survives network failure; we built an internal `http.RoundTripper` fault-injector to mathematically simulate flaky satellite links in CI."*
 
 ---
 
@@ -418,7 +418,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Absolute safety against duplicated mutations on unexpected process restarts.
   - *Sacrificed:* Jobs that crash mid-mutation require manual confirmation or idempotent retry policies.
-* **Interview Point:** *"In distributed systems, crash recovery is not an afterthought. We proved our drain worker by firing 3 SIGKILLs during a 60-job run in CI with zero lost or duplicated records."*
+* **Architectural Invariant:** *"In distributed systems, crash recovery is not an afterthought. We proved our drain worker by firing 3 SIGKILLs during a 60-job run in CI with zero lost or duplicated records."*
 
 ---
 
@@ -443,7 +443,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Real-time system monitoring with zero lock contention and zero impact on worker throughput.
   - *Sacrificed:* Metrics are eventually consistent (delayed by up to 1 second).
-* **Interview Point:** *"Our dashboard connects with `query_only=ON` and reads metrics updated via atomic POSIX file renames, guaranteeing the monitor can never stall worker write transactions."*
+* **Architectural Invariant:** *"Our dashboard connects with `query_only=ON` and reads metrics updated via atomic POSIX file renames, guaranteeing the monitor can never stall worker write transactions."*
 
 ---
 
@@ -463,7 +463,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* A rock-solid, production-grade local runtime ready for multi-device sync.
   - *Sacrificed:* Deferred multi-node CRDT sync to v0.2.
-* **Interview Point:** *"A great architecture knows when to freeze. Day 14 locked in our single-node invariants so that our upcoming distributed sync layer had an unshakeable foundation."*
+* **Architectural Invariant:** *"A great architecture knows when to freeze. Day 14 locked in our single-node invariants so that our upcoming distributed sync layer had an unshakeable foundation."*
 
 ---
 
@@ -493,7 +493,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* True causal ordering across disconnected devices without needing expensive atomic clocks or GPS hardware.
   - *Sacrificed:* If a rogue node has a physical clock set 10 years in the future, it can pull other clocks forward (mitigated by maximum clock skew bounds).
-* **Interview Point:** *"Physical clocks cannot be trusted in distributed systems due to NTP jumps and clock drift. We implemented Hybrid Logical Clocks combining physical wall time with Lamport counters to guarantee strict causal monotonicity."*
+* **Architectural Invariant:** *"Physical clocks cannot be trusted in distributed systems due to NTP jumps and clock drift. We implemented Hybrid Logical Clocks combining physical wall time with Lamport counters to guarantee strict causal monotonicity."*
 
 ---
 
@@ -523,7 +523,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Automatic, conflict-free state convergence across any number of edge nodes in any network topology.
   - *Sacrificed:* Concurrent edits to the exact same field will pick one winner (Last-Write-Wins); concurrent edits to *different* fields on the same task are cleanly merged.
-* **Interview Point:** *"We decomposed tasks into per-field LWW-Registers. Edits to different fields merge seamlessly; concurrent edits to the same field converge deterministically via HLC tie-breaking."*
+* **Architectural Invariant:** *"We decomposed tasks into per-field LWW-Registers. Edits to different fields merge seamlessly; concurrent edits to the same field converge deterministically via HLC tie-breaking."*
 
 ---
 
@@ -553,7 +553,7 @@ Every day below includes:
 * **Trade-off:**
   - *Gained:* Mathematical proof of correctness across millions of generated permutations; caught subtle tie-breaking bugs before production.
   - *Sacrificed:* Requires deep mathematical rigor and longer test suite runtimes (~300ms vs ~5ms for basic unit tests).
-* **Interview Point:** *"Unit tests only verify what the developer remembers to test. We used Rapid property-based testing to verify all four algebraic semilattice laws across 43,000 generated scenarios."*
+* **Architectural Invariant:** *"Unit tests only verify what the developer remembers to test. We used Rapid property-based testing to verify all four algebraic semilattice laws across 43,000 generated scenarios."*
 
 ---
 
