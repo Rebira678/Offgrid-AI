@@ -26,6 +26,7 @@ const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
   offgrid sync once    -db FILE [-create] [-allow-unsigned] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
   offgrid sync run     -db FILE [-create] [-allow-unsigned] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
+  offgrid sync enroll  -peer URL -invite LINK -label NAME   join a membership with a one-time invite (on the new device; needs its own key)
   offgrid sync stats   FILE                                  judge a soak: did memory or goroutines grow? (serve and run write FILE with -stats FILE)
 
 once and run take the -fault-* flags (see "offgrid fault"), so the connection can
@@ -65,8 +66,10 @@ func cmdSync(args []string, stdout, stderr io.Writer) int {
 		return cmdSyncSummary(args[1:], stdout, stderr)
 	case "stats":
 		return cmdSyncStats(args[1:], stdout, stderr)
+	case "enroll":
+		return cmdSyncEnroll(args[1:], stdout, stderr)
 	}
-	fmt.Fprintf(stderr, "error: unknown sync command %q (serve, once, run, summary or stats)\n", args[0])
+	fmt.Fprintf(stderr, "error: unknown sync command %q (serve, once, run, summary, stats or enroll)\n", args[0])
 	return 2
 }
 
@@ -223,6 +226,7 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		Window:   *window,
 		Log:      log.New(stderr, "sync: ", log.LstdFlags),
 		DeviceID: devID,
+		Enroller: st,
 	}))
 	// Scripts and tests read this line to learn the port when -addr ends in :0.
 	fmt.Fprintf(stdout, "offgrid sync: node %s serving on http://%s\n", st.NodeID(), ln.Addr())
