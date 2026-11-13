@@ -30,6 +30,9 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("store", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), "the SQLite file (default: $OFFGRID_DB)")
+	role := fs.String("role", "member", "with invite: member or admin")
+	label := fs.String("label", "", "with found or invite: a human name for the device")
+	ttl := fs.Duration("ttl", 15*time.Minute, "with invite: how long it stays valid (at most 24h)")
 	n := fs.Int("n", 20, "with ops: how many of the most recent ops to show")
 	anchor := fs.String("anchor", "", "with verify: a file of saved heads (from: offgrid store head) the log must still agree with")
 	if err := fs.Parse(args); err != nil {
@@ -45,13 +48,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if sub == "" {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "attest", "head", "rebuild", "ops", "fields":
+	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops or fields)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite or members)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -61,11 +64,26 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
+	var sopt sqlstore.Options
+	if sub == "found" || sub == "invite" {
+		sg, serr := deviceSigner()
+		if serr != nil {
+			fmt.Fprintln(stderr, "error:", serr)
+			return 1
+		}
+		if sg == nil {
+			return needDeviceKey(stderr)
+		}
+		sopt.Signer = sg
+	}
+	st, err := openExistingStore(ctx, *dbPath, sopt)
 	if err != nil {
 		return storeError(stderr, err)
 	}
 	defer st.Close()
+	if sub == "found" || sub == "invite" || sub == "members" {
+		return storeMemberCmd(ctx, sub, st, *role, *label, *ttl, stdout, stderr)
+	}
 
 	switch sub {
 	case "info":
@@ -96,6 +114,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stdout, "    %d of them were chained when this database was upgraded to Day 27, not when they were written:\n    an edit made before that cannot be seen.\n", rep.ChainRetro)
 			}
 			printSignatureReport(stdout, rep.Sigs)
+			printMembershipSummary(stdout, rep.Membership)
 			fmt.Fprintf(stdout, "ok: replayed %d ops into a scratch database and got the same state\n", rep.Ops)
 			fmt.Fprintf(stdout, "state hash %s\n", rep.LiveHash)
 			if *anchor != "" {
@@ -113,6 +132,10 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			}
 		case errors.Is(err, sqlstore.ErrTampered):
 			return tamperReport(stderr, err)
+		case errors.Is(err, sqlstore.ErrNotAuthorized):
+			fmt.Fprintf(stderr, "MEMBERSHIP PROBLEM: %v\n", err)
+			fmt.Fprintln(stderr, "A device was added by someone who was not allowed to add it. Nothing was changed. See: offgrid store members")
+			return 1
 		case errors.Is(err, sqlstore.ErrBadSignature), errors.Is(err, sqlstore.ErrKeyChange), errors.Is(err, sqlstore.ErrUnsigned):
 			fmt.Fprintf(stderr, "SIGNATURE PROBLEM: %v\n", err)
 			fmt.Fprintln(stderr, "The hash chain is intact, but this op's signature does not hold. Do not trust the op until you know why.")
