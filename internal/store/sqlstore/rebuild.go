@@ -162,9 +162,10 @@ var ErrDiverged = errors.New("the materialized view does not match the op log")
 
 // VerifyReport says what Verify checked.
 type VerifyReport struct {
-	ChainHeads []Head    // the newest hash-chain entry of every replica, once the chain has been recomputed
-	Sigs       SigReport // signatures checked (see VerifySignatures)
-	ChainRetro int       // ops chained when the database was upgraded, not when written (see ChainReport)
+	ChainHeads []Head           // the newest hash-chain entry of every replica, once the chain has been recomputed
+	Membership MembershipReport // who is enrolled (see members.go)
+	Sigs       SigReport        // signatures checked (see VerifySignatures)
+	ChainRetro int              // ops chained when the database was upgraded, not when written (see ChainReport)
 	Ops        int
 	LiveHash   string // hash of the view in the database
 	ReplayHash string // hash of the view recomputed from the log in a scratch database
@@ -189,6 +190,12 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 	rep.ChainHeads, rep.ChainRetro = chain.Heads, chain.Retro
 	if rep.Sigs, err = s.VerifySignatures(ctx); err != nil {
 		return rep, err
+	}
+	if rep.Membership, err = s.Members(ctx); err != nil {
+		return rep, err
+	}
+	if p := rep.Membership.Problems; len(p) > 0 {
+		return rep, fmt.Errorf("%w: op %s/%d: %s (and %d more)", ErrNotAuthorized, p[0].Node, p[0].Seq, p[0].Reason, len(p)-1)
 	}
 	scratch, err := sql.Open(driverName, dsn(":memory:"))
 	if err != nil {

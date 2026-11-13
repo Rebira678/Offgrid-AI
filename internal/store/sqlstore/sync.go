@@ -168,7 +168,7 @@ type ApplyResult struct {
 }
 
 // knownKinds are the op kinds this version understands.
-var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true}
+var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true, KindMemberAdd: true}
 
 func validateRemote(op Op) error {
 	switch {
@@ -182,8 +182,8 @@ func validateRemote(op Op) error {
 		return fmt.Errorf("%w: %s/%d: unknown kind %q (written by a newer version?)", ErrBadOp, op.NodeID, op.Seq, op.Kind)
 	case len(op.Payload) == 0 || len(op.Payload) > maxRemotePayload || !json.Valid(op.Payload):
 		return fmt.Errorf("%w: %s/%d: the payload is empty, too large or not JSON", ErrBadOp, op.NodeID, op.Seq)
-	case op.Kind == KindHistoryAttested && op.Sig == nil:
-		return fmt.Errorf("%w: %s/%d: an attestation must be signed (an unsigned one vouches for nothing)", ErrBadOp, op.NodeID, op.Seq)
+	case (op.Kind == KindHistoryAttested || op.Kind == KindMemberAdd) && op.Sig == nil:
+		return fmt.Errorf("%w: %s/%d: a %s op must be signed (an unsigned one vouches for nothing)", ErrBadOp, op.NodeID, op.Seq, op.Kind)
 	}
 	return nil
 }
@@ -320,6 +320,11 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 	keys, verr := s.verifyFresh(ctx, tx, fresh)
 	if verr != nil {
 		return res, verr
+	}
+
+	// Who may enroll whom: judged over the stored member.add ops plus these.
+	if err := s.checkMembershipFresh(ctx, tx, fresh); err != nil {
+		return res, err
 	}
 
 	// Move this replica's clock past everything it is about to hold. A far-future

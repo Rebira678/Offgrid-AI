@@ -344,6 +344,15 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			}
 		}
 
+	case KindMemberAdd:
+		var p memberAddPayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad member.add: %v", err)
+		}
+		if err := checkMemberAdd(p); err != nil {
+			return bad("bad member.add: %v", err)
+		}
+
 	case KindHistoryAttested:
 		if _, err := decodeAttestation(op.Payload); err != nil {
 			return bad("bad attestation: %v", err)

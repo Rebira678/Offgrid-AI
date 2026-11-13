@@ -70,7 +70,8 @@ func FuzzApplyRemoteOp(f *testing.F) {
 		if err != nil {
 			typed := errors.Is(err, ErrBadOp) || errors.Is(err, ErrGap) || errors.Is(err, ErrFork) ||
 				errors.Is(err, ErrChain) || errors.Is(err, ErrIDCollision) || errors.Is(err, ErrClockDrift) ||
-				errors.Is(err, ErrBadSignature) || errors.Is(err, ErrKeyChange) || errors.Is(err, ErrUnsigned)
+				errors.Is(err, ErrBadSignature) || errors.Is(err, ErrKeyChange) || errors.Is(err, ErrUnsigned) ||
+				errors.Is(err, ErrNotAuthorized)
 			if !typed {
 				t.Fatalf("an op from a peer failed with an error that is not one of the typed refusals (the server would call it an internal error): %v\nop: %+v", err, op)
 			}
