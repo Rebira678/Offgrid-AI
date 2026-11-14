@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -180,7 +181,7 @@ func TestMembershipSyncsAndEveryReplicaAgrees(t *testing.T) {
 		t.Fatalf("%+v\n%+v", ra, rb)
 	}
 	for i := range ra.Members {
-		if ra.Members[i] != rb.Members[i] {
+		if !reflect.DeepEqual(ra.Members[i], rb.Members[i]) {
 			t.Fatalf("replicas disagree on member %d: %+v vs %+v", i, ra.Members[i], rb.Members[i])
 		}
 	}
@@ -235,7 +236,7 @@ func TestFoldIsAFunctionOfTheSetNotTheOrder(t *testing.T) {
 			t.Fatalf("permutation %d changed the result", i)
 		}
 		for d, m := range want {
-			if got[d] != m {
+			if !reflect.DeepEqual(got[d], m) {
 				t.Fatalf("permutation %d: member %s differs", i, d)
 			}
 		}
