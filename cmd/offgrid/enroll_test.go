@@ -191,3 +191,73 @@ func TestEnrollRefusesAnAnswerFromAnotherAdmin(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, out, e)
 	}
 }
+
+func TestRevokingADeviceVoidsItsLaterWorkAndVerifyListsIt(t *testing.T) {
+	t.Setenv("OFFGRID_SYNC_KEY", strings.Repeat("k", 32))
+	t.Setenv("OFFGRID_NODE", "laptop")
+	adminKey := useKey(t, "admin")
+	db := dbPath(t)
+	runCLI(t, "", "exec", "-db", db, `{"intent":"create_task","title":"seed"}`)
+	runCLI(t, "", "store", "-db", db, "found", "-label", "laptop")
+	_, out, _ := runCLI(t, "", "store", "-db", db, "invite", "-label", "Pi")
+	link := linkRE.FindString(out)
+	url := serveAdmin(t, db)
+	piKey := useKey(t, "pi")
+	if code, _, e := runCLI(t, "", "sync", "enroll", "-peer", url, "-invite", link, "-label", "Pi"); code != 0 {
+		t.Fatal(e)
+	}
+	t.Setenv("OFFGRID_NODE", "pi")
+	dbB := dbPath(t)
+	if code, _, e := runCLI(t, "", "sync", "once", "-db", dbB, "-create", "-peer", url); code != 0 {
+		t.Fatal(e)
+	}
+	runCLI(t, "", "exec", "-db", dbB, `{"intent":"create_task","title":"pi-before"}`)
+	if code, _, e := runCLI(t, "", "sync", "once", "-db", dbB, "-peer", url); code != 0 {
+		t.Fatal(e)
+	}
+	piID := strings.Fields(func() string { _, o, _ := runCLI(t, "", "identity", "show"); return o }())
+	var dev string
+	for _, f := range piID {
+		if strings.HasPrefix(f, "dev_") {
+			dev = f
+		}
+	}
+	if dev == "" {
+		t.Fatalf("no device id in %q", piID)
+	}
+
+	// The admin revokes the Pi.
+	t.Setenv("OFFGRID_IDENTITY_KEY", adminKey)
+	t.Setenv("OFFGRID_NODE", "laptop")
+	code, out, e := runCLI(t, "", "store", "-db", db, "revoke", "-device", dev)
+	if code != 0 || !strings.Contains(out, "revoked") || !strings.Contains(out, "pi:") {
+		t.Fatalf("revoke: exit %d\n%s%s", code, out, e)
+	}
+	if code, _, e := runCLI(t, "", "store", "-db", db, "revoke", "-device", dev); code == 0 || !strings.Contains(e, "already revoked") {
+		t.Fatalf("twice: %d %q", code, e)
+	}
+	if code, _, e := runCLI(t, "", "store", "-db", db, "revoke"); code != 2 || !strings.Contains(e, "-device") {
+		t.Fatalf("no device: %d %q", code, e)
+	}
+
+	// The Pi, not having heard, keeps writing and syncs.
+	t.Setenv("OFFGRID_IDENTITY_KEY", piKey)
+	t.Setenv("OFFGRID_NODE", "pi")
+	runCLI(t, "", "exec", "-db", dbB, `{"intent":"create_task","title":"pi-after"}`)
+	runCLI(t, "", "sync", "once", "-db", dbB, "-peer", url)
+
+	t.Setenv("OFFGRID_IDENTITY_KEY", adminKey)
+	t.Setenv("OFFGRID_NODE", "laptop")
+	_, out, _ = runCLI(t, "", "store", "-db", db, "members")
+	if !strings.Contains(out, "REVOKED") {
+		t.Fatalf("members must show the revoked device:\n%s", out)
+	}
+	code, out, e = runCLI(t, "", "store", "-db", db, "verify")
+	if code != 0 || !strings.Contains(out, "void") || !strings.Contains(out, "pi/") {
+		t.Fatalf("verify must list the void ops: exit %d\n%s%s", code, out, e)
+	}
+	_, out, _ = runCLI(t, "", "exec", "-db", db, `{"intent":"list_tasks"}`)
+	if strings.Contains(out, "pi-after") || !strings.Contains(out, "pi-before") {
+		t.Fatalf("the view must keep the work before the cutoff and drop the work after:\n%s", out)
+	}
+}
