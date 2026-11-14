@@ -414,3 +414,220 @@ func TestRefoldViewMultiEntityConvergence(t *testing.T) {
 		}
 	}
 }
+
+// TestAuthorizeZeroAllocationsOnHotPath verifies that Authorize does not
+// allocate on the heap for authorized ops or static ErrRevoked verdicts.
+func TestAuthorizeZeroAllocationsOnHotPath(t *testing.T) {
+	founder, _ := identity.Generate()
+	worker, _ := identity.Generate()
+
+	events := []memberEvent{
+		{
+			Kind:    KindMemberAdd,
+			Node:    "admin",
+			Seq:     1,
+			TS:      time.Unix(1700000000, 0).UTC(),
+			Counter: 1,
+			Signer:  founder.ID(),
+			Add: memberAddPayload{
+				Device:    founder.ID(),
+				PublicKey: founder.PublicKey(),
+				Role:      RoleAdmin,
+				Label:     "founder",
+			},
+		},
+		{
+			Kind:    KindMemberAdd,
+			Node:    "admin",
+			Seq:     2,
+			TS:      time.Unix(1700000010, 0).UTC(),
+			Counter: 2,
+			Signer:  founder.ID(),
+			Add: memberAddPayload{
+				Device:    worker.ID(),
+				PublicKey: worker.PublicKey(),
+				Role:      RoleMember,
+				Label:     "worker",
+			},
+		},
+		{
+			Kind:    KindMemberRevoke,
+			Node:    "admin",
+			Seq:     3,
+			TS:      time.Unix(1700000100, 0).UTC(),
+			Counter: 3,
+			Signer:  founder.ID(),
+			Revoke: memberRevokePayload{
+				Device: worker.ID(),
+				Cutoffs: []Cutoff{
+					{Node: "worker-node", Seq: 10, Hash: strings.Repeat("a", 64)},
+				},
+			},
+		},
+	}
+	st := foldState(events, nil)
+	opAllowed := OpRef{Node: "worker-node", Seq: 5, Kind: "task.create", Signer: worker.ID()}
+	opRevoked := OpRef{Node: "worker-node", Seq: 15, Kind: "task.create", Signer: worker.ID()}
+
+	allocsAllowed := testing.AllocsPerRun(1000, func() {
+		if err := Authorize(st, opAllowed); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocsAllowed > 0 {
+		t.Errorf("Authorize allowed: got %f allocs, want 0", allocsAllowed)
+	}
+
+	allocsRevoked := testing.AllocsPerRun(1000, func() {
+		if err := Authorize(st, opRevoked); !errors.Is(err, ErrRevoked) {
+			t.Fatal(err)
+		}
+	})
+	if allocsRevoked > 0 {
+		t.Errorf("Authorize revoked: got %f allocs, want 0", allocsRevoked)
+	}
+}
+
+// TestEquivocationIsolationAcrossReplicas proves that when a revoked device
+// writes an equivocated chain on replica-1, only replica-1 has its cutoffs
+// dropped to seq 0; replica-2 remains valid up to its legitimate cutoff.
+func TestEquivocationIsolationAcrossReplicas(t *testing.T) {
+	ctx := context.Background()
+	e := trio(t)
+
+	// Pi writes 2 tasks on replica-1 and 2 tasks on replica-2
+	// e.b is replica "pi". We'll also open a second store for pi on "pi-backup"
+	piBackupID := e.idb
+	piBackup, clkPiBackup := member(t, "pi-backup", piBackupID)
+
+	create(t, e.b, "pi-task-node-pi")
+	create(t, piBackup, "pi-backup-task-1")
+	create(t, piBackup, "pi-backup-task-2")
+
+	// Sync pi and piBackup into laptop (e.a)
+	pull(t, e.a, e.b, 50)
+	pull(t, e.a, piBackup, 50)
+
+	// Get legitimate chain hashes
+	held, err := loadHeld(ctx, e.a.db, []memberEvent{
+		{
+			Kind: KindMemberRevoke,
+			Revoke: memberRevokePayload{
+				Device: e.idb.ID(),
+				Cutoffs: []Cutoff{
+					{Node: "pi", Seq: 1, Hash: strings.Repeat("0", 64)},
+					{Node: "pi-backup", Seq: 2, Hash: strings.Repeat("0", 64)},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	realHashPi, _ := held("pi", 1)
+	realHashPiBackup, _ := held("pi-backup", 2)
+
+	// Admin revokes Pi:
+	// For "pi": provide a bogus/equivocated hash!
+	// For "pi-backup": provide the real honest hash!
+	bogusHash := strings.Repeat("f", 64)
+	cutoffs := []Cutoff{
+		{Node: "pi", Seq: 1, Hash: bogusHash},
+		{Node: "pi-backup", Seq: 2, Hash: realHashPiBackup},
+	}
+
+	if err := e.a.RevokeAt(ctx, e.idb.ID(), cutoffs); err != nil {
+		t.Fatalf("RevokeAt: %v", err)
+	}
+
+	// Effective cutoffs: "pi" must be reduced to seq 0 (all voided),
+	// but "pi-backup" must preserve seq 2!
+	mRep, err := e.a.Members(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var piMember *Member
+	for i := range mRep.Members {
+		if mRep.Members[i].Device == e.idb.ID() {
+			piMember = &mRep.Members[i]
+		}
+	}
+	if piMember == nil || !piMember.Revoked {
+		t.Fatalf("expected pi to be revoked")
+	}
+
+	for _, c := range piMember.Cutoffs {
+		if c.Node == "pi" && c.Seq != 0 {
+			t.Errorf("expected equivocation on 'pi' to set seq=0, got %d", c.Seq)
+		}
+		if c.Node == "pi-backup" && c.Seq != 2 {
+			t.Errorf("expected honest 'pi-backup' to maintain seq=2, got %d", c.Seq)
+		}
+	}
+
+	// Verify view: "pi-task-node-pi" is voided and absent,
+	// while "pi-backup-task-1" and "pi-backup-task-2" remain in view!
+	titles := viewTitles(t, e.a)
+	if strings.Contains(titles, "pi-task-node-pi") {
+		t.Fatalf("equivocated task on 'pi' was not voided: %s", titles)
+	}
+	if !strings.Contains(titles, "pi-backup-task-1") || !strings.Contains(titles, "pi-backup-task-2") {
+		t.Fatalf("honest tasks on 'pi-backup' were incorrectly voided: %s", titles)
+	}
+	_ = realHashPi
+	_ = clkPiBackup
+}
+
+// TestRevokedKeyNeverReEnrolls proves that once a public key / device ID
+// has been revoked, attempting to re-enroll it with a new invite fails deterministically,
+// both locally (ErrAlreadyMember) and across the sync wire (ErrNotAuthorized).
+func TestRevokedKeyNeverReEnrolls(t *testing.T) {
+	ctx := context.Background()
+	e := trio(t)
+
+	// Admin revokes Pi
+	if _, err := e.a.Revoke(ctx, e.idb.ID()); err != nil {
+		t.Fatalf("revoke pi: %v", err)
+	}
+
+	// 1. Founder attempts to locally re-add Pi's public key with a new member.add op:
+	// Store refuses immediately with ErrAlreadyMember.
+	err := e.a.AddMember(ctx, e.idb.PublicKey(), RoleMember, "pi-reborn")
+	if !errors.Is(err, ErrAlreadyMember) {
+		t.Fatalf("expected ErrAlreadyMember on re-adding revoked device, got: %v", err)
+	}
+
+	// 2. Over the sync wire / replay: another admin replica that only saw the
+	// founding op attempts to add Pi's key. When that op arrives at e.a
+	// (which already has Pi enrolled and revoked), checkMembershipFresh rejects it.
+	remoteAdmin, clkRemote := member(t, "remote-admin", e.ida)
+	// Pull only the founding op (seq 1) from e.a
+	foundOps, _, err := e.a.OpsSince(ctx, Summary{}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := remoteAdmin.ApplyRemote(ctx, foundOps); err != nil {
+		t.Fatalf("remoteAdmin sync founding: %v", err)
+	}
+
+	// remoteAdmin independently adds Pi
+	clkRemote.tick(time.Second)
+	if err := remoteAdmin.AddMember(ctx, e.idb.PublicKey(), RoleMember, "pi-reborn"); err != nil {
+		t.Fatalf("remoteAdmin AddMember: %v", err)
+	}
+
+	// remoteAdmin attempts to push its add op to e.a: must be rejected!
+	ops, _, err := remoteAdmin.OpsSince(ctx, Summary{"remote-admin": 0, "laptop": 1}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.a.ApplyRemote(ctx, ops)
+	if err == nil {
+		t.Fatalf("expected ApplyRemote of re-enrolled revoked key to fail, got res: %+v", res)
+	}
+	if !errors.Is(err, ErrNotAuthorized) || !strings.Contains(err.Error(), "revoked key never comes back") {
+		t.Fatalf("expected ErrNotAuthorized with 'revoked key never comes back', got: %v", err)
+	}
+}
+
