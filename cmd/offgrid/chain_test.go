@@ -182,7 +182,7 @@ func TestBadAnchorFilesAreRefusedClearly(t *testing.T) {
 func TestADatabaseFromBeforeTheChainIsUpgradedAndVerifyAdmitsWhatThatMeans(t *testing.T) {
 	db := loggedDB(t)
 	raw, _ := sqlstore.OpenDB(db)
-	for _, q := range []string{`DROP TABLE invites`, `DROP TABLE op_sigs`, `DROP TABLE device_keys`, `DROP TABLE node_devices`, `DROP TABLE op_chain`, `DELETE FROM schema_migrations WHERE version >= 4`, `DELETE FROM meta WHERE key = 'chain_retro_ops'`} {
+	for _, q := range []string{`DROP TABLE op_void`, `DROP INDEX ops_kind`, `DROP TABLE invites`, `DROP TABLE op_sigs`, `DROP TABLE device_keys`, `DROP TABLE node_devices`, `DROP TABLE op_chain`, `DELETE FROM schema_migrations WHERE version >= 4`, `DELETE FROM meta WHERE key = 'chain_retro_ops'`} {
 		if _, err := raw.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +192,7 @@ func TestADatabaseFromBeforeTheChainIsUpgradedAndVerifyAdmitsWhatThatMeans(t *te
 	if code != 0 || !strings.Contains(out, "3 of them were chained when this database was upgraded") {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
-	if _, out, _ := runCLI(t, "", "store", "-db", db, "info"); !strings.Contains(out, "schema version     6") {
+	if _, out, _ := runCLI(t, "", "store", "-db", db, "info"); !strings.Contains(out, "schema version     7") {
 		t.Errorf("info:\n%s", out)
 	}
 }
