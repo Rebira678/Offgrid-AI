@@ -168,7 +168,7 @@ type ApplyResult struct {
 }
 
 // knownKinds are the op kinds this version understands.
-var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true, KindMemberAdd: true}
+var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true, KindMemberAdd: true, KindMemberRevoke: true}
 
 func validateRemote(op Op) error {
 	switch {
@@ -182,7 +182,7 @@ func validateRemote(op Op) error {
 		return fmt.Errorf("%w: %s/%d: unknown kind %q (written by a newer version?)", ErrBadOp, op.NodeID, op.Seq, op.Kind)
 	case len(op.Payload) == 0 || len(op.Payload) > maxRemotePayload || !json.Valid(op.Payload):
 		return fmt.Errorf("%w: %s/%d: the payload is empty, too large or not JSON", ErrBadOp, op.NodeID, op.Seq)
-	case (op.Kind == KindHistoryAttested || op.Kind == KindMemberAdd) && op.Sig == nil:
+	case (op.Kind == KindHistoryAttested || op.Kind == KindMemberAdd || op.Kind == KindMemberRevoke) && op.Sig == nil:
 		return fmt.Errorf("%w: %s/%d: a %s op must be signed (an unsigned one vouches for nothing)", ErrBadOp, op.NodeID, op.Seq, op.Kind)
 	}
 	return nil
@@ -391,7 +391,13 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 			maxPos = op.Pos
 		}
 	}
-	if !anyHeld || maxHeld.less(keyOf(fresh[0])) {
+	// Who counts may have changed: a revocation arrived, or work by a revoked or
+	// unenrolled device did. Record what is void, and refold the view if it must change.
+	refold, rerr := reconcileVoid(ctx, tx, nanos(s.clock.Now().Time()))
+	if rerr != nil {
+		return res, rerr
+	}
+	if !refold && (!anyHeld || maxHeld.less(keyOf(fresh[0]))) {
 		// every new op sorts after everything already applied: apply on top
 		for _, op := range fresh {
 			if err = applyOp(ctx, tx, op); err != nil {
@@ -450,6 +456,10 @@ func loadOpsCanonical(ctx context.Context, x execer, after opKey, limit int) ([]
 // replayCanonical applies every op in src to dst in fold order and returns how
 // many it applied and the highest log position it saw.
 func replayCanonical(ctx context.Context, dst, src execer) (n int, maxPos int64, err error) {
+	void, _, err := currentVoid(ctx, src)
+	if err != nil {
+		return 0, 0, err
+	}
 	after := opKey{TS: -1}
 	for {
 		ops, err := loadOpsCanonical(ctx, src, after, replayBatch)
@@ -460,14 +470,17 @@ func replayCanonical(ctx context.Context, dst, src execer) (n int, maxPos int64,
 			return n, maxPos, nil
 		}
 		for _, op := range ops {
+			after = keyOf(op)
+			if op.Pos > maxPos {
+				maxPos = op.Pos
+			}
+			if _, isVoid := void[opID{op.NodeID, op.Seq}]; isVoid {
+				continue // kept in the log as evidence, left out of the view
+			}
 			if err := applyOp(ctx, dst, op); err != nil {
 				return n, maxPos, err
 			}
 			n++
-			if op.Pos > maxPos {
-				maxPos = op.Pos
-			}
-			after = keyOf(op)
 		}
 	}
 }
