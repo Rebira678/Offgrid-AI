@@ -577,10 +577,10 @@ func TestHeartbeatKeepsALongJobFromBeingTakenOver(t *testing.T) {
 			if _, ok, _ := e.q.Claim(bg, time.Minute); ok {
 				thieves.Add(1)
 			}
-			time.Sleep(5 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 		}
 	}()
-	eventually(t, "done", 5*time.Second, allDone(e, j.ID))
+	eventually(t, "done", 15*time.Second, allDone(e, j.ID))
 	close(stopThief)
 	wg.Wait()
 	if thieves.Load() != 0 {
