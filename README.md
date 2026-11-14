@@ -12,7 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 38: Device Enrollment & Membership complete.** One-time salted-hash invites, log-folded membership (`member.add`), founding trust root (`store found`), single-use immutability triggers, receipt-verified enrollment (`POST /v1/enroll`), and 2-admin resilience checks. See [docs/day-38.md](docs/day-38.md).
+> Status: **Day 39: Revocation & Authorize complete.** Admin-signed `member.revoke` with per-replica (sequence, hash) cutoffs, pure `Authorize(state, op)` validation, `op_void` append-only evidence table, view refolding, and senior-admin revocation precedence. See [docs/day-39.md](docs/day-39.md).
 
 ![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
 
