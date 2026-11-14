@@ -103,6 +103,13 @@ type Member struct {
 	Node      string // the op that enrolled it: replica ...
 	Seq       int64  // ... and sequence
 	At        time.Time
+
+	// Revocation (Day 39). A revoked member stays in the list: its earlier work is valid, and "revoked keys never come back".
+	Revoked   bool
+	RevokedBy string   // the admin device that signed the revocation
+	Cutoffs   []Cutoff // per replica: the last op of the device's chain that still counts
+
+	rank int // the order of enrollment: 0 is the founder
 }
 
 // MemberProblem is a member.add in the log that the rules do not allow.
@@ -118,11 +125,11 @@ type MembershipReport struct {
 	Problems []MemberProblem
 }
 
-// Admins counts the admins.
+// Admins counts the admins that are not revoked.
 func (r MembershipReport) Admins() int {
 	n := 0
 	for _, m := range r.Members {
-		if m.Role == RoleAdmin {
+		if m.Role == RoleAdmin && !m.Revoked {
 			n++
 		}
 	}
@@ -142,67 +149,11 @@ type opID struct {
 	Seq  int64
 }
 
-// memberEvent is a member.add as the fold sees it.
-type memberEvent struct {
-	Node    string
-	Seq     int64
-	TS      time.Time
-	Counter int64
-	Signer  string // the device that signed the op; "" if unsigned
-	Add     memberAddPayload
-}
-
-// foldMembership is the whole membership rule as a pure function. It returns
-// the enrolled devices and, for every event the rules refuse, why. The input
-// order does not matter: events are sorted first.
-func foldMembership(events []memberEvent) (map[string]Member, map[opID]string) {
-	evs := append([]memberEvent(nil), events...)
-	sort.Slice(evs, func(i, j int) bool {
-		a, b := evs[i], evs[j]
-		switch {
-		case !a.TS.Equal(b.TS):
-			return a.TS.Before(b.TS)
-		case a.Counter != b.Counter:
-			return a.Counter < b.Counter
-		case a.Node != b.Node:
-			return a.Node < b.Node
-		}
-		return a.Seq < b.Seq
-	})
-	members := map[string]Member{}
-	bad := map[opID]string{}
-	for _, e := range evs {
-		k := opID{e.Node, e.Seq}
-		if err := checkMemberAdd(e.Add); err != nil {
-			bad[k] = err.Error()
-			continue
-		}
-		if len(members) == 0 {
-			if e.Signer != e.Add.Device || e.Add.Role != RoleAdmin {
-				bad[k] = "the first add must be a founding: an admin adding itself, signed by itself"
-				continue
-			}
-		} else {
-			if s, ok := members[e.Signer]; !ok || s.Role != RoleAdmin {
-				bad[k] = fmt.Sprintf("signed by %q, which is not an admin", e.Signer)
-				continue
-			}
-			if _, dup := members[e.Add.Device]; dup {
-				bad[k] = "the device is already a member (roles are fixed at enrollment)"
-				continue
-			}
-		}
-		members[e.Add.Device] = Member{Device: e.Add.Device, PublicKey: e.Add.PublicKey, Role: e.Add.Role, Label: e.Add.Label,
-			AddedBy: e.Signer, Node: e.Node, Seq: e.Seq, At: e.TS}
-	}
-	return members, bad
-}
-
 // loadMemberEvents reads every member.add in the log with the device that signed it.
 func loadMemberEvents(ctx context.Context, x execer) ([]memberEvent, error) {
-	rows, err := x.QueryContext(ctx, `SELECT o.node_id, o.seq, o.ts, o.counter, o.payload, COALESCE(s.device_id, '')
+	rows, err := x.QueryContext(ctx, `SELECT o.node_id, o.seq, o.ts, o.counter, o.payload, o.kind, COALESCE(s.device_id, '')
 		FROM ops o LEFT JOIN op_sigs s ON s.node_id = o.node_id AND s.seq = o.seq
-		WHERE o.kind = ?`, KindMemberAdd)
+		WHERE o.kind IN (?, ?)`, KindMemberAdd, KindMemberRevoke)
 	if err != nil {
 		return nil, err
 	}
@@ -211,13 +162,14 @@ func loadMemberEvents(ctx context.Context, x execer) ([]memberEvent, error) {
 	for rows.Next() {
 		var e memberEvent
 		var wall int64
-		var payload string
-		if err := rows.Scan(&e.Node, &e.Seq, &wall, &e.Counter, &payload, &e.Signer); err != nil {
+		var payload, kind string
+		if err := rows.Scan(&e.Node, &e.Seq, &wall, &e.Counter, &payload, &kind, &e.Signer); err != nil {
 			return nil, err
 		}
 		e.TS = fromNanos(wall)
+		e.Kind = kind
 		// A payload that does not decode stays zero, which the fold refuses.
-		_ = decodeStrict(json.RawMessage(payload), &e.Add)
+		decodeEvent(&e, json.RawMessage(payload))
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -261,38 +213,62 @@ func (s *Store) membersOf(ctx context.Context, x execer) (MembershipReport, erro
 	if err != nil {
 		return MembershipReport{}, err
 	}
-	m, bad := foldMembership(evs)
-	return reportOf(m, bad), nil
+	held, err := loadHeld(ctx, x, evs)
+	if err != nil {
+		return MembershipReport{}, err
+	}
+	st := foldState(evs, held)
+	return reportOf(st.Members, st.Bad), nil
 }
 
-// checkMembershipFresh refuses ops about to be stored whose member.add the
-// rules do not allow, naming the first one. The fold runs over what is stored
-// PLUS the new ops, so a batch that carries an admin's add and that admin's
-// later adds together is judged as a whole.
+// checkMembershipFresh refuses ops about to be stored that the membership does
+// not allow. Two things are refused, naming the first:
+//
+//   - a member.add or member.revoke the rules do not allow (the fold runs over
+//     what is stored PLUS the new ops, so a batch that carries an admin's add and
+//     that admin's later adds together is judged as a whole);
+//   - once a membership exists, an op signed by a device that is not in it.
+//
+// An op from a REVOKED device is not refused: it is stored and voided (the log
+// keeps it as evidence, and the chain has no gaps). Unsigned ops are not
+// attributable and are not judged here; -require-signed refuses them.
 func (s *Store) checkMembershipFresh(ctx context.Context, tx execer, fresh []Op) error {
 	var mine []memberEvent
+	anySigned := false
 	for _, op := range fresh {
-		if op.Kind != KindMemberAdd {
+		if op.Sig != nil {
+			anySigned = true
+		}
+		if op.Kind != KindMemberAdd && op.Kind != KindMemberRevoke {
 			continue
 		}
-		e := memberEvent{Node: op.NodeID, Seq: op.Seq, TS: op.TS, Counter: int64(op.Counter)}
+		e := memberEvent{Kind: op.Kind, Node: op.NodeID, Seq: op.Seq, TS: op.TS, Counter: int64(op.Counter)}
 		if op.Sig != nil {
 			e.Signer = op.Sig.Device
 		}
-		_ = decodeStrict(op.Payload, &e.Add)
+		decodeEvent(&e, op.Payload)
 		mine = append(mine, e)
 	}
-	if len(mine) == 0 {
+	if len(mine) == 0 && !anySigned {
 		return nil
 	}
 	stored, err := loadMemberEvents(ctx, tx)
 	if err != nil {
 		return err
 	}
-	_, bad := foldMembership(append(stored, mine...))
+	st := foldState(append(stored, mine...), nil)
 	for _, e := range mine { // fresh is in (node, seq) order, so the first named is the lowest
-		if why, ok := bad[opID{e.Node, e.Seq}]; ok {
+		if why, ok := st.Bad[opID{e.Node, e.Seq}]; ok {
 			return fmt.Errorf("%w: op %s/%d: %s", ErrNotAuthorized, e.Node, e.Seq, why)
+		}
+	}
+	for _, op := range fresh {
+		if op.Sig == nil {
+			continue
+		}
+		err := Authorize(st, OpRef{Node: op.NodeID, Seq: op.Seq, Kind: op.Kind, Signer: op.Sig.Device})
+		if err != nil && !errors.Is(err, ErrRevoked) {
+			return fmt.Errorf("%w: op %s/%d", err, op.NodeID, op.Seq)
 		}
 	}
 	return nil
@@ -308,7 +284,7 @@ func (s *Store) requireAdmin(ctx context.Context, tx execer) (MembershipReport, 
 		return rep, err
 	}
 	for _, m := range rep.Members {
-		if m.Device == s.signer.ID() && m.Role == RoleAdmin {
+		if m.Device == s.signer.ID() && m.Role == RoleAdmin && !m.Revoked {
 			return rep, nil
 		}
 	}
