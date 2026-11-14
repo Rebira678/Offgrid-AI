@@ -630,4 +630,3 @@ func TestRevokedKeyNeverReEnrolls(t *testing.T) {
 		t.Fatalf("expected ErrNotAuthorized with 'revoked key never comes back', got: %v", err)
 	}
 }
-
