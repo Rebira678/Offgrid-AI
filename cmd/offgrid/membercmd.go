@@ -37,7 +37,7 @@ func needDeviceKey(w io.Writer) int {
 }
 
 // storeMemberCmd runs found, invite and members. st was opened with the device key.
-func storeMemberCmd(ctx context.Context, sub string, st *sqlstore.Store, role, label string, ttl time.Duration, stdout, stderr io.Writer) int {
+func storeMemberCmd(ctx context.Context, sub string, st *sqlstore.Store, role, label string, ttl time.Duration, device string, stdout, stderr io.Writer) int {
 	switch sub {
 	case "found":
 		if label == "" {
@@ -51,10 +51,6 @@ func storeMemberCmd(ctx context.Context, sub string, st *sqlstore.Store, role, l
 		fmt.Fprintln(stdout, "Every other device must be added by an admin. Check this device ID is the one you expect: it is the root of trust, and devices that enroll pin it.")
 		fmt.Fprintln(stdout, "Before a pilot, add a second admin:  offgrid store -db FILE invite -role admin -label NAME")
 	case "invite":
-		if strings.TrimSpace(label) == "" {
-			fmt.Fprintln(stderr, "error: -label NAME is required")
-			return 2
-		}
 		r := sqlstore.Role(role)
 		inv, err := st.CreateInvite(ctx, r, label, ttl)
 		if err != nil {
@@ -67,6 +63,20 @@ func storeMemberCmd(ctx context.Context, sub string, st *sqlstore.Store, role, l
 		fmt.Fprintln(stdout, "Give it to the new device by a channel only you can see (in person, a QR code: `qrencode -t ANSI '<link>'`).")
 		fmt.Fprintln(stdout, "Whoever holds it before it expires can enroll as that device. The new device must redeem it at THIS node (it is not synced).")
 		fmt.Fprintln(stdout, "The link has no certificate fingerprint yet; that arrives with mTLS on Day 40.")
+	case "revoke":
+		rev, err := st.Revoke(ctx, device)
+		if err != nil {
+			return memberError(stderr, err)
+		}
+		fmt.Fprintf(stdout, "ok: %s revoked.\n", rev.Device)
+		if len(rev.Cutoffs) == 0 {
+			fmt.Fprintln(stdout, "This node held none of its work, so none of it counts.")
+		}
+		for _, c := range rev.Cutoffs {
+			fmt.Fprintf(stdout, "  %s: work up to op %d counts; later work is void\n", c.Node, c.Seq)
+		}
+		fmt.Fprintln(stdout, "Work the device did after that and has not synced here is lost to the group; re-enter it by hand if it matters.")
+		fmt.Fprintln(stdout, "Other nodes learn of it when they next sync. Its key never comes back; enroll the device again with a NEW key (offgrid identity init).")
 	case "members":
 		rep, err := st.Members(ctx)
 		if err != nil {
@@ -105,6 +115,9 @@ func printMembership(w io.Writer, rep sqlstore.MembershipReport) {
 		tag := ""
 		if i == 0 {
 			tag = " (founder)"
+		}
+		if m.Revoked {
+			tag += " REVOKED"
 		}
 		fmt.Fprintf(w, "  %-6s %s  %q%s\n", m.Role, m.Device, m.Label, tag)
 	}
@@ -205,5 +218,23 @@ func printMembershipSummary(w io.Writer, rep sqlstore.MembershipReport) {
 	fmt.Fprintf(w, "ok: %d members, %d admin(s); founded by %s\n", len(rep.Members), rep.Admins(), rep.Founder())
 	if rep.Admins() < 2 {
 		fmt.Fprintln(w, "    WARNING: only 1 admin. Add a second before the pilot (offgrid store invite -role admin).")
+	}
+}
+
+// printVoid lists ops that are in the log but do not count.
+func printVoid(w io.Writer, rep sqlstore.VerifyReport) {
+	if len(rep.Void) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "void: %d op(s) are in the log as evidence but do not count\n", len(rep.Void))
+	for i, v := range rep.Void {
+		if i == 20 {
+			fmt.Fprintf(w, "  ... and %d more\n", len(rep.Void)-20)
+			break
+		}
+		fmt.Fprintf(w, "  %s/%d  %s\n", v.Node, v.Seq, v.Reason)
+	}
+	if rep.VoidLost > 0 {
+		fmt.Fprintf(w, "note: %d op(s) once recorded void are not void now (the membership changed under them)\n", rep.VoidLost)
 	}
 }
