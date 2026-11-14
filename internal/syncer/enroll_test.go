@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -245,4 +246,50 @@ func TestAnOversizedEnrollRequestIsRefused(t *testing.T) {
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
+}
+
+func TestAStrangersOpsAreRefusedOverTheWireAndARevokedDevicesAreKeptAsVoid(t *testing.T) {
+	ctx := context.Background()
+	e := newEnrollEnv(t)
+	inv, _ := e.invite(t, sqlstore.RoleMember)
+	idb := newKeyT(t)
+	if _, err := Enroll(ctx, nil, e.srv.URL, request(t, inv.Token, idb, "Pi")); err != nil {
+		t.Fatal(err)
+	}
+	// A stranger with the shared key but no enrollment.
+	stranger, _ := newSignedStoreWith(t, "mallory", e.clk, newKeyT(t))
+	add(t, stranger, "hostile")
+	cl := &Client{Peer: e.srv.URL, Key: key, Node: "mallory", Now: e.clk.now}
+	_, err := cl.Once(ctx, stranger)
+	var re *RemoteError
+	if !errors.As(err, &re) || re.Status != http.StatusForbidden || re.Code != CodeNotAuthorized {
+		t.Fatalf("a stranger's push: %v, want 403 %s", err, CodeNotAuthorized)
+	}
+	// The enrolled Pi is revoked; what it writes afterwards is accepted into the log and does not count.
+	pi, _ := newSignedStoreWith(t, "pi", e.clk, idb)
+	cp := &Client{Peer: e.srv.URL, Key: key, Node: "pi", Now: e.clk.now}
+	if _, err := cp.Once(ctx, pi); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.admin.Revoke(ctx, idb.ID()); err != nil {
+		t.Fatal(err)
+	}
+	add(t, pi, "after")
+	if _, err := cp.Once(ctx, pi); err != nil {
+		t.Fatalf("a revoked device's sync is not an error, its work is void: %v", err)
+	}
+	v, err := e.admin.VoidOps(ctx)
+	if err != nil || len(v) == 0 {
+		t.Fatalf("%v %v", v, err)
+	}
+}
+
+func newSignedStoreWith(t testing.TB, node string, clk *fakeClock, id *identity.Identity) (*sqlstore.Store, *identity.Identity) {
+	t.Helper()
+	s, err := sqlstore.Open(context.Background(), filepath.Join(t.TempDir(), "x.db"), sqlstore.Options{NodeID: node, Now: clk.now, Signer: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s, id
 }
