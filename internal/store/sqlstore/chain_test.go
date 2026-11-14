@@ -283,7 +283,7 @@ func TestSingleByteFlipsAreAlwaysFound(t *testing.T) {
 func asVersion3(t *testing.T, s *Store) string {
 	t.Helper()
 	path := s.path()
-	for _, q := range []string{`DROP TABLE invites`, `DROP TABLE op_sigs`, `DROP TABLE device_keys`, `DROP TABLE node_devices`, `DROP TABLE op_chain`, `DELETE FROM schema_migrations WHERE version >= 4`, `DELETE FROM meta WHERE key = 'chain_retro_ops'`} {
+	for _, q := range []string{`DROP TABLE op_void`, `DROP INDEX ops_kind`, `DROP TABLE invites`, `DROP TABLE op_sigs`, `DROP TABLE device_keys`, `DROP TABLE node_devices`, `DROP TABLE op_chain`, `DELETE FROM schema_migrations WHERE version >= 4`, `DELETE FROM meta WHERE key = 'chain_retro_ops'`} {
 		if _, err := s.db.Exec(q); err != nil {
 			t.Fatal(err)
 		}
@@ -315,7 +315,7 @@ func TestAnOldDatabaseIsChainedWhenItIsUpgradedAndSaysSo(t *testing.T) {
 	if err != nil || rep.Ops != 7 || rep.Retro != 6 {
 		t.Errorf("after reopening: %+v err %v", rep, err)
 	}
-	if v, _ := schemaVersion(ctx, s3.db); v != 6 {
+	if v, _ := schemaVersion(ctx, s3.db); v != 7 {
 		t.Errorf("schema version %d", v)
 	}
 }
