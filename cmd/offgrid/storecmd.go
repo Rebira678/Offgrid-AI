@@ -30,6 +30,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("store", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), "the SQLite file (default: $OFFGRID_DB)")
+	device := fs.String("device", "", "with revoke: the device ID (dev_...) to revoke")
 	role := fs.String("role", "member", "with invite: member or admin")
 	label := fs.String("label", "", "with found or invite: a human name for the device")
 	ttl := fs.Duration("ttl", 15*time.Minute, "with invite: how long it stays valid (at most 24h)")
@@ -48,13 +49,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if sub == "" {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members|revoke")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members":
+	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members", "revoke":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite or members)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite, members or revoke)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -65,7 +66,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	var sopt sqlstore.Options
-	if sub == "found" || sub == "invite" {
+	if sub == "found" || sub == "invite" || sub == "revoke" {
 		sg, serr := deviceSigner()
 		if serr != nil {
 			fmt.Fprintln(stderr, "error:", serr)
@@ -81,8 +82,12 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		return storeError(stderr, err)
 	}
 	defer st.Close()
-	if sub == "found" || sub == "invite" || sub == "members" {
-		return storeMemberCmd(ctx, sub, st, *role, *label, *ttl, stdout, stderr)
+	if sub == "found" || sub == "invite" || sub == "members" || sub == "revoke" {
+		if sub == "revoke" && *device == "" {
+			fmt.Fprintln(stderr, "usage: offgrid store -db FILE revoke -device dev_...\nerror: -device is required")
+			return 2
+		}
+		return storeMemberCmd(ctx, sub, st, *role, *label, *ttl, *device, stdout, stderr)
 	}
 
 	switch sub {
@@ -115,6 +120,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 			}
 			printSignatureReport(stdout, rep.Sigs)
 			printMembershipSummary(stdout, rep.Membership)
+			printVoid(stdout, rep)
 			fmt.Fprintf(stdout, "ok: replayed %d ops into a scratch database and got the same state\n", rep.Ops)
 			fmt.Fprintf(stdout, "state hash %s\n", rep.LiveHash)
 			if *anchor != "" {
