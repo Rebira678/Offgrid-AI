@@ -22,6 +22,10 @@ const replayBatch = 1000
 // large log does not have to fit in memory.
 func replay(ctx context.Context, dst, src execer, after int64) (n int, last int64, err error) {
 	last = after
+	void, _, err := currentVoid(ctx, src)
+	if err != nil {
+		return 0, last, err
+	}
 	for {
 		ops, err := loadOps(ctx, src, last, replayBatch)
 		if err != nil {
@@ -31,10 +35,12 @@ func replay(ctx context.Context, dst, src execer, after int64) (n int, last int6
 			return n, last, nil
 		}
 		for _, op := range ops {
-			if err := applyOp(ctx, dst, op); err != nil {
-				return n, last, err
+			if _, isVoid := void[opID{op.NodeID, op.Seq}]; !isVoid {
+				if err := applyOp(ctx, dst, op); err != nil {
+					return n, last, err
+				}
+				n++
 			}
-			n++
 			last = op.Pos
 		}
 	}
@@ -165,6 +171,8 @@ type VerifyReport struct {
 	ChainHeads []Head           // the newest hash-chain entry of every replica, once the chain has been recomputed
 	Membership MembershipReport // who is enrolled (see members.go)
 	Sigs       SigReport        // signatures checked (see VerifySignatures)
+	Void       []VoidOp         // ops in the log that do not count, and why (Day 39)
+	VoidLost   int              // op_void rows whose op is not void now (a record of something that has since changed)
 	ChainRetro int              // ops chained when the database was upgraded, not when written (see ChainReport)
 	Ops        int
 	LiveHash   string // hash of the view in the database
@@ -196,6 +204,29 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 	}
 	if p := rep.Membership.Problems; len(p) > 0 {
 		return rep, fmt.Errorf("%w: op %s/%d: %s (and %d more)", ErrNotAuthorized, p[0].Node, p[0].Seq, p[0].Reason, len(p)-1)
+	}
+	void, _, err := currentVoid(ctx, s.db)
+	if err != nil {
+		return rep, err
+	}
+	rep.Void = sortedVoid(void)
+	rows, err := s.db.QueryContext(ctx, `SELECT node_id, seq FROM op_void`)
+	if err != nil {
+		return rep, err
+	}
+	for rows.Next() {
+		var k opID
+		if err := rows.Scan(&k.Node, &k.Seq); err != nil {
+			rows.Close()
+			return rep, err
+		}
+		if _, still := void[k]; !still {
+			rep.VoidLost++
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return rep, err
 	}
 	scratch, err := sql.Open(driverName, dsn(":memory:"))
 	if err != nil {
