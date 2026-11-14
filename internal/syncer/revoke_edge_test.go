@@ -266,3 +266,117 @@ func TestSyncWireUnauthorizedRevokeAttemptForbidden(t *testing.T) {
 		t.Fatalf("expected 'not an admin' error, got: %v", err)
 	}
 }
+
+// TestSyncWireBatchWithInterleavedRevocationAndConvergence verifies that when
+// multiple replicas exchange ops involving member adds, task updates, and revocations,
+// a third un-involved peer pulling from the server arrives at the identical state hash,
+// identical active tasks, and identical void ops.
+func TestSyncWireBatchWithInterleavedRevocationAndConvergence(t *testing.T) {
+	ctx := context.Background()
+	clk := &fakeClock{t0}
+
+	admin, ida := newSignedStore(t, "admin-laptop", clk)
+	if err := admin.Found(ctx, "founder"); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(Handler(admin, ServerOptions{Key: key, Enroller: admin, Now: clk.now}))
+	t.Cleanup(srv.Close)
+
+	// Worker enrolls
+	workerID, _ := identity.Generate()
+	inv, _ := admin.CreateInvite(ctx, sqlstore.RoleMember, "worker-pi", time.Hour)
+	proof, _ := sqlstore.EnrollProof(inv.Token, workerID, "worker-pi")
+	req := EnrollRequest{Token: inv.Token, PublicKey: workerID.PublicKey(), Label: "worker-pi", Proof: proof}
+	if _, err := Enroll(ctx, nil, srv.URL, req); err != nil {
+		t.Fatalf("enroll failed: %v", err)
+	}
+
+	worker, err := sqlstore.Open(ctx, filepath.Join(t.TempDir(), "worker.db"), sqlstore.Options{
+		NodeID: "worker-node",
+		Now:    clk.now,
+		Signer: workerID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { worker.Close() })
+
+	clWorker := &Client{
+		Peer:     srv.URL,
+		Key:      key,
+		Node:     "worker-node",
+		DeviceID: workerID.ID(),
+		Now:      clk.now,
+	}
+
+	// Worker creates pre-revocation task
+	t1 := add(t, worker, "legitimate-task-1")
+	if _, err := clWorker.Once(ctx, worker); err != nil {
+		t.Fatal(err)
+	}
+
+	// Admin revokes worker
+	if _, err := admin.Revoke(ctx, workerID.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Worker creates post-revocation rogue task
+	add(t, worker, "rogue-task-2")
+	if _, err := clWorker.Once(ctx, worker); err != nil {
+		t.Fatal(err)
+	}
+
+	// Third peer (tab) syncs directly from admin server
+	tabID, _ := identity.Generate()
+	tab, err := sqlstore.Open(ctx, filepath.Join(t.TempDir(), "tab.db"), sqlstore.Options{
+		NodeID: "tab-node",
+		Now:    clk.now,
+		Signer: tabID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tab.Close() })
+
+	clTab := &Client{
+		Peer:     srv.URL,
+		Key:      key,
+		Node:     "tab-node",
+		DeviceID: tabID.ID(),
+		Now:      clk.now,
+	}
+
+	if _, err := clTab.Once(ctx, tab); err != nil {
+		t.Fatalf("tab sync failed: %v", err)
+	}
+
+	// Verification: tab must hold identical state hash to admin
+	hAdmin := hash(t, admin)
+	hTab := hash(t, tab)
+	if hAdmin != hTab {
+		t.Fatalf("state hash mismatch:\nadmin: %s\ntab:   %s", hAdmin, hTab)
+	}
+
+	// Tab tasks view must contain ONLY t1, never rogue-task-2
+	tabTasks, err := tab.List(ctx, task.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tabTasks) != 1 || tabTasks[0].ID != t1.ID {
+		t.Fatalf("tab tasks want 1 (id=%s), got %d (%+v)", t1.ID, len(tabTasks), tabTasks)
+	}
+
+	// Tab must record the void op in its VoidOps list
+	tabVoid, err := tab.VoidOps(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tabVoid) != 1 {
+		t.Fatalf("tab VoidOps want 1, got %d: %+v", len(tabVoid), tabVoid)
+	}
+	if tabVoid[0].Device != workerID.ID() {
+		t.Errorf("tab void op device = %s, want %s", tabVoid[0].Device, workerID.ID())
+	}
+	_ = ida
+}
