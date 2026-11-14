@@ -134,6 +134,25 @@ WHEN OLD.redeemed_at IS NOT NULL OR NEW.redeemed_at IS NULL
   OR NEW.label <> OLD.label OR NEW.created_by <> OLD.created_by OR NEW.created_at <> OLD.created_at OR NEW.expires <> OLD.expires
 BEGIN SELECT RAISE(ABORT, 'invites: only a first redemption may update a row'); END;
 `},
+	{Version: 7, Name: "revocation: op_void evidence table, indexes for the membership fold", SQL: `
+-- Ops that do not count (signed by a device that was revoked past its cutoff, or never enrolled). The log keeps
+-- them, still chained, as evidence. A row is added the first time an op is seen void; the CURRENT void set is
+-- always recomputed from the membership ops, so this table is a record, not an authority, and is append-only.
+CREATE TABLE op_void (
+	node_id     TEXT    NOT NULL,
+	seq         INTEGER NOT NULL CHECK (seq >= 1),
+	device_id   TEXT    NOT NULL,
+	reason      TEXT    NOT NULL,
+	recorded_at INTEGER NOT NULL,
+	PRIMARY KEY (node_id, seq)
+) WITHOUT ROWID;
+CREATE TRIGGER op_void_append_only_update BEFORE UPDATE ON op_void
+BEGIN SELECT RAISE(ABORT, 'op_void is append-only: updates are not allowed'); END;
+CREATE TRIGGER op_void_append_only_delete BEFORE DELETE ON op_void
+BEGIN SELECT RAISE(ABORT, 'op_void is append-only: deletes are not allowed'); END;
+CREATE INDEX ops_kind ON ops (kind);
+CREATE INDEX op_sigs_device ON op_sigs (device_id);
+`},
 }
 
 // ErrNewerSchema means the database was written by a newer Offgrid than this
