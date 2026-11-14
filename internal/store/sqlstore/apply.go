@@ -344,6 +344,15 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			}
 		}
 
+	case KindMemberRevoke:
+		var p memberRevokePayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad member.revoke: %v", err)
+		}
+		if err := checkMemberRevoke(p); err != nil {
+			return bad("bad member.revoke: %v", err)
+		}
+
 	case KindMemberAdd:
 		var p memberAddPayload
 		if err := decodeStrict(op.Payload, &p); err != nil {
