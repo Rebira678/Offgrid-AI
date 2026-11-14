@@ -470,8 +470,8 @@ func TestGoldenDay30DatabaseMigratesToSignedSchema(t *testing.T) {
 		t.Fatalf("opening a Day 30 database: %v", err)
 	}
 	defer s.Close()
-	if v, err := schemaVersion(ctx, s.db); err != nil || v != 6 {
-		t.Fatalf("schema version = %d, %v; want 6", v, err)
+	if v, err := schemaVersion(ctx, s.db); err != nil || v != 7 {
+		t.Fatalf("schema version = %d, %v; want 7", v, err)
 	}
 	if s.NodeID() != g.Node {
 		t.Fatalf("node = %s", s.NodeID())
