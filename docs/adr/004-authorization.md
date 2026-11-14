@@ -2,6 +2,8 @@
 
 **Status:** accepted, 2026-11-09 (from the decisions table of the Days 31 to 60 plan)
 
+**Implementation (Day 39):** `member.revoke` with per-replica (sequence, hash) cutoffs; the pure `Authorize(state, op)`; void ops recorded in an append-only `op_void` table and left out of the view. An admin can only revoke an admin enrolled after it.
+
 **Implementation (Day 38):** membership is a log of signed `member.add` ops, folded by a pure function; adds are enforced when ops arrive. Revocation and the pure `Authorize(state, op)` are Day 39.
 
 ## Decision
