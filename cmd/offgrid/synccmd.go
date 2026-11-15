@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,9 +23,9 @@ import (
 
 const syncHelp = `offgrid sync exchanges tasks with another replica over HTTP.
 
-  offgrid sync serve   -db FILE [-create] [-allow-unsigned] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
-  offgrid sync once    -db FILE [-create] [-allow-unsigned] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
-  offgrid sync run     -db FILE [-create] [-allow-unsigned] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
+  offgrid sync serve   -db FILE [-create] [-require-signed] [-addr 127.0.0.1:7878] [-key-file FILE] [-window 5m] [-max-drift 1h]
+  offgrid sync once    -db FILE [-create] [-require-signed] -peer URL [-key-file FILE] [-batch N] [-max-drift 1h]
+  offgrid sync run     -db FILE [-create] -peer URL [-every 2s] [-for D] ...    keep syncing; survives the network going away
   offgrid sync summary -db FILE
   offgrid sync enroll  -peer URL -invite LINK -label NAME   join a membership with a one-time invite (on the new device; needs its own key)
   offgrid sync stats   FILE                                  judge a soak: did memory or goroutines grow? (serve and run write FILE with -stats FILE)
@@ -34,15 +35,14 @@ be broken on purpose: start with -fault-file F, then "offgrid fault set -file F 
 
 A database file that does not exist is an error, so a mistyped path cannot make a replica; add -create to start a new one.
 
-Both replicas need a sync key: -key-file FILE, or $OFFGRID_SYNC_KEY
-(at least 16 bytes; make one with: openssl rand -hex 32). Note: shared HMAC keys are
-deprecated since Day 37 in favor of per-device signatures.
+Both replicas need the same key: -key-file FILE, or $OFFGRID_SYNC_KEY
+(at least 16 bytes; make one with: openssl rand -hex 32).
+That shared key is DEPRECATED: it says "one of us", not which device. Make a
+device key with "offgrid identity init" so every op is signed; per-device TLS
+replaces the shared key on Day 40. Every sync command warns until then.
 
 Every request is HMAC-SHA256 signed. A request whose timestamp is further than
 -window from this computer's clock is refused (replay defense).
-
-Incoming ops are verified against their device signatures by default (Day 37).
-To accept unsigned ops from a legacy database, pass -allow-unsigned.
 
 sync never sends anything beyond -peer. It is designed for links that go away:
 re-running it after a break brings both replicas into step.`
@@ -169,7 +169,8 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	fs.SetOutput(stderr)
 	db := fs.String("db", "", dbHelp)
 	addr := fs.String("addr", "127.0.0.1:7878", "address to listen on")
-	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
+	enrollAddr := fs.String("enroll-addr", "", "also listen here for enrollment (TLS, no client certificate); only for a node that has a membership")
+	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY); not used once a membership exists")
 	window := fs.Duration("window", syncer.DefaultWindow, "how far a request's time may differ from this clock")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
 	create := fs.Bool("create", false, createHelp)
@@ -182,12 +183,6 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	if !requirePositive(stderr, "-window", *window) {
 		return 2
 	}
-	key, err := syncer.LoadKey(*keyFile)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
-		return 2
-	}
-	warnSharedKey(stderr)
 	var explicitRequireSigned *bool
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "require-signed" {
@@ -203,6 +198,24 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		return 1
 	}
 	defer st.Close()
+	mutual := hasMembership(ctx, st)
+	var key []byte
+	if mutual {
+		if *keyFile != "" {
+			fmt.Fprintln(stderr, "note: this group has a membership, so the shared key is not used.")
+		}
+	} else {
+		if *enrollAddr != "" {
+			fmt.Fprintln(stderr, "error: -enroll-addr needs a membership: found one first (offgrid store found)")
+			return 2
+		}
+		var kerr error
+		if key, kerr = syncer.LoadKey(*keyFile); kerr != nil {
+			fmt.Fprintln(stderr, "error:", kerr)
+			return 2
+		}
+		warnSharedKey(stderr)
+	}
 	stopStats, err := stats.start(ctx, stderr, "serve", st, nil)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
@@ -214,6 +227,9 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
+	if mutual {
+		return serveMutual(ctx, st, ln, *enrollAddr, *window, stdout, stderr)
+	}
 	if host, _, _ := net.SplitHostPort(ln.Addr().String()); !net.ParseIP(host).IsLoopback() {
 		fmt.Fprintln(stderr, "warning: listening beyond this computer. Requests are signed but NOT encrypted; use a trusted network or TLS.")
 	}
@@ -224,9 +240,8 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	srv := newSyncServer(syncer.Handler(st, syncer.ServerOptions{
 		Key:      key,
 		Window:   *window,
-		Log:      log.New(stderr, "sync: ", log.LstdFlags),
 		DeviceID: devID,
-		Enroller: st,
+		Log:      log.New(stderr, "sync: ", log.LstdFlags),
 	}))
 	// Scripts and tests read this line to learn the port when -addr ends in :0.
 	fmt.Fprintf(stdout, "offgrid sync: node %s serving on http://%s\n", st.NodeID(), ln.Addr())
@@ -252,7 +267,8 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("sync once", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	db := fs.String("db", "", dbHelp)
-	peer := fs.String("peer", "", "base URL of the other replica, e.g. http://127.0.0.1:7878")
+	peer := fs.String("peer", "", "base URL of the other replica, e.g. https://192.168.1.5:7878")
+	peerDevice := fs.String("peer-device", "", "with https: pin the server to this device ID (needed for a first sync, before this replica knows the membership)")
 	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
@@ -271,12 +287,16 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	if !requirePositive(stderr, "-timeout", *timeout) {
 		return 2
 	}
-	key, err := syncer.LoadKey(*keyFile)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
-		return 2
+	mutual := strings.HasPrefix(*peer, "https://")
+	var key []byte
+	if !mutual {
+		var kerr error
+		if key, kerr = syncer.LoadKey(*keyFile); kerr != nil {
+			fmt.Fprintln(stderr, "error:", kerr)
+			return 2
+		}
+		warnSharedKey(stderr)
 	}
-	warnSharedKey(stderr)
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	var explicitRequireSigned *bool
@@ -294,11 +314,20 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer st.Close()
+	if refuseHMACInAMembership(ctx, st, *peer, stderr) {
+		return 1
+	}
 	var devID string
 	if st.Signer() != nil {
 		devID = st.Signer().ID()
 	}
 	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch, DeviceID: devID}
+	if mutual {
+		if err := configureMutual(cl, st, *peerDevice); err != nil {
+			fmt.Fprintln(stderr, "error:", err)
+			return 1
+		}
+	}
 	ftr, fdesc, ferr := faults.build()
 	if ferr != nil {
 		fmt.Fprintln(stderr, "error:", ferr)
@@ -387,7 +416,8 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	fs := flag.NewFlagSet("sync run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	db := fs.String("db", "", dbHelp)
-	peer := fs.String("peer", "", "base URL of the other replica")
+	peer := fs.String("peer", "", "base URL of the other replica, e.g. https://192.168.1.5:7878")
+	peerDevice := fs.String("peer-device", "", "with https: pin the server to this device ID (needed for a first sync, before this replica knows the membership)")
 	keyFile := fs.String("key-file", "", "file holding the shared key (default: $OFFGRID_SYNC_KEY)")
 	batch := fs.Int("batch", syncer.DefaultBatch, "ops per request")
 	maxDrift := fs.Duration("max-drift", 0, "refuse ops stamped further ahead than this (default 1h)")
@@ -410,12 +440,16 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	if !requirePositive(stderr, "-every", *every) || !requirePositive(stderr, "-round-timeout", *roundTimeout) {
 		return 2
 	}
-	key, err := syncer.LoadKey(*keyFile)
-	if err != nil {
-		fmt.Fprintln(stderr, "error:", err)
-		return 2
+	mutual := strings.HasPrefix(*peer, "https://")
+	var key []byte
+	if !mutual {
+		var kerr error
+		if key, kerr = syncer.LoadKey(*keyFile); kerr != nil {
+			fmt.Fprintln(stderr, "error:", kerr)
+			return 2
+		}
+		warnSharedKey(stderr)
 	}
-	warnSharedKey(stderr)
 	if *forDur > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, *forDur)
@@ -447,11 +481,20 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	if label == "" {
 		label = st.NodeID()
 	}
+	if refuseHMACInAMembership(ctx, st, *peer, stderr) {
+		return 1
+	}
 	var devID string
 	if st.Signer() != nil {
 		devID = st.Signer().ID()
 	}
 	cl := &syncer.Client{Peer: *peer, Key: key, Node: st.NodeID(), Batch: *batch, DeviceID: devID}
+	if mutual {
+		if err := configureMutual(cl, st, *peerDevice); err != nil {
+			fmt.Fprintln(stderr, "error:", err)
+			return 1
+		}
+	}
 	ftr, fdesc, ferr := faults.build()
 	if ferr != nil {
 		fmt.Fprintln(stderr, "error:", ferr)
