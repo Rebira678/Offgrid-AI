@@ -6,10 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 	"time"
 
+	"offgrid/internal/identity"
 	"offgrid/internal/store/sqlstore"
 	"offgrid/internal/syncer"
 )
@@ -59,10 +59,14 @@ func storeMemberCmd(ctx context.Context, sub string, st *sqlstore.Store, role, l
 		fmt.Fprintf(stdout, "invite for a %s %q, valid until %s, single use\n", inv.Role, inv.Label, inv.Expires.Local().Format("15:04:05 Mon 2 Jan"))
 		fmt.Fprintf(stdout, "code   %s\n", groupToken(inv.Token))
 		fmt.Fprintf(stdout, "admin  %s\n", inv.Admin)
-		fmt.Fprintf(stdout, "link   %s\n", inv.Link(""))
+		fp := ""
+		if sg, _ := deviceSigner(); sg != nil {
+			fp, _ = identity.Fingerprint(sg.PublicKey())
+		}
+		fmt.Fprintf(stdout, "link   %s\n", inv.Link(fp))
 		fmt.Fprintln(stdout, "Give it to the new device by a channel only you can see (in person, a QR code: `qrencode -t ANSI '<link>'`).")
 		fmt.Fprintln(stdout, "Whoever holds it before it expires can enroll as that device. The new device must redeem it at THIS node (it is not synced).")
-		fmt.Fprintln(stdout, "The link has no certificate fingerprint yet; that arrives with mTLS on Day 40.")
+		fmt.Fprintln(stdout, "The link carries the node's key fingerprint: the new device pins this node with it, so it can verify who it is enrolling with before it presents the invite.")
 	case "revoke":
 		rev, err := st.Revoke(ctx, device)
 		if err != nil {
@@ -169,6 +173,10 @@ func cmdSyncEnroll(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: this device has no key to enroll. Make one with: offgrid identity init")
 		return 1
 	}
+	if !strings.HasPrefix(*peer, "https://") {
+		fmt.Fprintln(stderr, "error: enrollment must go over TLS: use the https:// address the admin's node printed for enrollment (sync serve -enroll-addr)")
+		return 2
+	}
 	proof, err := sqlstore.EnrollProof(link.Token, sg, *label)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
@@ -176,7 +184,11 @@ func cmdSyncEnroll(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	resp, err := syncer.Enroll(ctx, &http.Client{Timeout: 30 * time.Second}, *peer, syncer.EnrollRequest{
+	trust := syncer.PinDevice(link.Admin)
+	if link.Fingerprint != "" {
+		trust = syncer.AllOf(trust, syncer.PinFingerprint(link.Fingerprint))
+	}
+	resp, err := syncer.Enroll(ctx, syncer.NewTLSClient(syncer.ClientTLSConfig(nil, trust, time.Now)), *peer, syncer.EnrollRequest{
 		Token: link.Token, PublicKey: sg.PublicKey(), Label: *label, Proof: proof,
 	})
 	if err != nil {
@@ -199,7 +211,7 @@ func cmdSyncEnroll(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintf(stdout, "enrolled: %s is now %s as %q\n", resp.Device, article(resp.Role), resp.Label)
 	fmt.Fprintf(stdout, "admin:    %s (the device the invite named; its signed receipt checks out)\n", resp.AdminDevice)
-	fmt.Fprintf(stdout, "Now receive the membership:  offgrid sync once -db FILE -create -peer %s\n", *peer)
+	fmt.Fprintf(stdout, "Now receive the membership (use the node's SYNC address, not the enrollment one):\n  offgrid sync once -db FILE -create -peer https://HOST:PORT -peer-device %s\n", resp.AdminDevice)
 	return 0
 }
 
