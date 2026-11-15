@@ -27,11 +27,12 @@ func TestStoreRevokeCLIFlagAndPermissionEdges(t *testing.T) {
 		t.Fatalf("invite failed: exit %d\n%s%s", code, out, e)
 	}
 
-	url := serveAdmin(t, db)
+	url, eurl := serveAdmin(t, db)
+	adminDev := adminOf(link)
 
 	// Enroll worker-pi
 	workerKey := useKey(t, "worker")
-	if code, _, e := runCLI(t, "", "sync", "enroll", "-peer", url, "-invite", link, "-label", "worker-pi"); code != 0 {
+	if code, _, e := runCLI(t, "", "sync", "enroll", "-peer", eurl, "-invite", link, "-label", "worker-pi"); code != 0 {
 		t.Fatalf("enroll worker: exit %d\n%s", code, e)
 	}
 
@@ -66,7 +67,7 @@ func TestStoreRevokeCLIFlagAndPermissionEdges(t *testing.T) {
 	t.Setenv("OFFGRID_IDENTITY_KEY", workerKey)
 	t.Setenv("OFFGRID_NODE", "worker-node")
 	dbWorker := dbPath(t)
-	if code, _, e := runCLI(t, "", "sync", "once", "-db", dbWorker, "-create", "-peer", url); code != 0 {
+	if code, _, e := runCLI(t, "", "sync", "once", "-db", dbWorker, "-create", "-peer", url, "-peer-device", adminDev); code != 0 {
 		t.Fatalf("worker initial sync: exit %d\n%s", code, e)
 	}
 	code, _, errOut = runCLI(t, "", "store", "-db", dbWorker, "revoke", "-device", workerID)
