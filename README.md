@@ -12,7 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 39: Revocation & Authorize complete.** Admin-signed `member.revoke` with per-replica (sequence, hash) cutoffs, pure `Authorize(state, op)` validation, `op_void` append-only evidence table, view refolding, and senior-admin revocation precedence. See [docs/day-39.md](docs/day-39.md).
+> Status: **Day 40: Mutual TLS 1.3 & Wire Security complete.** Nodes with a membership negotiate mutual TLS 1.3 exclusively with HTTP/2 connection pooling; self-signed device certificates pinned directly against the membership log; 128-bit random request IDs with bounded replay cache; mid-connection revocation re-check within 5s grace; separated `-enroll-addr` listener solving first-connection trust. See [docs/day-40.md](docs/day-40.md).
 
 ![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
 
