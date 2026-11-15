@@ -177,7 +177,7 @@ func TestTLSEdgeRequestIDValidationEdges(t *testing.T) {
 	}{
 		{"0123456789abcdef0123456789abcdef", true},
 		{"ABCDEF0123456789ABCDEF0123456789", true},
-		{"0123456789abcdef0123456789abcde", false}, // 31 chars
+		{"0123456789abcdef0123456789abcde", false},   // 31 chars
 		{"0123456789abcdef0123456789abcdef0", false}, // 33 chars
 		{"", false},
 		{"0123456789abcdef0123456789abcdeg", false}, // 'g' is non-hex
