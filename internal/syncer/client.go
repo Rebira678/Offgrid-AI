@@ -24,6 +24,9 @@ type Client struct {
 	HTTP     *http.Client // nil means a client with a 30 s timeout; tests and netfault wrap this
 	Batch    int          // ops per request; zero means DefaultBatch
 	Now      func() time.Time
+	// Mutual means the connection is mutual TLS (set HTTP from NewTLSClient): no HMAC, the
+	// shared key is not used, and each request carries a fresh request ID and the time.
+	Mutual bool
 }
 
 // Report says what one round did.
@@ -95,14 +98,19 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 		node = "anonymous"
 	}
 	unix := c.now().Unix()
-	sig := SignRequest(c.Key, method, path, node, unix, body)
+	var sig string
 	req.Header.Set(HeaderNode, node)
-	req.Header.Set(HeaderTime, strconv.FormatInt(unix, 10))
-	req.Header.Set(HeaderSig, sig)
+	req.Header.Set("Content-Type", "application/json")
 	if c.DeviceID != "" {
 		req.Header.Set(HeaderDeviceID, c.DeviceID)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if c.Mutual {
+		signSecure(req, c.now())
+	} else {
+		sig = SignRequest(c.Key, method, path, node, unix, body)
+		req.Header.Set(HeaderTime, strconv.FormatInt(unix, 10))
+		req.Header.Set(HeaderSig, sig)
+	}
 
 	resp, err := c.http().Do(req)
 	if err != nil {
@@ -115,6 +123,18 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	}
 	if len(rb) > maxBody {
 		return errors.New("the peer's response is too large")
+	}
+	if c.Mutual {
+		// The TLS handshake authenticated the server's key and protects the body; there is no HMAC to check.
+		if resp.StatusCode != http.StatusOK {
+			var e ErrorResponse
+			_ = json.Unmarshal(rb, &e)
+			return &RemoteError{resp.StatusCode, e.Code, e.Error}
+		}
+		if err := json.Unmarshal(rb, out); err != nil {
+			return fmt.Errorf("the peer's response is not valid: %w", err)
+		}
+		return nil
 	}
 	// An unsigned error is how a server refuses a caller it could not authenticate.
 	// Show its message, but trust nothing else about it.
