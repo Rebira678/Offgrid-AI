@@ -91,3 +91,23 @@ func TestSecureCLIEnrollRequiresHTTPSPeer(t *testing.T) {
 	}
 	_ = keyAdmin
 }
+
+func TestSecureCLISyncRunValidationEdges(t *testing.T) {
+	useKey(t, "runner")
+	db := dbPath(t)
+	if code, _, e := runCLI(t, "", "exec", "-db", db, `{"intent":"create_task","title":"seed"}`); code != 0 {
+		t.Fatalf("seed: %s", e)
+	}
+
+	// 1. Negative -every must fail with code 2
+	code, _, errOut := runCLI(t, "", "sync", "run", "-db", db, "-peer", "https://127.0.0.1:7878", "-every", "-1s")
+	if code != 2 || !strings.Contains(errOut, "-every must be positive") {
+		t.Errorf("expected negative every error, got code %d, err:\n%s", code, errOut)
+	}
+
+	// 2. Zero -round-timeout must fail with code 2
+	code, _, errOut = runCLI(t, "", "sync", "run", "-db", db, "-peer", "https://127.0.0.1:7878", "-round-timeout", "0s")
+	if code != 2 || !strings.Contains(errOut, "-round-timeout must be positive") {
+		t.Errorf("expected zero round-timeout error, got code %d, err:\n%s", code, errOut)
+	}
+}
