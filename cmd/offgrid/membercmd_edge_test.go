@@ -124,11 +124,11 @@ func TestStoreMembersTwoAdminsClearsWarning(t *testing.T) {
 		t.Fatalf("invite admin: exit %d\n%s%s", code, out, e)
 	}
 
-	url := serveAdmin(t, db)
+	_, eurl := serveAdmin(t, db)
 
 	// Second admin device enrolls
 	useKey(t, "admin2")
-	code, out, e = runCLI(t, "", "sync", "enroll", "-peer", url, "-invite", link, "-label", "backup-admin")
+	code, out, e = runCLI(t, "", "sync", "enroll", "-peer", eurl, "-invite", link, "-label", "backup-admin")
 	if code != 0 {
 		t.Fatalf("enroll second admin: exit %d\n%s%s", code, out, e)
 	}
