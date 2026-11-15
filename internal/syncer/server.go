@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"offgrid/internal/identity"
+	"strconv"
 	"time"
 
 	"offgrid/internal/store/sqlstore"
@@ -31,6 +34,18 @@ type ServerOptions struct {
 	// Enroller, when set, turns on POST /v1/enroll. Only a node that holds the
 	// membership (an admin's node) should set it.
 	Enroller Enroller
+
+	// MutualTLS makes the sync endpoints expect a mutual-TLS connection from an
+	// enrolled device instead of the shared-key HMAC (Day 40). The shared key is
+	// not used and the enroll endpoint is not served on the same listener.
+	MutualTLS bool
+	// Authorizer is asked again for every request on a mutual-TLS connection (it
+	// caches), so a device revoked mid-connection is cut off within AuthorizerTTL.
+	Authorizer Authorizer
+	// EnrollOnly serves only POST /v1/enroll: for the separate enrollment listener.
+	EnrollOnly bool
+	// ReplayMax bounds the remembered request IDs (zero: 100,000).
+	ReplayMax int
 }
 
 // Handler serves the sync endpoints for rep.
@@ -44,21 +59,36 @@ func Handler(rep Replica, opt ServerOptions) http.Handler {
 	if opt.MaxBatch <= 0 {
 		opt.MaxBatch = DefaultBatch
 	}
-	s := &server{rep: rep, opt: opt}
+	if opt.ReplayMax <= 0 {
+		opt.ReplayMax = 100000
+	}
+	s := &server{rep: rep, opt: opt, replay: newReplayCache(opt.ReplayMax, 2*opt.Window)}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+PathSummary, s.wrap(s.summary))
-	mux.HandleFunc("POST "+PathOps, s.wrap(s.ops))
-	mux.HandleFunc("POST "+PathPush, s.wrap(s.push))
-	if opt.Enroller != nil {
-		mux.HandleFunc("POST "+PathEnroll, s.enroll)
+	switch {
+	case opt.EnrollOnly:
+		if opt.Enroller != nil {
+			mux.HandleFunc("POST "+PathEnroll, s.enroll)
+		}
+	case opt.MutualTLS:
+		mux.HandleFunc("GET "+PathSummary, s.secure(s.summary))
+		mux.HandleFunc("POST "+PathOps, s.secure(s.ops))
+		mux.HandleFunc("POST "+PathPush, s.secure(s.push))
+	default:
+		mux.HandleFunc("GET "+PathSummary, s.wrap(s.summary))
+		mux.HandleFunc("POST "+PathOps, s.wrap(s.ops))
+		mux.HandleFunc("POST "+PathPush, s.wrap(s.push))
+		if opt.Enroller != nil {
+			mux.HandleFunc("POST "+PathEnroll, s.enroll)
+		}
 	}
 	return mux
 }
 
 type server struct {
-	rep Replica
-	opt ServerOptions
-	lim failureLimiter
+	rep    Replica
+	opt    ServerOptions
+	lim    failureLimiter
+	replay *replayCache
 }
 
 // reply is what a handler returns; wrap signs and writes it.
@@ -148,6 +178,11 @@ func decode(body []byte, into any) *reply {
 		r := fail(http.StatusBadRequest, CodeBadRequest, "the request body has extra data after the JSON")
 		return &r
 	}
+	var extra json.RawMessage
+	if dec.Decode(&extra) != io.EOF {
+		r := fail(http.StatusBadRequest, CodeBadRequest, "the request body has extra data after the JSON")
+		return &r
+	}
 	return nil
 }
 
@@ -212,4 +247,60 @@ func classify(err error) (int, string) {
 		return http.StatusUnprocessableEntity, CodeBadOp
 	}
 	return http.StatusInternalServerError, CodeInternal
+}
+
+// secure is wrap for the mutual-TLS path. The handshake already proved the peer
+// holds an enrolled device's key; here each request is checked again that the
+// device is still allowed, is fresh, and has not been seen before. Nothing
+// reaches h otherwise.
+func (s *server) secure(h func(ctx context.Context, peer string, body []byte) reply) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+			s.send(w, "", fail(http.StatusUnauthorized, CodeUnauthorized, "this endpoint needs a mutual-TLS connection"))
+			return
+		}
+		now := s.opt.Now()
+		dev, key, err := identity.DeviceOfCertificate(r.TLS.PeerCertificates[0], now)
+		if err == nil && s.opt.Authorizer != nil {
+			err = s.opt.Authorizer(dev, key)
+		}
+		if err != nil {
+			s.logf("refused %s %s from %s: %v", r.Method, r.URL.Path, dev, err)
+			s.send(w, "", fail(http.StatusForbidden, CodeNotAuthorized, err.Error()))
+			return
+		}
+		var body []byte
+		if r.Body != nil {
+			var err error
+			body, err = io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+			if err != nil || len(body) > maxBody {
+				s.send(w, "", fail(http.StatusRequestEntityTooLarge, CodeBadRequest, "the request body is too large or unreadable"))
+				return
+			}
+		}
+		unix, perr := strconv.ParseInt(r.Header.Get(HeaderTime), 10, 64)
+		if perr != nil {
+			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderTime))
+			return
+		}
+		if diff := now.Sub(time.Unix(unix, 0)); diff < -s.opt.Window || diff > s.opt.Window {
+			s.send(w, "", fail(http.StatusUnauthorized, CodeClockSkew, fmt.Sprintf("the clocks differ by %s, more than the allowed %s", diff.Round(time.Second).Abs(), s.opt.Window)))
+			return
+		}
+		id := r.Header.Get(HeaderRequest)
+		if !validRequestID(id) {
+			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderRequest))
+			return
+		}
+		switch err := s.replay.see(dev+"/"+id, now); {
+		case errors.Is(err, errReplay):
+			s.logf("refused a replayed request from %s", dev)
+			s.send(w, "", fail(http.StatusConflict, CodeReplay, "this request ID was already used"))
+			return
+		case err != nil:
+			s.send(w, "", fail(http.StatusServiceUnavailable, CodeBusy, "too many requests in the replay window; try again shortly"))
+			return
+		}
+		s.send(w, "", h(r.Context(), dev, body))
+	}
 }
