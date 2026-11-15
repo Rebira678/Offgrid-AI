@@ -228,7 +228,8 @@ func TestInviteConcurrentRedemptionRaceUnderHeavyContention(t *testing.T) {
 
 func TestInviteLinkParsingEdges(t *testing.T) {
 	validAdmin := "dev_0123456789abcdef0123456789abcdef"
-	validToken := "A3LSPGABBGMCAY5BZGF2NL23"
+	// Low-entropy sequential dummy token to prevent false-positive secret scanner alerts
+	validToken := "ABCDEFGHIJKLMNOPQRSTUVWX"
 	validFP := strings.Repeat("a", 64)
 
 	cases := []struct {
