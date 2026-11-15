@@ -26,4 +26,12 @@ Customers must cross corporate proxies. Then use signed requests over plain TLS.
 
 ## Where the implementation stands
 
-Not started. Scheduled for Day 40, together with request IDs and replay protection.
+**Implemented on Day 40.**
+
+- Each device makes a self-signed certificate from its device key (`identity.Certificate`). There is no CA and no chain; a peer checks the **key**, not the certificate: it must be the one the membership log names for an enrolled, unrevoked device (the server by an explicit pin or by the log, a new device's first sync by `-peer-device`).
+- TLS 1.3 only, a client certificate required, HTTP/2 with one reused connection, every `http.Server` timeout set.
+- A device is re-checked on every request (5 s cache), so a revoked device loses even an open connection.
+- Enrollment has its own listener (`sync serve -enroll-addr`): TLS 1.3 with no client certificate, which the new device pins with the admin's device ID and the key fingerprint carried in the invite.
+- Request IDs and the time on every request; a repeated ID is refused (409).
+- Once a membership exists the shared-key path is off for that node (`sync serve` serves mutual TLS only; `once` and `run` refuse an `http://` peer). A group with no membership still uses the shared key, with its warning.
+- Not done: the phone-with-a-token path (phones still use the Day 33 site and the node signs for them), certificate renewal beyond minting a fresh 24 h certificate on demand, and rotating or removing the shared key for a group that has not founded a membership.
