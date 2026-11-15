@@ -225,3 +225,77 @@ func TestInviteConcurrentRedemptionRaceUnderHeavyContention(t *testing.T) {
 		t.Fatalf("expected exactly 2 members in store, got %d", len(rep.Members))
 	}
 }
+
+func TestInviteLinkParsingEdges(t *testing.T) {
+	validAdmin := "dev_0123456789abcdef0123456789abcdef"
+	validToken := "A3LSPGABBGMCAY5BZGF2NL23"
+	validFP := strings.Repeat("a", 64)
+
+	cases := []struct {
+		name    string
+		link    string
+		wantErr string
+	}{
+		{
+			name: "Valid 4-part link without fingerprint",
+			link: "og-invite/1/" + validAdmin + "/" + validToken + "/",
+		},
+		{
+			name: "Valid 5-part link with fingerprint",
+			link: "og-invite/1/" + validAdmin + "/" + validToken + "/" + validFP,
+		},
+		{
+			name:    "Missing og-invite prefix",
+			link:    "my-invite/1/" + validAdmin + "/" + validToken,
+			wantErr: "not an Offgrid invite",
+		},
+		{
+			name:    "Wrong version (v2)",
+			link:    "og-invite/2/" + validAdmin + "/" + validToken,
+			wantErr: "not an Offgrid invite",
+		},
+		{
+			name:    "Admin missing dev_ prefix",
+			link:    "og-invite/1/node_0123456789abcdef0123456789abcdef/" + validToken,
+			wantErr: "the invite names no valid admin device",
+		},
+		{
+			name:    "Admin device ID wrong length",
+			link:    "og-invite/1/dev_short/" + validToken,
+			wantErr: "the invite names no valid admin device",
+		},
+		{
+			name:    "Malformed token (invalid base32 character '9')",
+			link:    "og-invite/1/" + validAdmin + "/999999999999999999999999",
+			wantErr: "the invite's token is malformed",
+		},
+		{
+			name:    "Fingerprint wrong length (63 chars)",
+			link:    "og-invite/1/" + validAdmin + "/" + validToken + "/" + strings.Repeat("a", 63),
+			wantErr: "the invite's fingerprint is not a SHA-256 in hex",
+		},
+		{
+			name:    "Fingerprint non-hex character ('z')",
+			link:    "og-invite/1/" + validAdmin + "/" + validToken + "/" + strings.Repeat("a", 63) + "z",
+			wantErr: "the invite's fingerprint is not a SHA-256 in hex",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, err := ParseInviteLink(tc.link)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error for %q: %v", tc.link, err)
+				}
+				if parsed.Admin != validAdmin {
+					t.Errorf("got Admin = %q, want %q", parsed.Admin, validAdmin)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+			}
+		})
+	}
+}
