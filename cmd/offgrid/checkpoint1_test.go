@@ -83,6 +83,10 @@ func TestTwoProcessesWithTheirOwnKeysSyncSignedOpsAndSampleThemselves(t *testing
 	}
 
 	// The shared key is deprecated: the server says so as it starts.
+	// (stderr and stdout reach the test through separate pipes, so the warning may land a moment after the first line.)
+	for end := time.Now().Add(3 * time.Second); time.Now().Before(end) && !strings.Contains(srvErr.String(), "shared sync key is deprecated"); {
+		time.Sleep(20 * time.Millisecond)
+	}
 	if !strings.Contains(srvErr.String(), "shared sync key is deprecated") {
 		t.Fatalf("no deprecation warning from serve:\n%s", srvErr.String())
 	}
