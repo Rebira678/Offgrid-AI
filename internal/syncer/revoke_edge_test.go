@@ -31,15 +31,14 @@ func TestSyncWireStrangerPushForbidden(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	// Stranger has a valid HMAC sync key, but its device identity was never enrolled.
-	stranger, strangerID := newSignedStore(t, "stranger-node", clk)
+	stranger, _ := newSignedStore(t, "stranger-node", clk)
 	add(t, stranger, "stranger task")
 
 	cl := &Client{
-		Peer:     srv.URL,
-		Key:      key,
-		Node:     "stranger-node",
-		DeviceID: strangerID.ID(),
-		Now:      clk.now,
+		Peer: srv.URL,
+		Key:  key,
+		Node: "stranger-node",
+		Now:  clk.now,
 	}
 
 	_, err := cl.Once(ctx, stranger)
@@ -115,11 +114,10 @@ func TestSyncWireRevokedDeviceOpStoredAndVoided(t *testing.T) {
 	t.Cleanup(func() { worker.Close() })
 
 	clWorker := &Client{
-		Peer:     srv.URL,
-		Key:      key,
-		Node:     "worker-node",
-		DeviceID: workerID.ID(),
-		Now:      clk.now,
+		Peer: srv.URL,
+		Key:  key,
+		Node: "worker-node",
+		Now:  clk.now,
 	}
 
 	// 1. Worker creates legitimate pre-revocation task
@@ -245,11 +243,10 @@ func TestSyncWireUnauthorizedRevokeAttemptForbidden(t *testing.T) {
 	t.Cleanup(func() { worker.Close() })
 
 	clWorker := &Client{
-		Peer:     srv.URL,
-		Key:      key,
-		Node:     "worker-node",
-		DeviceID: workerID.ID(),
-		Now:      clk.now,
+		Peer: srv.URL,
+		Key:  key,
+		Node: "worker-node",
+		Now:  clk.now,
 	}
 
 	// Worker syncs initially so it has the membership state
@@ -303,11 +300,10 @@ func TestSyncWireBatchWithInterleavedRevocationAndConvergence(t *testing.T) {
 	t.Cleanup(func() { worker.Close() })
 
 	clWorker := &Client{
-		Peer:     srv.URL,
-		Key:      key,
-		Node:     "worker-node",
-		DeviceID: workerID.ID(),
-		Now:      clk.now,
+		Peer: srv.URL,
+		Key:  key,
+		Node: "worker-node",
+		Now:  clk.now,
 	}
 
 	// Worker creates pre-revocation task
@@ -340,11 +336,10 @@ func TestSyncWireBatchWithInterleavedRevocationAndConvergence(t *testing.T) {
 	t.Cleanup(func() { tab.Close() })
 
 	clTab := &Client{
-		Peer:     srv.URL,
-		Key:      key,
-		Node:     "tab-node",
-		DeviceID: tabID.ID(),
-		Now:      clk.now,
+		Peer: srv.URL,
+		Key:  key,
+		Node: "tab-node",
+		Now:  clk.now,
 	}
 
 	if _, err := clTab.Once(ctx, tab); err != nil {
