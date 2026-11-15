@@ -323,3 +323,31 @@ func TestClientRejectsTamperedResponseSignature(t *testing.T) {
 		t.Fatalf("client state mutated despite bad signature")
 	}
 }
+
+func TestClientMutualTLSNonJSONErrorHandling(t *testing.T) {
+	ctx := context.Background()
+	htmlBody := "<html><body>503 Service Unavailable: overloaded</body></html>"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(htmlBody))
+	}))
+	defer srv.Close()
+
+	cl := &Client{
+		Peer:   srv.URL,
+		Node:   "laptop",
+		Mutual: true, // mutual TLS mode
+		HTTP:   srv.Client(),
+	}
+
+	var resp SummaryResponse
+	err := cl.call(ctx, http.MethodGet, PathSummary, nil, &resp)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var re *RemoteError
+	if !errors.As(err, &re) || re.Status != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 RemoteError, got %v (%T)", err, err)
+	}
+}
