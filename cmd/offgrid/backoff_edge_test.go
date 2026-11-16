@@ -1,0 +1,79 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestCLISyncRunNegativeBackoffMaxRefused(t *testing.T) {
+	dir := t.TempDir()
+	key := filepath.Join(dir, "key")
+	if err := os.WriteFile(key, []byte("0123456789abcdef0123456789abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, badVal := range []string{"0s", "-5s", "-100ms"} {
+		var stdout, stderr bytes.Buffer
+		code := cmdSyncRun([]string{
+			"-create",
+			"-db", filepath.Join(dir, "test.db"),
+			"-peer", "http://127.0.0.1:1",
+			"-key-file", key,
+			"-backoff-max", badVal,
+		}, &stdout, &stderr)
+
+		if code != 2 {
+			t.Errorf("backoff-max %s: exit code %d, want 2 (stderr: %s)", badVal, code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "-backoff-max must be positive") {
+			t.Errorf("backoff-max %s: stderr missing positive error: %s", badVal, stderr.String())
+		}
+	}
+}
+
+func TestCLISyncRunContextCancellationDuringBackoffWait(t *testing.T) {
+	dir := t.TempDir()
+	key := filepath.Join(dir, "key")
+	if err := os.WriteFile(key, []byte("0123456789abcdef0123456789abcdef"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	var stdout, stderr bytes.Buffer
+
+	done := make(chan int, 1)
+	go func() {
+		code := cmdSyncRunContext(ctx, []string{
+			"-create",
+			"-db", filepath.Join(dir, "cancel.db"),
+			"-peer", "http://127.0.0.1:1",
+			"-key-file", key,
+			"-every", "10ms",
+			"-backoff-max", "10s", // Large backoff wait
+		}, &stdout, &stderr)
+		done <- code
+	}()
+
+	// Wait for the sync loop to fail once and enter backoff wait timer
+	time.Sleep(100 * time.Millisecond)
+
+	// Cancel context during the long 10s backoff wait
+	cancel()
+
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("expected clean exit code 0 on context cancel, got %d", code)
+		}
+		if !strings.Contains(stdout.String(), "stopped") {
+			t.Errorf("expected 'stopped' output on cancel, got:\n%s", stdout.String())
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("cmdSyncRunContext hung during backoff wait timer after cancel")
+	}
+}
