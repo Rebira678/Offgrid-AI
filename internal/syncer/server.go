@@ -364,6 +364,7 @@ func inflate(r *http.Request, body []byte) ([]byte, error) {
 		if err != nil {
 			return nil, errors.New("the request body is not valid gzip")
 		}
+		defer zr.Close()
 		out, err := io.ReadAll(io.LimitReader(zr, maxBody+1))
 		if err != nil || len(out) > maxBody {
 			return nil, errors.New("the request body is not valid gzip, or too large once unpacked")
