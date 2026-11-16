@@ -257,6 +257,9 @@ func (c *Client) pullBatch(ctx context.Context, local Replica, have sqlstore.Sum
 			return false, got, err
 		}
 		if f.End {
+			if len(f.Ops) > 0 {
+				return false, got, fmt.Errorf("%w: end marker cannot carry ops", ErrBadFrame)
+			}
 			if f.N != got {
 				return false, got, fmt.Errorf("%w: the end marker says %d ops, %d arrived", ErrBadFrame, f.N, got)
 			}
@@ -264,6 +267,9 @@ func (c *Client) pullBatch(ctx context.Context, local Replica, have sqlstore.Sum
 		}
 		if len(f.Ops) == 0 {
 			return false, got, fmt.Errorf("%w: an empty frame", ErrBadFrame)
+		}
+		if got+len(f.Ops) > 4*c.batch() {
+			return false, got, fmt.Errorf("%w: peer streamed more ops than batch limit", ErrBadFrame)
 		}
 		res, err := local.ApplyRemote(ctx, FromWire(f.Ops))
 		if err != nil {
