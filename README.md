@@ -12,7 +12,7 @@ thinking until a connection returns, and replicas that were apart merge their
 edits deterministically when they meet again. Everything runs on one laptop
 with no GPU and costs $0.
 
-> Status: **Day 40: Mutual TLS 1.3 & Wire Security complete.** Nodes with a membership negotiate mutual TLS 1.3 exclusively with HTTP/2 connection pooling; self-signed device certificates pinned directly against the membership log; 128-bit random request IDs with bounded replay cache; mid-connection revocation re-check within 5s grace; separated `-enroll-addr` listener solving first-connection trust. See [docs/day-40.md](docs/day-40.md).
+> Status: **Day 41: Maintained Summary Table & Sync Protocol v2 complete.** Migration 8 introduces the `op_summary` table kept by SQLite triggers plus newest-op index (catching up 10 ops costs a flat 2.0 ms at both 10k and 100k ops); protocol v2 negotiates wire compatibility with signed 426 upgrade responses, MAC-chained streaming pull frames with gzip compression, cut-stream cursor resume, and exponential backoff with jitter (`-backoff-max`). See [docs/day-41.md](docs/day-41.md).
 
 ![Two replicas edit the same tasks with the network cut, reconnect, and end identical](docs/day-29-demo.gif)
 
