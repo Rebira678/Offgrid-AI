@@ -229,5 +229,9 @@ func (fr *frameReader) next() (frame, error) {
 	if err := dec.Decode(&f); err != nil {
 		return f, fmt.Errorf("%w: %v", ErrBadFrame, err)
 	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		return f, fmt.Errorf("%w: extra data after frame JSON", ErrBadFrame)
+	}
 	return f, nil
 }
