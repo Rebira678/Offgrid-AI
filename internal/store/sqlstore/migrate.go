@@ -153,6 +153,24 @@ BEGIN SELECT RAISE(ABORT, 'op_void is append-only: deletes are not allowed'); EN
 CREATE INDEX ops_kind ON ops (kind);
 CREATE INDEX op_sigs_device ON op_sigs (device_id);
 `},
+	{Version: 8, Name: "sync v2: maintained per-replica summary, and an index for the newest op", SQL: `
+-- What a sync round asks first is "which is the highest seq you hold, per replica". Answering it by reading the
+-- whole log made catching up cost more as the log grew. This table holds the answer, advanced by a trigger in the
+-- same transaction as every insert, so it cannot disagree with the log unless the file is edited by hand
+-- (Verify checks; Rebuild repairs). It is derived data: nothing is lost if it is dropped and refilled.
+CREATE TABLE op_summary (
+	node_id TEXT    PRIMARY KEY,
+	max_seq INTEGER NOT NULL CHECK (max_seq >= 1)
+) WITHOUT ROWID;
+INSERT INTO op_summary (node_id, max_seq) SELECT node_id, MAX(seq) FROM ops GROUP BY node_id;
+CREATE TRIGGER ops_summary_insert AFTER INSERT ON ops
+BEGIN
+	INSERT INTO op_summary (node_id, max_seq) VALUES (NEW.node_id, NEW.seq)
+	ON CONFLICT (node_id) DO UPDATE SET max_seq = MAX(max_seq, NEW.seq);
+END;
+-- The newest op, in fold order, is found by reading one index entry instead of sorting the log.
+CREATE INDEX ops_newest ON ops (ts DESC, counter DESC, node_id DESC, seq DESC);
+`},
 }
 
 // ErrNewerSchema means the database was written by a newer Offgrid than this
