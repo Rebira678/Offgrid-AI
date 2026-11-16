@@ -69,6 +69,9 @@ func (s *Store) Rebuild(ctx context.Context) (rep RebuildReport, err error) {
 	if err = resetProjection(ctx, tx); err != nil {
 		return rep, err
 	}
+	if err = reseedSummary(ctx, tx); err != nil { // the summary table is derived from the log too
+		return rep, err
+	}
 	n, last, err := replayCanonical(ctx, tx, tx)
 	if err != nil {
 		return rep, fmt.Errorf("sqlstore: rebuild: %w", err)
@@ -188,6 +191,14 @@ func (s *Store) Verify(ctx context.Context) (VerifyReport, error) {
 	var rep VerifyReport
 	if err := s.checkSequences(ctx); err != nil {
 		return rep, err
+	}
+	// The summary table is what sync trusts for "what do you hold"; it must agree with the log.
+	drift, err := s.CheckSummary(ctx)
+	if err != nil {
+		return rep, err
+	}
+	if len(drift) > 0 {
+		return rep, fmt.Errorf("%w: the summary table is wrong (%s); Rebuild repairs it", ErrDiverged, drift[0])
 	}
 	// The hash chain first: if an op was edited, say so, instead of reporting
 	// the view differences that follow from it.
