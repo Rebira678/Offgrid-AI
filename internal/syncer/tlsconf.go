@@ -336,6 +336,7 @@ func validRequestID(id string) bool {
 // signSecure stamps a request for the mutual-TLS path: no HMAC, but a fresh
 // request ID and the time, which the server checks.
 func signSecure(r *http.Request, now time.Time) {
+	r.Header.Set(HeaderProto, strconv.Itoa(ProtocolVersion))
 	r.Header.Set(HeaderRequest, newRequestID())
 	r.Header.Set(HeaderTime, strconv.FormatInt(now.Unix(), 10))
 }
