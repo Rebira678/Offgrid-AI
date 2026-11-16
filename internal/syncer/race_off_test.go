@@ -2,4 +2,4 @@
 
 package syncer
 
-const allocCeiling = 20
+const allocCeiling = 50
