@@ -62,15 +62,12 @@ func TestClientSync_NilPeerSummaryPushSafety(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case PathSummary:
-			body := []byte(`{"node":"phone","protocol":1,"summary":null}`)
+			body := []byte(`{"node":"phone","protocol":2,"summary":null}`)
 			w.Header().Set(HeaderSig, SignResponse(key, r.Header.Get(HeaderSig), http.StatusOK, body))
 			w.WriteHeader(http.StatusOK)
 			w.Write(body)
 		case PathOps:
-			body := []byte(`{"ops":[],"more":false}`)
-			w.Header().Set(HeaderSig, SignResponse(key, r.Header.Get(HeaderSig), http.StatusOK, body))
-			w.WriteHeader(http.StatusOK)
-			w.Write(body)
+			streamOps(w, r, key, nil, false)
 		case PathPush:
 			body := []byte(`{"applied":0,"duplicates":0,"rebuilt":false}`)
 			w.Header().Set(HeaderSig, SignResponse(key, r.Header.Get(HeaderSig), http.StatusOK, body))
@@ -223,9 +220,10 @@ func TestServerAdversarialNilBodyAndUnauthenticatedFlood(t *testing.T) {
 		Method: http.MethodGet,
 		URL:    &url.URL{Path: PathSummary},
 		Header: http.Header{
-			http.CanonicalHeaderKey(HeaderNode): {"cli"},
-			http.CanonicalHeaderKey(HeaderTime): {strconv.FormatInt(now.Unix(), 10)},
-			http.CanonicalHeaderKey(HeaderSig):  {sig},
+			http.CanonicalHeaderKey(HeaderNode):  {"cli"},
+			http.CanonicalHeaderKey(HeaderTime):  {strconv.FormatInt(now.Unix(), 10)},
+			http.CanonicalHeaderKey(HeaderProto): {strconv.Itoa(ProtocolVersion)},
+			http.CanonicalHeaderKey(HeaderSig):   {sig},
 		},
 		Body: nil,
 	}
@@ -307,7 +305,7 @@ func TestClientRejectsTamperedResponseSignature(t *testing.T) {
 
 	// Peer returns valid JSON 200 OK, but with an invalid X-Offgrid-Sig header.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := []byte(`{"node":"evil","protocol":1,"summary":{}}`)
+		body := []byte(`{"node":"evil","protocol":2,"summary":{}}`)
 		w.Header().Set(HeaderSig, "0000000000000000000000000000000000000000000000000000000000000000")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
