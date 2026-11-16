@@ -4,8 +4,11 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
+
+	"offgrid/internal/store/sqlstore"
 )
 
 func TestBackoffOverflowSafety(t *testing.T) {
@@ -63,6 +66,13 @@ func TestBackoffTransientErrorClassificationMatrix(t *testing.T) {
 		{"too many requests 429 error", &RemoteError{Status: http.StatusTooManyRequests, Code: "rate_limited"}, true},
 		{"stream cut error", ErrStreamCut, true},
 		{"generic connection failure", errors.New("connection refused"), true},
+		{"store not authorized", sqlstore.ErrNotAuthorized, false},
+		{"store chain mismatch", sqlstore.ErrChain, false},
+		{"store fork error", sqlstore.ErrFork, false},
+		{"store bad signature", sqlstore.ErrBadSignature, false},
+		{"store bad op", sqlstore.ErrBadOp, false},
+		{"store key change", sqlstore.ErrKeyChange, false},
+		{"store gap error (healable)", sqlstore.ErrGap, true},
 	}
 
 	for _, tc := range cases {
@@ -101,5 +111,61 @@ func TestBackoffJitterStrictBounds(t *testing.T) {
 		if wMax < half || wMax > ceiling {
 			t.Errorf("fails=%d: expected max jitter within [%v, %v], got %v", fails, half, ceiling, wMax)
 		}
+	}
+}
+
+func TestBackoffConcurrentAccess(t *testing.T) {
+	bo := &Backoff{Min: 10 * time.Millisecond, Max: 500 * time.Millisecond}
+	var wg sync.WaitGroup
+	const goroutines = 20
+	const iterations = 50
+
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				if i%10 == 0 {
+					bo.Reset()
+				} else {
+					err := errors.New("concurrent transient error")
+					wait := bo.Next(err)
+					if wait < 0 {
+						t.Errorf("negative wait returned: %v", wait)
+					}
+					_ = bo.Failures()
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+}
+
+func TestBackoffStoreErrorClassification(t *testing.T) {
+	bo := &Backoff{Min: time.Second, Max: 60 * time.Second}
+
+	// Non-transient store errors should immediately produce Max delay (60s)
+	nonTransient := []error{
+		sqlstore.ErrNotAuthorized,
+		sqlstore.ErrChain,
+		sqlstore.ErrFork,
+		sqlstore.ErrBadSignature,
+		sqlstore.ErrBadOp,
+		sqlstore.ErrKeyChange,
+	}
+
+	for _, err := range nonTransient {
+		bo.Reset()
+		wait := bo.Next(err)
+		if wait != 60*time.Second {
+			t.Errorf("expected non-transient store error %v to yield Max (60s), got %v", err, wait)
+		}
+	}
+
+	// Transient store error (ErrGap) should produce exponential backoff with jitter, not Max
+	bo.Reset()
+	wait := bo.Next(sqlstore.ErrGap)
+	if wait > time.Second || wait < 500*time.Millisecond {
+		t.Errorf("expected first failure with ErrGap to be between 500ms and 1s, got %v", wait)
 	}
 }
