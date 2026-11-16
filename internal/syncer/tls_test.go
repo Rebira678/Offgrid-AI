@@ -257,6 +257,7 @@ func rawSecure(t *testing.T, e *tlsEnv, build func(*http.Request)) (int, string)
 	cfg := ClientTLSConfig(e.idb, PinDevice(e.ida.ID()), e.clk.now)
 	hc := NewTLSClient(cfg)
 	req, _ := http.NewRequest("GET", e.url+PathSummary, nil)
+	req.Header.Set(HeaderProto, fmt.Sprint(ProtocolVersion))
 	build(req)
 	resp, err := hc.Do(req)
 	if err != nil {

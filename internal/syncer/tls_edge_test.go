@@ -76,6 +76,7 @@ func TestTLSEdgeReplayCacheFullReturns503OnWire(t *testing.T) {
 
 	sendReq := func(reqID string) int {
 		req, _ := http.NewRequest("GET", "https://"+addr+PathSummary, nil)
+		req.Header.Set(HeaderProto, fmt.Sprint(ProtocolVersion))
 		req.Header.Set(HeaderRequest, reqID)
 		req.Header.Set(HeaderTime, fmt.Sprint(clk.now().Unix()))
 		resp, err := hc.Do(req)
@@ -232,6 +233,7 @@ func TestTLSEdgeClockSkewBoundaryConditions(t *testing.T) {
 		cfg := ClientTLSConfig(e.idb, PinDevice(e.ida.ID()), e.clk.now)
 		hc := NewTLSClient(cfg)
 		req, _ := http.NewRequest("GET", e.url+PathSummary, nil)
+		req.Header.Set(HeaderProto, fmt.Sprint(ProtocolVersion))
 		req.Header.Set(HeaderRequest, reqID)
 		req.Header.Set(HeaderTime, fmt.Sprint(unix))
 		resp, err := hc.Do(req)

@@ -160,7 +160,12 @@ func TestAWrongKeyIsRefusedAndNothingChanges(t *testing.T) {
 func raw(t *testing.T, srv *httptest.Server, method, path string, hdr map[string]string, body string) (int, string) {
 	t.Helper()
 	req, _ := http.NewRequest(method, srv.URL+path, strings.NewReader(body))
+	req.Header.Set(HeaderProto, fmt.Sprint(ProtocolVersion)) // a current client; a test of an old one sets HeaderProto to "" in hdr
 	for k, v := range hdr {
+		if v == "" && k == HeaderProto {
+			req.Header.Del(k)
+			continue
+		}
 		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
@@ -489,11 +494,23 @@ func TestTheServerCapsHowManyOpsItSendsAndTakes(t *testing.T) {
 	srv := httptest.NewServer(Handler(a, ServerOptions{Key: key, Now: clk.now, MaxBatch: 3}))
 	defer srv.Close()
 	body := `{"have":{},"limit":1000}`
-	code, resp := raw(t, srv, "POST", PathOps, signed("POST", PathOps, "n", t0, body), body)
-	var or OpsResponse
-	json.Unmarshal([]byte(resp), &or)
-	if code != 200 || len(or.Ops) != 3 || !or.More {
-		t.Fatalf("a request for 1000 ops got %d ops (more=%v), want the server's cap of 3", len(or.Ops), or.More)
+	hdr := signed("POST", PathOps, "n", t0, body)
+	code, resp := raw(t, srv, "POST", PathOps, hdr, body)
+	fr := newFrameReader(strings.NewReader(resp), key, hdr[HeaderSig])
+	n, more := 0, false
+	for {
+		f, err := fr.next()
+		if err != nil {
+			t.Fatalf("reading the answer: %v", err)
+		}
+		if f.End {
+			more = f.More
+			break
+		}
+		n += len(f.Ops)
+	}
+	if code != 200 || n != 3 || !more {
+		t.Fatalf("a request for 1000 ops got %d ops (more=%v), want the server's cap of 3", n, more)
 	}
 	// a client with a big batch size still converges, in more round trips
 	cl := &Client{Peer: srv.URL, Key: key, Batch: 1000, Now: clk.now}

@@ -307,6 +307,10 @@ func mockServer(t *testing.T, key []byte, h func(r *http.Request) (status int, b
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqSig := r.Header.Get(HeaderSig)
 		status, repBody := h(r)
+		if or, ok := repBody.(OpsResponse); ok && status == http.StatusOK {
+			streamOps(w, r, key, or.Ops, or.More)
+			return
+		}
 		b, _ := json.Marshal(repBody)
 		w.Header().Set("Content-Type", "application/json")
 		if reqSig != "" {
@@ -396,4 +400,16 @@ func TestSyncNilPeerSummary(t *testing.T) {
 	if rep.Pushed != 1 {
 		t.Fatalf("expected 1 op pushed, got %d", rep.Pushed)
 	}
+}
+
+// streamOps answers a pull the v2 way, for tests that play the peer by hand.
+func streamOps(w http.ResponseWriter, r *http.Request, key []byte, ops []WireOp, more bool) {
+	w.Header().Set("Content-Type", ContentTypeFrames)
+	w.WriteHeader(http.StatusOK)
+	fw := newFrameWriter(w, key, r.Header.Get(HeaderSig), false)
+	if len(ops) > 0 {
+		fw.write(frame{Ops: ops})
+	}
+	fw.write(frame{End: true, More: more, N: len(ops)})
+	fw.close()
 }
