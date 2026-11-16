@@ -65,22 +65,16 @@ func (s *Store) Summary(ctx context.Context) (Summary, error) {
 	return summaryOf(ctx, s.db)
 }
 
+// The two queries every sync round runs. They are named so a test can ask SQLite how it will run them: a
+// scan of the whole log here is what made catching up cost more as the log grew (Day 25, measured again
+// on Day 41: 6 ms at 10,000 ops, 36 ms at 100,000, for 10 new ops).
+const (
+	querySummary = `SELECT node_id, max_seq FROM op_summary`
+	queryNewest  = `SELECT ts, counter, node_id, seq FROM ops ORDER BY ts DESC, counter DESC, node_id DESC, seq DESC LIMIT 1`
+)
+
 func summaryOf(ctx context.Context, x execer) (Summary, error) {
-	rows, err := x.QueryContext(ctx, `SELECT node_id, MAX(seq) FROM ops GROUP BY node_id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := Summary{}
-	for rows.Next() {
-		var node string
-		var max int64
-		if err := rows.Scan(&node, &max); err != nil {
-			return nil, err
-		}
-		out[node] = max
-	}
-	return out, rows.Err()
+	return scanSummary(ctx, x, querySummary)
 }
 
 // OpsSince returns the ops this replica holds that a replica with summary have
@@ -345,7 +339,7 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 	var counter uint32
 	var node string
 	var seq int64
-	switch qerr := tx.QueryRowContext(ctx, `SELECT ts, counter, node_id, seq FROM ops ORDER BY ts DESC, counter DESC, node_id DESC, seq DESC LIMIT 1`).
+	switch qerr := tx.QueryRowContext(ctx, queryNewest).
 		Scan(&wall, &counter, &node, &seq); {
 	case qerr == nil:
 		maxHeld, anyHeld = opKey{wall, counter, node, seq}, true
@@ -486,3 +480,77 @@ func replayCanonical(ctx context.Context, dst, src execer) (n int, maxPos int64,
 }
 
 var _ = task.StatusOpen
+
+// summaryFromLog is the summary by reading the whole log: the slow way, kept to check the maintained table
+// against and to rebuild it from.
+func summaryFromLog(ctx context.Context, x execer) (Summary, error) {
+	return scanSummary(ctx, x, `SELECT node_id, MAX(seq) FROM ops GROUP BY node_id`)
+}
+
+func scanSummary(ctx context.Context, x execer, q string) (Summary, error) {
+	rows, err := x.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := Summary{}
+	for rows.Next() {
+		var node string
+		var max int64
+		if err := rows.Scan(&node, &max); err != nil {
+			return nil, err
+		}
+		out[node] = max
+	}
+	return out, rows.Err()
+}
+
+// SummaryDrift is one replica on which the maintained summary table and the log disagree.
+type SummaryDrift struct {
+	Node  string
+	Table int64 // what op_summary says (0: no row)
+	Log   int64 // what the log says (0: no ops)
+}
+
+func (d SummaryDrift) String() string {
+	return fmt.Sprintf("%s: summary table says %d, the log says %d", d.Node, d.Table, d.Log)
+}
+
+// CheckSummary compares the maintained summary table with the log. It reads the whole log, so it is for
+// verification, not for the sync path.
+func (s *Store) CheckSummary(ctx context.Context) ([]SummaryDrift, error) {
+	return checkSummary(ctx, s.db)
+}
+
+func checkSummary(ctx context.Context, x execer) ([]SummaryDrift, error) {
+	table, err := scanSummary(ctx, x, `SELECT node_id, max_seq FROM op_summary`)
+	if err != nil {
+		return nil, err
+	}
+	log, err := summaryFromLog(ctx, x)
+	if err != nil {
+		return nil, err
+	}
+	var out []SummaryDrift
+	for n, l := range log {
+		if table[n] != l {
+			out = append(out, SummaryDrift{n, table[n], l})
+		}
+	}
+	for n, t := range table {
+		if _, ok := log[n]; !ok {
+			out = append(out, SummaryDrift{n, t, 0})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Node < out[j].Node })
+	return out, nil
+}
+
+// reseedSummary rewrites the summary table from the log. Rebuild does it, so a damaged table has a repair.
+func reseedSummary(ctx context.Context, x execer) error {
+	if _, err := x.ExecContext(ctx, `DELETE FROM op_summary`); err != nil {
+		return err
+	}
+	_, err := x.ExecContext(ctx, `INSERT INTO op_summary (node_id, max_seq) SELECT node_id, MAX(seq) FROM ops GROUP BY node_id`)
+	return err
+}
