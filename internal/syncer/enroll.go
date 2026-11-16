@@ -140,7 +140,7 @@ func (s *server) enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.logf("enrolled %s as %s (%q)", en.Device, en.Role, en.Label)
-	write(reply{http.StatusOK, EnrollResponse{
+	write(reply{status: http.StatusOK, body: EnrollResponse{
 		InviteID: en.InviteID, Device: en.Device, Role: string(en.Role), Label: en.Label,
 		AdminDevice: en.AdminDevice, AdminKey: en.AdminKey, AdminNode: en.AdminNode, Receipt: en.Receipt,
 	}})
@@ -174,7 +174,7 @@ func Enroll(ctx context.Context, hc *http.Client, peer string, req EnrollRequest
 	if resp.StatusCode != http.StatusOK {
 		var e ErrorResponse
 		_ = json.Unmarshal(rb, &e)
-		return EnrollResponse{}, &RemoteError{resp.StatusCode, e.Code, e.Error}
+		return EnrollResponse{}, &RemoteError{Status: resp.StatusCode, Code: e.Code, Msg: e.Error}
 	}
 	var out EnrollResponse
 	if err := json.Unmarshal(rb, &out); err != nil {
