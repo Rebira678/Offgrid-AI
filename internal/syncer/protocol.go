@@ -26,7 +26,19 @@ import (
 )
 
 // ProtocolVersion is bumped when the wire format changes incompatibly.
-const ProtocolVersion = 1
+//
+// Version 2 (Day 41): every request says which version it speaks (HeaderProto); a peer older than
+// MinProtocol is told to upgrade (426, CodeUpgradeRequired) instead of being half-understood; a pull answer
+// is a stream of frames (stream.go), each with its own MAC, so a cut connection keeps what was verified and
+// the next round resumes from the replica's own summary; request bodies may be gzip-compressed. The
+// payloads stay JSON.
+const ProtocolVersion = 2
+
+// MinProtocol is the oldest version this build still talks to.
+const MinProtocol = 2
+
+// HeaderProto carries the sender's protocol version. A v1 client never sent it.
+const HeaderProto = "X-Offgrid-Proto"
 
 // Paths of the endpoints.
 const (
@@ -89,9 +101,11 @@ func FromWire(ops []WireOp) []sqlstore.Op {
 
 // SummaryResponse answers GET /sync/summary.
 type SummaryResponse struct {
-	Node     string           `json:"node"`
-	Protocol int              `json:"protocol"`
-	Summary  sqlstore.Summary `json:"summary"`
+	Node     string `json:"node"`
+	Protocol int    `json:"protocol"`
+	// MinProtocol is the oldest version the peer will talk to (absent from a v1 peer: its own version).
+	MinProtocol int              `json:"min_protocol,omitempty"`
+	Summary     sqlstore.Summary `json:"summary"`
 }
 
 // OpsRequest asks for the ops a replica with summary Have lacks.
@@ -140,6 +154,8 @@ const (
 	CodeIDCollision  = "id_collision"
 	CodeClockDrift   = "clock_drift"
 	CodeInternal     = "internal"
+	// CodeUpgradeRequired answers a caller whose protocol version is older than MinProtocol (HTTP 426).
+	CodeUpgradeRequired = "upgrade_required"
 
 	CodeInviteInvalid   = "invite_invalid" // unknown, used, expired or wrongly proven: deliberately one answer
 	CodeAlreadyMember   = "already_member"
