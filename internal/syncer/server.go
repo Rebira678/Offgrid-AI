@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -95,10 +96,11 @@ type server struct {
 type reply struct {
 	status int
 	body   any
+	stream *opsStream // a pull answer, written as frames instead of one JSON body (stream.go)
 }
 
 func fail(status int, code, msg string) reply {
-	return reply{status, ErrorResponse{Code: code, Error: msg}}
+	return reply{status: status, body: ErrorResponse{Code: code, Error: msg}}
 }
 
 // wrap reads the body, checks the signature, runs h, and signs the response.
@@ -130,18 +132,36 @@ func (s *server) wrap(h func(ctx context.Context, node string, body []byte) repl
 			s.send(w, "", fail(http.StatusUnauthorized, ae.Code, ae.Msg))
 			return
 		}
+		if bad := checkProto(r); bad != nil {
+			s.send(w, r.Header.Get(HeaderSig), *bad)
+			return
+		}
+		if body, err = inflate(r, body); err != nil {
+			s.send(w, r.Header.Get(HeaderSig), fail(http.StatusBadRequest, CodeBadRequest, err.Error()))
+			return
+		}
 		rep := h(r.Context(), node, body)
+		if rep.stream != nil {
+			rep.stream.compress = acceptsGzip(r)
+		}
 		s.send(w, r.Header.Get(HeaderSig), rep)
 	}
 }
 
 func (s *server) send(w http.ResponseWriter, requestSig string, rep reply) {
+	if rep.stream != nil {
+		s.sendStream(w, requestSig, rep.stream)
+		return
+	}
 	b, err := json.Marshal(rep.body)
 	if err != nil {
 		rep = fail(http.StatusInternalServerError, CodeInternal, "cannot encode the response")
 		b, _ = json.Marshal(rep.body)
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if e, ok := rep.body.(ErrorResponse); ok && e.Code == CodeBusy {
+		w.Header().Set("Retry-After", "1") // a hint for the client's back-off; not covered by the signature
+	}
 	if requestSig != "" {
 		w.Header().Set(HeaderSig, SignResponse(s.opt.Key, requestSig, rep.status, b))
 		w.Header().Set(HeaderNode, s.rep.NodeID())
@@ -164,7 +184,7 @@ func (s *server) summary(ctx context.Context, peer string, _ []byte) reply {
 	if err != nil {
 		return fail(http.StatusInternalServerError, CodeInternal, err.Error())
 	}
-	return reply{http.StatusOK, SummaryResponse{Node: s.rep.NodeID(), Protocol: ProtocolVersion, Summary: sum}}
+	return reply{status: http.StatusOK, body: SummaryResponse{Node: s.rep.NodeID(), Protocol: ProtocolVersion, MinProtocol: MinProtocol, Summary: sum}}
 }
 
 func decode(body []byte, into any) *reply {
@@ -200,7 +220,7 @@ func (s *server) ops(ctx context.Context, peer string, body []byte) reply {
 		return fail(http.StatusInternalServerError, CodeInternal, err.Error())
 	}
 	s.logf("%s pulled %d ops (more=%v)", peer, len(ops), more)
-	return reply{http.StatusOK, OpsResponse{Ops: ToWire(ops), More: more}}
+	return reply{status: http.StatusOK, stream: &opsStream{ops: ToWire(ops), more: more}}
 }
 
 func (s *server) push(ctx context.Context, peer string, body []byte) reply {
@@ -218,7 +238,7 @@ func (s *server) push(ctx context.Context, peer string, body []byte) reply {
 		return fail(status, code, err.Error())
 	}
 	s.logf("%s pushed %d new ops (%d already held, rebuilt=%v)", peer, res.Applied, res.Duplicates, res.Rebuilt)
-	return reply{http.StatusOK, PushResponse{Applied: res.Applied, Duplicates: res.Duplicates, Rebuilt: res.Rebuilt}}
+	return reply{status: http.StatusOK, body: PushResponse{Applied: res.Applied, Duplicates: res.Duplicates, Rebuilt: res.Rebuilt}}
 }
 
 // classify maps an ApplyRemote failure to an HTTP status and a stable code.
@@ -301,6 +321,55 @@ func (s *server) secure(h func(ctx context.Context, peer string, body []byte) re
 			s.send(w, "", fail(http.StatusServiceUnavailable, CodeBusy, "too many requests in the replay window; try again shortly"))
 			return
 		}
-		s.send(w, "", h(r.Context(), dev, body))
+		if bad := checkProto(r); bad != nil {
+			s.send(w, "", *bad)
+			return
+		}
+		if body, err = inflate(r, body); err != nil {
+			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, err.Error()))
+			return
+		}
+		rep := h(r.Context(), dev, body)
+		if rep.stream != nil {
+			rep.stream.compress = acceptsGzip(r)
+		}
+		s.send(w, "", rep)
+	}
+}
+
+// checkProto refuses a caller older than MinProtocol with a message that says what to do. A v1 client never
+// sent the header, so it reads as version 0.
+func checkProto(r *http.Request) *reply {
+	got, _ := strconv.Atoi(r.Header.Get(HeaderProto))
+	if got >= MinProtocol {
+		return nil
+	}
+	have := "no version (an old Offgrid)"
+	if got > 0 {
+		have = fmt.Sprintf("version %d", got)
+	}
+	rep := fail(http.StatusUpgradeRequired, CodeUpgradeRequired,
+		fmt.Sprintf("this peer speaks sync protocol %d and needs at least %d from you; you sent %s: upgrade Offgrid on the calling device", ProtocolVersion, MinProtocol, have))
+	return &rep
+}
+
+// inflate undoes a gzip request body. The signature was checked on the bytes as sent, before this, and the
+// result is bounded like any other body.
+func inflate(r *http.Request, body []byte) ([]byte, error) {
+	switch enc := r.Header.Get("Content-Encoding"); enc {
+	case "", "identity":
+		return body, nil
+	case "gzip":
+		zr, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			return nil, errors.New("the request body is not valid gzip")
+		}
+		out, err := io.ReadAll(io.LimitReader(zr, maxBody+1))
+		if err != nil || len(out) > maxBody {
+			return nil, errors.New("the request body is not valid gzip, or too large once unpacked")
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unsupported Content-Encoding %q", enc)
 	}
 }
