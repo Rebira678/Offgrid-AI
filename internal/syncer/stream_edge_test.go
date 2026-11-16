@@ -226,3 +226,120 @@ func TestServerInflateUnsupportedEncoding(t *testing.T) {
 		t.Fatalf("expected 400 Bad Request on unsupported Content-Encoding, got %d", resp.StatusCode)
 	}
 }
+
+func TestFrameReaderRejectsTrailingInjectedData(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	seed := "seed-sig"
+
+	// 1. HMAC mode: Valid JSON followed by injected trailing bytes
+	jsonWithExtra := []byte(`{"ops":[]} {"injected":"data"}`)
+	mac := frameMAC(key, seed, jsonWithExtra)
+	streamData := fmt.Sprintf("%s %s\n", mac, string(jsonWithExtra))
+
+	fr := newFrameReader(strings.NewReader(streamData), key, seed)
+	_, err := fr.next()
+	if !errors.Is(err, ErrBadFrame) || !strings.Contains(err.Error(), "extra data after frame JSON") {
+		t.Fatalf("expected ErrBadFrame with extra data error, got: %v", err)
+	}
+
+	// 2. Mutual TLS mode (key == nil): Leading '-' followed by JSON and trailing garbage
+	mtlsStreamData := "- {\"end\":true,\"more\":false,\"n\":0} trailing_junk\n"
+	frMTLS := newFrameReader(strings.NewReader(mtlsStreamData), nil, "")
+	_, errMTLS := frMTLS.next()
+	if !errors.Is(errMTLS, ErrBadFrame) || !strings.Contains(errMTLS.Error(), "extra data after frame JSON") {
+		t.Fatalf("expected ErrBadFrame on MTLS mode with trailing data, got: %v", errMTLS)
+	}
+}
+
+func TestPullBatchRejectsEndMarkerWithOps(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "cli"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	// Server streams an end frame that illegitimately carries ops
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", ContentTypeFrames)
+		w.WriteHeader(http.StatusOK)
+		// Mutual TLS style '-' line: carries both End:true AND ops
+		w.Write([]byte("- {\"ops\":[{\"node\":\"srv\",\"seq\":1,\"kind\":\"task.created\",\"payload\":\"{}\"}],\"end\":true,\"n\":1}\n"))
+	}))
+	defer srv.Close()
+
+	client := &Client{Peer: srv.URL, Node: "cli", Mutual: true, HTTP: srv.Client()}
+	var rep Report
+	_, _, err = client.pullBatch(ctx, st, sqlstore.Summary{}, &rep)
+	if !errors.Is(err, ErrBadFrame) || !strings.Contains(err.Error(), "end marker cannot carry ops") {
+		t.Fatalf("expected ErrBadFrame with 'end marker cannot carry ops', got: %v", err)
+	}
+}
+
+func TestPullBatchEnforcesUpperLimitOnStreamedOps(t *testing.T) {
+	ctx := context.Background()
+	st, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "cli"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	// Rogue server streams 15 ops when client batch limit is 2 (upper limit 4 * 2 = 8 ops)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", ContentTypeFrames)
+		w.WriteHeader(http.StatusOK)
+		for i := 1; i <= 5; i++ {
+			// Each frame sends 3 ops -> 15 ops total
+			op1 := fmt.Sprintf(`{"node":"srv","seq":%d,"ts":%d,"kind":"task.created","payload":{"id":"t-%d","title":"t","site":"","priority":"low"}}`, (i-1)*3+1, 1000+((i-1)*3+1), (i-1)*3+1)
+			op2 := fmt.Sprintf(`{"node":"srv","seq":%d,"ts":%d,"kind":"task.created","payload":{"id":"t-%d","title":"t","site":"","priority":"low"}}`, (i-1)*3+2, 1000+((i-1)*3+2), (i-1)*3+2)
+			op3 := fmt.Sprintf(`{"node":"srv","seq":%d,"ts":%d,"kind":"task.created","payload":{"id":"t-%d","title":"t","site":"","priority":"low"}}`, (i-1)*3+3, 1000+((i-1)*3+3), (i-1)*3+3)
+			frameJS := fmt.Sprintf("- {\"ops\":[%s,%s,%s]}\n", op1, op2, op3)
+			w.Write([]byte(frameJS))
+		}
+		w.Write([]byte("- {\"end\":true,\"n\":15}\n"))
+	}))
+	defer srv.Close()
+
+	client := &Client{Peer: srv.URL, Node: "cli", Mutual: true, HTTP: srv.Client(), Batch: 2}
+
+	var rep Report
+	_, _, err = client.pullBatch(ctx, st, sqlstore.Summary{}, &rep)
+	if !errors.Is(err, ErrBadFrame) || !strings.Contains(err.Error(), "peer streamed more ops than batch limit") {
+		t.Fatalf("expected ErrBadFrame with 'peer streamed more ops than batch limit', got: %v", err)
+	}
+}
+
+func TestServerInflateEmptyGzipPayload(t *testing.T) {
+	ctx := context.Background()
+	key := []byte("0123456789abcdef0123456789abcdef")
+	st, err := sqlstore.Open(ctx, ":memory:", sqlstore.Options{NodeID: "srv"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	srv := httptest.NewServer(Handler(st, ServerOptions{Key: key}))
+	defer srv.Close()
+
+	now := time.Now()
+	empty := []byte{}
+	sig := SignRequest(key, http.MethodPost, PathPush, "client", now.Unix(), empty)
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+PathPush, bytes.NewReader(empty))
+	req.Header.Set(HeaderNode, "client")
+	req.Header.Set(HeaderTime, fmt.Sprint(now.Unix()))
+	req.Header.Set(HeaderProto, fmt.Sprint(ProtocolVersion))
+	req.Header.Set(HeaderSig, sig)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request on empty gzip body, got %d", resp.StatusCode)
+	}
+}
