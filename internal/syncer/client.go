@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -43,13 +44,22 @@ type Report struct {
 
 // RemoteError is an error reply from the peer.
 type RemoteError struct {
-	Status int
-	Code   string
-	Msg    string
+	Status     int
+	Code       string
+	Msg        string
+	RetryAfter time.Duration // the peer's hint for a busy answer; zero if it gave none
+}
+
+// Is makes errors.Is(err, ErrProtocol) true for an "upgrade required" refusal.
+func (e *RemoteError) Is(target error) bool {
+	return target == ErrProtocol && e.Code == CodeUpgradeRequired
 }
 
 func (e *RemoteError) Error() string {
-	return fmt.Sprintf("peer refused (%d %s): %s", e.Status, e.Code, e.Msg)
+	if e.Code != "" {
+		return fmt.Sprintf("the peer replied with %d (%s): %s", e.Status, e.Code, e.Msg)
+	}
+	return fmt.Sprintf("the peer replied with %d: %s", e.Status, e.Msg)
 }
 
 // ErrBadSignature means the peer's response was not signed with our key: it is
@@ -80,18 +90,31 @@ func (c *Client) batch() int {
 	return DefaultBatch
 }
 
-// call sends one signed request and decodes the verified response into out.
-func (c *Client) call(ctx context.Context, method, path string, in, out any) error {
+// do sends one signed request and returns the raw response and the request's signature (for checking the
+// reply). A body over 1 KiB is gzip-compressed; the signature covers the bytes as sent.
+func (c *Client) do(ctx context.Context, method, path string, in any, acceptGzip bool) (*http.Response, string, error) {
 	var body []byte
 	if in != nil {
 		var err error
 		if body, err = json.Marshal(in); err != nil {
-			return err
+			return nil, "", err
+		}
+	}
+	compressed := false
+	if len(body) > compressMin {
+		var zb bytes.Buffer
+		zw := gzip.NewWriter(&zb)
+		zw.Write(body)
+		if err := zw.Close(); err != nil {
+			return nil, "", err
+		}
+		if zb.Len() < len(body) {
+			body, compressed = zb.Bytes(), true
 		}
 	}
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.Peer, "/")+path, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	node := c.Node
 	if node == "" {
@@ -100,9 +123,16 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	unix := c.now().Unix()
 	var sig string
 	req.Header.Set(HeaderNode, node)
+	req.Header.Set(HeaderProto, strconv.Itoa(ProtocolVersion))
 	req.Header.Set("Content-Type", "application/json")
 	if c.DeviceID != "" {
 		req.Header.Set(HeaderDeviceID, c.DeviceID)
+	}
+	if compressed {
+		req.Header.Set("Content-Encoding", "gzip")
+	}
+	if acceptGzip {
+		req.Header.Set("Accept-Encoding", "gzip")
 	}
 	if c.Mutual {
 		signSecure(req, c.now())
@@ -111,28 +141,42 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 		req.Header.Set(HeaderTime, strconv.FormatInt(unix, 10))
 		req.Header.Set(HeaderSig, sig)
 	}
-
 	resp, err := c.http().Do(req)
 	if err != nil {
-		return fmt.Errorf("cannot reach the peer: %w", err)
+		return nil, "", fmt.Errorf("cannot reach the peer: %w", err)
 	}
-	defer resp.Body.Close()
+	return resp, sig, nil
+}
+
+// compressMin is the body size above which a request is compressed.
+const compressMin = 1024
+
+func readBody(resp *http.Response) ([]byte, error) {
 	rb, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
-		return fmt.Errorf("reading the peer's response: %w", err)
+		return nil, fmt.Errorf("reading the peer's response: %w", err)
 	}
 	if len(rb) > maxBody {
-		return errors.New("the peer's response is too large")
+		return nil, errors.New("the peer's response is too large")
 	}
+	return rb, nil
+}
+
+// remoteError builds the error for a refusal, with the peer's Retry-After hint if it sent one.
+func remoteError(resp *http.Response, rb []byte) *RemoteError {
+	var e ErrorResponse
+	_ = json.Unmarshal(rb, &e) // best effort: the status code is what matters if the body is not JSON
+	re := &RemoteError{Status: resp.StatusCode, Code: e.Code, Msg: e.Error}
+	if n, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && n > 0 && n <= 300 {
+		re.RetryAfter = time.Duration(n) * time.Second
+	}
+	return re
+}
+
+func (c *Client) judge(resp *http.Response, rb []byte, sig string) error {
 	if c.Mutual {
-		// The TLS handshake authenticated the server's key and protects the body; there is no HMAC to check.
 		if resp.StatusCode != http.StatusOK {
-			var e ErrorResponse
-			_ = json.Unmarshal(rb, &e)
-			return &RemoteError{resp.StatusCode, e.Code, e.Error}
-		}
-		if err := json.Unmarshal(rb, out); err != nil {
-			return fmt.Errorf("the peer's response is not valid: %w", err)
+			return remoteError(resp, rb)
 		}
 		return nil
 	}
@@ -142,21 +186,94 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	if got == "" && resp.StatusCode == http.StatusUnauthorized {
 		var e ErrorResponse
 		if json.Unmarshal(rb, &e) == nil && e.Error != "" {
-			return &RemoteError{resp.StatusCode, e.Code, e.Error}
+			return &RemoteError{Status: resp.StatusCode, Code: e.Code, Msg: e.Error}
 		}
 	}
 	if !sigEqual(got, SignResponse(c.Key, sig, resp.StatusCode, rb)) {
 		return ErrBadSignature
 	}
 	if resp.StatusCode != http.StatusOK {
-		var e ErrorResponse
-		_ = json.Unmarshal(rb, &e) // best effort: the status code is what matters if the body is not JSON
-		return &RemoteError{resp.StatusCode, e.Code, e.Error}
+		return remoteError(resp, rb)
+	}
+	return nil
+}
+
+// call sends one signed request and decodes the verified response into out.
+func (c *Client) call(ctx context.Context, method, path string, in, out any) error {
+	resp, sig, err := c.do(ctx, method, path, in, false)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	rb, err := readBody(resp)
+	if err != nil {
+		return err
+	}
+	if err := c.judge(resp, rb, sig); err != nil {
+		return err
 	}
 	if err := json.Unmarshal(rb, out); err != nil {
 		return fmt.Errorf("the peer's response is not valid: %w", err)
 	}
 	return nil
+}
+
+// pullBatch asks for the ops this replica lacks and applies them frame by frame as they arrive and check out.
+// It reports how many ops came, how many were new, and whether the peer has more. An error part-way keeps what
+// was applied; the next round starts from the replica's own summary.
+func (c *Client) pullBatch(ctx context.Context, local Replica, have sqlstore.Summary, rep *Report) (more bool, got int, err error) {
+	resp, sig, err := c.do(ctx, http.MethodPost, PathOps, OpsRequest{Have: have, Limit: c.batch()}, true)
+	if err != nil {
+		return false, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		rb, err := readBody(resp)
+		if err != nil {
+			return false, 0, err
+		}
+		if err := c.judge(resp, rb, sig); err != nil {
+			return false, 0, err
+		}
+		return false, 0, &RemoteError{Status: resp.StatusCode, Msg: "unexpected status"}
+	}
+	var src io.Reader = resp.Body
+	if strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+		zr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return false, 0, fmt.Errorf("%w: %v", ErrStreamCut, err)
+		}
+		defer zr.Close()
+		src = zr
+	}
+	var key []byte
+	if !c.Mutual {
+		key = c.Key
+	}
+	fr := newFrameReader(src, key, sig)
+	for {
+		f, err := fr.next()
+		if err != nil {
+			return false, got, err
+		}
+		if f.End {
+			if f.N != got {
+				return false, got, fmt.Errorf("%w: the end marker says %d ops, %d arrived", ErrBadFrame, f.N, got)
+			}
+			return f.More, got, nil
+		}
+		if len(f.Ops) == 0 {
+			return false, got, fmt.Errorf("%w: an empty frame", ErrBadFrame)
+		}
+		res, err := local.ApplyRemote(ctx, FromWire(f.Ops))
+		if err != nil {
+			return false, got, fmt.Errorf("applying the peer's ops: %w", err)
+		}
+		got += len(f.Ops)
+		rep.Pulled += res.Applied
+		rep.PulledDupes += res.Duplicates
+		rep.Rebuilt = rep.Rebuilt || res.Rebuilt
+	}
 }
 
 // PeerSummary asks the peer what it holds.
@@ -165,8 +282,15 @@ func (c *Client) PeerSummary(ctx context.Context) (SummaryResponse, error) {
 	if err := c.call(ctx, http.MethodGet, PathSummary, nil, &s); err != nil {
 		return s, err
 	}
-	if s.Protocol != ProtocolVersion {
-		return s, fmt.Errorf("%w (peer %d, here %d)", ErrProtocol, s.Protocol, ProtocolVersion)
+	min := s.MinProtocol
+	if min == 0 {
+		min = s.Protocol // a v1 peer does not say; it takes only its own version
+	}
+	switch {
+	case s.Protocol < MinProtocol:
+		return s, fmt.Errorf("%w: the peer runs sync protocol %d and this device needs at least %d; upgrade Offgrid on the peer", ErrProtocol, s.Protocol, MinProtocol)
+	case min > ProtocolVersion:
+		return s, fmt.Errorf("%w: the peer needs sync protocol %d or newer and this device speaks %d; upgrade Offgrid on this device", ErrProtocol, min, ProtocolVersion)
 	}
 	if s.Summary == nil {
 		s.Summary = sqlstore.Summary{}
@@ -201,28 +325,22 @@ func (c *Client) Once(ctx context.Context, local Replica) (Report, error) {
 		if err != nil {
 			return rep, err
 		}
-		var resp OpsResponse
 		rep.Requests++
-		if err := c.call(ctx, http.MethodPost, PathOps, OpsRequest{Have: have, Limit: c.batch()}, &resp); err != nil {
+		before := rep.Pulled
+		more, got, err := c.pullBatch(ctx, local, have, &rep)
+		if err != nil {
 			return rep, fmt.Errorf("pull: %w", err)
 		}
-		if len(resp.Ops) == 0 {
-			if resp.More {
+		if got == 0 {
+			if more {
 				return rep, errors.New("pull: the peer reported more ops but sent an empty batch; stopping")
 			}
 			break
 		}
-		res, err := local.ApplyRemote(ctx, FromWire(resp.Ops))
-		if err != nil {
-			return rep, fmt.Errorf("pull: applying the peer's ops: %w", err)
-		}
-		rep.Pulled += res.Applied
-		rep.PulledDupes += res.Duplicates
-		rep.Rebuilt = rep.Rebuilt || res.Rebuilt
-		if res.Applied == 0 && resp.More {
+		if rep.Pulled == before && more {
 			return rep, errors.New("pull: the peer keeps sending ops this replica already has; stopping")
 		}
-		if !resp.More {
+		if !more {
 			break
 		}
 	}
