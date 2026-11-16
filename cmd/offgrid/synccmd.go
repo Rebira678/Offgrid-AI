@@ -426,6 +426,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
 	every := fs.Duration("every", 2*time.Second, "time between rounds")
 	roundTimeout := fs.Duration("round-timeout", 10*time.Second, "give up on one round after this long")
+	backoffMax := fs.Duration("backoff-max", 30*time.Second, "after failed rounds, wait longer each time, up to this long (a success starts over)")
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
 	name := fs.String("name", "", "label for each line (default: this replica's node ID)")
 	faults := addFaultFlags(fs)
@@ -437,7 +438,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		fmt.Fprintln(stderr, "error: -peer URL is required")
 		return 2
 	}
-	if !requirePositive(stderr, "-every", *every) || !requirePositive(stderr, "-round-timeout", *roundTimeout) {
+	if !requirePositive(stderr, "-every", *every) || !requirePositive(stderr, "-round-timeout", *roundTimeout) || !requirePositive(stderr, "-backoff-max", *backoffMax) {
 		return 2
 	}
 	mutual := strings.HasPrefix(*peer, "https://")
@@ -510,8 +511,7 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		fmt.Fprintf(stdout, "%s  %s: %s\n", time.Now().Format("15:04:05"), label, fmt.Sprintf(format, a...))
 	}
 	last := ""
-	tick := time.NewTicker(*every)
-	defer tick.Stop()
+	bo := &syncer.Backoff{Min: *every, Max: *backoffMax}
 	for {
 		rctx, cancel := context.WithTimeout(ctx, *roundTimeout)
 		rep, err := cl.Once(rctx, st)
@@ -544,16 +544,37 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 		default:
 			msg = "in step. state " + short
 		}
+		// Wait a round's time after a good round, longer and longer after failed ones. A simulated partition
+		// (-fault) is not a real failure to back off from.
+		wait := *every
+		switch {
+		case err == nil || errors.Is(err, netfault.ErrPartitioned):
+			bo.Reset()
+		default:
+			if wait = bo.Next(err); wait > *every {
+				msg += fmt.Sprintf(" Next try in %s.", roundWait(wait))
+			}
+		}
 		// Say it when something changed; stay quiet while nothing does.
 		if msg != last {
 			line("%s", msg)
 			last = msg
 		}
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			line("stopped")
 			return 0
-		case <-tick.C:
+		case <-timer.C:
 		}
 	}
+}
+
+// roundWait shows a wait without false precision: to 0.1 s above a second, to the millisecond below it.
+func roundWait(d time.Duration) time.Duration {
+	if d >= time.Second {
+		return d.Round(100 * time.Millisecond)
+	}
+	return d.Round(time.Millisecond)
 }
