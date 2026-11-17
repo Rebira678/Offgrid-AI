@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"encoding/hex"
 	"errors"
 	"math"
 	"sync"
@@ -41,23 +42,6 @@ func TestParseNonceRoundTrip(t *testing.T) {
 	}
 }
 
-func TestNonceByteEndiannessExplicitLayout(t *testing.T) {
-	// Verify big-endian wire format guarantees
-	counter := uint64(0x1122334455667788)
-	n := Nonce(PurposeBody, counter)
-
-	want := [NonceSize]byte{
-		0x01,                   // purpose = PurposeBody
-		0x00, 0x00, 0x00,       // 3 zero padding bytes
-		0x11, 0x22, 0x33, 0x44, // big-endian upper 4 bytes
-		0x55, 0x66, 0x77, 0x88, // big-endian lower 4 bytes
-	}
-
-	if n != want {
-		t.Fatalf("layout mismatch:\ngot:  %#v\nwant: %#v", n, want)
-	}
-}
-
 func TestParseNonceTamperedPaddingRejected(t *testing.T) {
 	valid := Nonce(PurposeBody, 42)
 
@@ -85,15 +69,6 @@ func TestParseNonceInvalidPurposeRejected(t *testing.T) {
 	}
 }
 
-func TestScopeInvalidPurposeRejected(t *testing.T) {
-	s := NewScope()
-	for _, badP := range []Purpose{0, 3, 99, 255} {
-		if _, err := s.Next(badP); !errors.Is(err, ErrInvalidPurpose) {
-			t.Errorf("purpose %d: expected ErrInvalidPurpose, got %v", badP, err)
-		}
-	}
-}
-
 func TestScopeNilReceiverSafety(t *testing.T) {
 	var s *Scope
 	if _, err := s.Next(PurposeBody); !errors.Is(err, ErrNilScope) {
@@ -104,6 +79,15 @@ func TestScopeNilReceiverSafety(t *testing.T) {
 	}
 	if rem := s.Remaining(PurposeBody); rem != 0 {
 		t.Fatalf("expected 0 remaining on nil Scope.Remaining, got %d", rem)
+	}
+}
+
+func TestScopeInvalidPurposeRejected(t *testing.T) {
+	s := NewScope()
+	for _, badP := range []Purpose{0, 3, 99, 255} {
+		if _, err := s.Next(badP); !errors.Is(err, ErrInvalidPurpose) {
+			t.Errorf("purpose %d: expected ErrInvalidPurpose, got %v", badP, err)
+		}
 	}
 }
 
@@ -205,34 +189,6 @@ func TestScopeMaxUint64OverflowSafety(t *testing.T) {
 	// If counter is at MaxUint64, it must return ErrExhausted rather than overflowing to 0
 	if _, err := s.Next(PurposeBody); !errors.Is(err, ErrExhausted) {
 		t.Fatalf("expected ErrExhausted at MaxUint64 boundary, got %v", err)
-	}
-}
-
-func TestPurposeStringAndValidity(t *testing.T) {
-	if !PurposeBody.Valid() {
-		t.Error("PurposeBody should be valid")
-	}
-	if !PurposeWrap.Valid() {
-		t.Error("PurposeWrap should be valid")
-	}
-	if Purpose(0).Valid() {
-		t.Error("Purpose(0) must not be valid")
-	}
-	if Purpose(42).Valid() {
-		t.Error("Purpose(42) must not be valid")
-	}
-
-	if PurposeBody.String() != "body" {
-		t.Errorf("got %q, want %q", PurposeBody.String(), "body")
-	}
-	if PurposeWrap.String() != "wrap" {
-		t.Errorf("got %q, want %q", PurposeWrap.String(), "wrap")
-	}
-	if Purpose(0).String() != "unknown(0)" {
-		t.Errorf("got %q, want %q", Purpose(0).String(), "unknown(0)")
-	}
-	if Purpose(99).String() != "unknown(99)" {
-		t.Errorf("got %q, want %q", Purpose(99).String(), "unknown(99)")
 	}
 }
 
@@ -348,6 +304,51 @@ func TestConcurrentExhaustionRace(t *testing.T) {
 	}
 }
 
+func TestPurposeStringAndValidity(t *testing.T) {
+	if !PurposeBody.Valid() {
+		t.Error("PurposeBody should be valid")
+	}
+	if !PurposeWrap.Valid() {
+		t.Error("PurposeWrap should be valid")
+	}
+	if Purpose(0).Valid() {
+		t.Error("Purpose(0) must not be valid")
+	}
+	if Purpose(42).Valid() {
+		t.Error("Purpose(42) must not be valid")
+	}
+
+	if PurposeBody.String() != "body" {
+		t.Errorf("got %q, want %q", PurposeBody.String(), "body")
+	}
+	if PurposeWrap.String() != "wrap" {
+		t.Errorf("got %q, want %q", PurposeWrap.String(), "wrap")
+	}
+	if Purpose(0).String() != "unknown(0)" {
+		t.Errorf("got %q, want %q", Purpose(0).String(), "unknown(0)")
+	}
+	if Purpose(99).String() != "unknown(99)" {
+		t.Errorf("got %q, want %q", Purpose(99).String(), "unknown(99)")
+	}
+}
+
+func TestNonceByteEndiannessExplicitLayout(t *testing.T) {
+	// Verify big-endian wire format guarantees
+	counter := uint64(0x1122334455667788)
+	n := Nonce(PurposeBody, counter)
+
+	want := [NonceSize]byte{
+		0x01,                   // purpose = PurposeBody
+		0x00, 0x00, 0x00,       // 3 zero padding bytes
+		0x11, 0x22, 0x33, 0x44, // big-endian upper 4 bytes
+		0x55, 0x66, 0x77, 0x88, // big-endian lower 4 bytes
+	}
+
+	if n != want {
+		t.Fatalf("layout mismatch:\ngot:  %#v\nwant: %#v", n, want)
+	}
+}
+
 func TestNonceFromBytes(t *testing.T) {
 	valid := Nonce(PurposeBody, 12345)
 
@@ -441,4 +442,83 @@ func TestConstantTimeEqual(t *testing.T) {
 	if Equal(a, corrupt) {
 		t.Error("nonces with padding difference must not be Equal")
 	}
+}
+
+func BenchmarkNonceDerivationZeroAlloc(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = Nonce(PurposeBody, uint64(i))
+	}
+}
+
+func BenchmarkScopeNextWarm(b *testing.B) {
+	s := NewScopeWithLimit(math.MaxUint64)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = s.Next(PurposeBody)
+	}
+}
+
+func BenchmarkConstantTimeEqual(b *testing.B) {
+	n1 := Nonce(PurposeBody, 42)
+	n2 := Nonce(PurposeBody, 42)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = Equal(n1, n2)
+	}
+}
+
+func BenchmarkNonceHexEncoding(b *testing.B) {
+	n := Nonce(PurposeBody, 0x12345678)
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = NonceHex(n)
+	}
+}
+
+func FuzzParseNonce(f *testing.F) {
+	f.Add(byte(1), uint64(0))
+	f.Add(byte(2), uint64(42))
+	f.Add(byte(1), uint64(1<<32))
+	f.Add(byte(0), uint64(10))
+	f.Add(byte(99), uint64(100))
+
+	f.Fuzz(func(t *testing.T, purposeByte byte, counter uint64) {
+		p := Purpose(purposeByte)
+		n := Nonce(p, counter)
+		gotP, gotC, err := ParseNonce(n)
+		if p.Valid() {
+			if err != nil {
+				t.Fatalf("valid purpose %d failed: %v", p, err)
+			}
+			if gotP != p || gotC != counter {
+				t.Fatalf("mismatch: got (%v, %d), want (%v, %d)", gotP, gotC, p, counter)
+			}
+		} else {
+			if err == nil {
+				t.Fatalf("invalid purpose %d unexpectedly succeeded", purposeByte)
+			}
+		}
+	})
+}
+
+func FuzzNonceFromHex(f *testing.F) {
+	f.Add("010000000000000000000001")
+	f.Add("02000000000000000000002a")
+	f.Add("000000000000000000000000")
+	f.Add("invalid")
+
+	f.Fuzz(func(t *testing.T, rawHex string) {
+		n, err := NonceFromHex(rawHex)
+		if err == nil {
+			// If it decoded successfully, encoding it back must match lowercase
+			reEncoded := NonceHex(n)
+			if hex.EncodeToString(n[:]) != reEncoded {
+				t.Fatalf("hex re-encode mismatch: %s vs %s", reEncoded, hex.EncodeToString(n[:]))
+			}
+		}
+	})
 }
