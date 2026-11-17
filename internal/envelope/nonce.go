@@ -54,6 +54,12 @@ func (p Purpose) String() string {
 // ErrExhausted means a key has used all the nonces it may. The caller must pick a new key.
 var ErrExhausted = errors.New("envelope: this key has used all its nonces; use a new key")
 
+// ErrInvalidPurpose indicates an unassigned or invalid purpose byte.
+var ErrInvalidPurpose = errors.New("envelope: invalid or unassigned nonce purpose")
+
+// ErrNilScope indicates an operation was attempted on a nil Scope pointer.
+var ErrNilScope = errors.New("envelope: nil scope")
+
 // DefaultLimit is how many nonces one key may use per purpose. A content key is one-time (limit 1 would do);
 // the limit exists so a bug that reuses a scope fails loudly long before 2^32 messages.
 const DefaultLimit = 1 << 32
@@ -102,6 +108,12 @@ func (s *Scope) Remaining(p Purpose) uint64 {
 
 // Next returns the next unused nonce for the purpose.
 func (s *Scope) Next(p Purpose) ([NonceSize]byte, error) {
+	if s == nil {
+		return [NonceSize]byte{}, ErrNilScope
+	}
+	if !p.Valid() {
+		return [NonceSize]byte{}, ErrInvalidPurpose
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.next[p]
