@@ -5,6 +5,7 @@ package envelope
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -12,6 +13,9 @@ import (
 
 // NonceSize is the size of a ChaCha20-Poly1305 nonce (12 bytes / 96 bits).
 const NonceSize = 12
+
+// NonceHexLen is the string length of a hex-encoded nonce (24 hex characters).
+const NonceHexLen = NonceSize * 2
 
 // Purpose says what a nonce is for. It takes the first byte, so the same counter under the same key for two
 // purposes still gives two nonces.
@@ -62,6 +66,9 @@ var ErrMalformedNonce = errors.New("envelope: malformed nonce (padding bytes mus
 
 // ErrInvalidNonceSize indicates a byte slice does not match NonceSize (12 bytes).
 var ErrInvalidNonceSize = errors.New("envelope: invalid nonce byte slice length (expected 12 bytes)")
+
+// ErrInvalidNonceHex indicates a hex string does not represent a valid 12-byte nonce.
+var ErrInvalidNonceHex = errors.New("envelope: invalid nonce hex representation")
 
 // ErrNilScope indicates an operation was attempted on a nil Scope pointer.
 var ErrNilScope = errors.New("envelope: nil scope")
@@ -156,4 +163,21 @@ func NonceFromBytes(b []byte) ([NonceSize]byte, error) {
 		return [NonceSize]byte{}, err
 	}
 	return n, nil
+}
+
+// NonceFromHex decodes and validates a 24-character hex string into a Nonce array.
+func NonceFromHex(s string) ([NonceSize]byte, error) {
+	if len(s) != NonceHexLen {
+		return [NonceSize]byte{}, ErrInvalidNonceHex
+	}
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		return [NonceSize]byte{}, ErrInvalidNonceHex
+	}
+	return NonceFromBytes(b)
+}
+
+// NonceHex returns the 24-character lowercase hex string representation of the nonce.
+func NonceHex(n [NonceSize]byte) string {
+	return hex.EncodeToString(n[:])
 }
