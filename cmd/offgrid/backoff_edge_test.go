@@ -6,9 +6,27 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+type threadSafeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *threadSafeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *threadSafeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 func TestCLISyncRunNegativeBackoffMaxRefused(t *testing.T) {
 	dir := t.TempDir()
@@ -44,7 +62,7 @@ func TestCLISyncRunContextCancellationDuringBackoffWait(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr threadSafeBuffer
 
 	done := make(chan int, 1)
 	go func() {
@@ -59,8 +77,14 @@ func TestCLISyncRunContextCancellationDuringBackoffWait(t *testing.T) {
 		done <- code
 	}()
 
+	// Wait until sync run has started its loop and printed startup banner
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(stdout.String(), "syncing with") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+
 	// Wait for the sync loop to fail once and enter backoff wait timer
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Cancel context during the long 10s backoff wait
 	cancel()
@@ -73,7 +97,7 @@ func TestCLISyncRunContextCancellationDuringBackoffWait(t *testing.T) {
 		if !strings.Contains(stdout.String(), "stopped") {
 			t.Errorf("expected 'stopped' output on cancel, got:\n%s", stdout.String())
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("cmdSyncRunContext hung during backoff wait timer after cancel")
 	}
 }
