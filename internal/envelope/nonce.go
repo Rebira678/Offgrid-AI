@@ -57,6 +57,9 @@ var ErrExhausted = errors.New("envelope: this key has used all its nonces; use a
 // ErrInvalidPurpose indicates an unassigned or invalid purpose byte.
 var ErrInvalidPurpose = errors.New("envelope: invalid or unassigned nonce purpose")
 
+// ErrMalformedNonce indicates that the nonce padding bytes (indices 1..3) are non-zero.
+var ErrMalformedNonce = errors.New("envelope: malformed nonce (padding bytes must be zero)")
+
 // ErrNilScope indicates an operation was attempted on a nil Scope pointer.
 var ErrNilScope = errors.New("envelope: nil scope")
 
@@ -122,4 +125,19 @@ func (s *Scope) Next(p Purpose) ([NonceSize]byte, error) {
 	}
 	s.next[p] = c + 1
 	return Nonce(p, c), nil
+}
+
+// ParseNonce unpacks and validates a 12-byte nonce according to the ADR 009 layout.
+// It verifies that bytes 1..3 are zero padding, that the purpose is recognized,
+// and extracts the 64-bit big-endian counter.
+func ParseNonce(n [NonceSize]byte) (Purpose, uint64, error) {
+	p := Purpose(n[0])
+	if !p.Valid() {
+		return 0, 0, ErrInvalidPurpose
+	}
+	if n[1] != 0 || n[2] != 0 || n[3] != 0 {
+		return 0, 0, ErrMalformedNonce
+	}
+	counter := binary.BigEndian.Uint64(n[4:])
+	return p, counter, nil
 }
