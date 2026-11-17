@@ -338,8 +338,8 @@ func TestNonceByteEndiannessExplicitLayout(t *testing.T) {
 	n := Nonce(PurposeBody, counter)
 
 	want := [NonceSize]byte{
-		0x01,                   // purpose = PurposeBody
-		0x00, 0x00, 0x00,       // 3 zero padding bytes
+		0x01,             // purpose = PurposeBody
+		0x00, 0x00, 0x00, // 3 zero padding bytes
 		0x11, 0x22, 0x33, 0x44, // big-endian upper 4 bytes
 		0x55, 0x66, 0x77, 0x88, // big-endian lower 4 bytes
 	}
@@ -406,11 +406,11 @@ func TestNonceHexEncodingAndDecoding(t *testing.T) {
 	// Invalid hex strings
 	invalidHexes := []string{
 		"",
-		"010203",                                       // too short
-		"01000000000000000000000000",                   // 26 chars (too long)
-		"01000000000000000000002z",                     // non-hex character 'z'
-		"000000000000000000000001",                     // invalid purpose 0
-		"010100000000000000000001",                     // non-zero padding byte at index 1
+		"010203",                     // too short
+		"01000000000000000000000000", // 26 chars (too long)
+		"01000000000000000000002z",   // non-hex character 'z'
+		"000000000000000000000001",   // invalid purpose 0
+		"010100000000000000000001",   // non-zero padding byte at index 1
 	}
 	for _, ih := range invalidHexes {
 		_, err := NonceFromHex(ih)
