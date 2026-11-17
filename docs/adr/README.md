@@ -11,6 +11,8 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [005](005-trust-root.md) | Trust root: a founder key; a second admin before the pilot | Day 38 (founding and a second admin implemented; `store members` warns while there is one admin) |
 | [006](006-transport.md) | Transport: mutual TLS 1.3 pinned from the membership log; phones use tokens | Day 40 (node-to-node done; phone tokens not) |
 | [008](008-sync-protocol.md) | Sync protocol v2: version header and "upgrade required", MAC-chained frames, gzip, JSON kept, a maintained summary table | Day 41 (done; 007 is kept for the phone web client) |
+| [009](009-envelope-encryption.md) | Envelope encryption for a hosted relay: a key per op, wrapped to each member | Day 42 (proposed, design only, not reviewed) |
+| [010](010-compaction.md) | Compaction: snapshot plus signed checkpoint, with a maximum time away | Day 42 (proposed, design only, not reviewed) |
 
 ## Decisions in the plan that have no record yet
 
