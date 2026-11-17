@@ -347,3 +347,98 @@ func TestConcurrentExhaustionRace(t *testing.T) {
 		t.Fatalf("expected %d unique nonces in seen map, got %d", limit, len(seen))
 	}
 }
+
+func TestNonceFromBytes(t *testing.T) {
+	valid := Nonce(PurposeBody, 12345)
+
+	t.Run("valid slice", func(t *testing.T) {
+		got, err := NonceFromBytes(valid[:])
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !Equal(got, valid) {
+			t.Fatalf("got %x, want %x", got, valid)
+		}
+	})
+
+	t.Run("invalid lengths", func(t *testing.T) {
+		lengths := []int{0, 1, 11, 13, 20}
+		for _, l := range lengths {
+			buf := make([]byte, l)
+			_, err := NonceFromBytes(buf)
+			if !errors.Is(err, ErrInvalidNonceSize) {
+				t.Errorf("len %d: expected ErrInvalidNonceSize, got %v", l, err)
+			}
+		}
+		_, errNil := NonceFromBytes(nil)
+		if !errors.Is(errNil, ErrInvalidNonceSize) {
+			t.Errorf("nil slice: expected ErrInvalidNonceSize, got %v", errNil)
+		}
+	})
+
+	t.Run("invalid content in 12-byte slice", func(t *testing.T) {
+		corrupt := valid
+		corrupt[1] = 0x99 // violate padding
+		_, err := NonceFromBytes(corrupt[:])
+		if !errors.Is(err, ErrMalformedNonce) {
+			t.Errorf("expected ErrMalformedNonce, got %v", err)
+		}
+	})
+}
+
+func TestNonceHexEncodingAndDecoding(t *testing.T) {
+	n := Nonce(PurposeWrap, 0xaabbcc)
+	encoded := NonceHex(n)
+
+	if len(encoded) != NonceHexLen {
+		t.Fatalf("expected hex len %d, got %d (%s)", NonceHexLen, len(encoded), encoded)
+	}
+
+	decoded, err := NonceFromHex(encoded)
+	if err != nil {
+		t.Fatalf("NonceFromHex failed: %v", err)
+	}
+	if !Equal(decoded, n) {
+		t.Fatalf("decoded %x != original %x", decoded, n)
+	}
+
+	// Invalid hex strings
+	invalidHexes := []string{
+		"",
+		"010203",                                       // too short
+		"01000000000000000000000000",                   // 26 chars (too long)
+		"01000000000000000000002z",                     // non-hex character 'z'
+		"000000000000000000000001",                     // invalid purpose 0
+		"010100000000000000000001",                     // non-zero padding byte at index 1
+	}
+	for _, ih := range invalidHexes {
+		_, err := NonceFromHex(ih)
+		if err == nil {
+			t.Errorf("expected error for hex %q, got nil", ih)
+		}
+	}
+}
+
+func TestConstantTimeEqual(t *testing.T) {
+	a := Nonce(PurposeBody, 100)
+	b := Nonce(PurposeBody, 100)
+	c := Nonce(PurposeBody, 101)
+	d := Nonce(PurposeWrap, 100)
+
+	if !Equal(a, b) {
+		t.Error("identical nonces must be Equal")
+	}
+	if Equal(a, c) {
+		t.Error("nonces with different counters must not be Equal")
+	}
+	if Equal(a, d) {
+		t.Error("nonces with different purposes must not be Equal")
+	}
+
+	// Bit-flip in padding byte
+	corrupt := a
+	corrupt[2] ^= 0x01
+	if Equal(a, corrupt) {
+		t.Error("nonces with padding difference must not be Equal")
+	}
+}
