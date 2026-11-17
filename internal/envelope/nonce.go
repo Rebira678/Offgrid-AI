@@ -60,6 +60,9 @@ var ErrInvalidPurpose = errors.New("envelope: invalid or unassigned nonce purpos
 // ErrMalformedNonce indicates that the nonce padding bytes (indices 1..3) are non-zero.
 var ErrMalformedNonce = errors.New("envelope: malformed nonce (padding bytes must be zero)")
 
+// ErrInvalidNonceSize indicates a byte slice does not match NonceSize (12 bytes).
+var ErrInvalidNonceSize = errors.New("envelope: invalid nonce byte slice length (expected 12 bytes)")
+
 // ErrNilScope indicates an operation was attempted on a nil Scope pointer.
 var ErrNilScope = errors.New("envelope: nil scope")
 
@@ -140,4 +143,17 @@ func ParseNonce(n [NonceSize]byte) (Purpose, uint64, error) {
 	}
 	counter := binary.BigEndian.Uint64(n[4:])
 	return p, counter, nil
+}
+
+// NonceFromBytes copies and validates a 12-byte slice into a Nonce array.
+func NonceFromBytes(b []byte) ([NonceSize]byte, error) {
+	if len(b) != NonceSize {
+		return [NonceSize]byte{}, ErrInvalidNonceSize
+	}
+	var n [NonceSize]byte
+	copy(n[:], b)
+	if _, _, err := ParseNonce(n); err != nil {
+		return [NonceSize]byte{}, err
+	}
+	return n, nil
 }
