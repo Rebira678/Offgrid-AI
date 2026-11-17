@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -52,5 +53,41 @@ func TestNonceByteEndiannessExplicitLayout(t *testing.T) {
 
 	if n != want {
 		t.Fatalf("layout mismatch:\ngot:  %#v\nwant: %#v", n, want)
+	}
+}
+
+func TestParseNonceTamperedPaddingRejected(t *testing.T) {
+	valid := Nonce(PurposeBody, 42)
+
+	// Test corruption in each padding byte (indices 1, 2, 3)
+	for padIdx := 1; padIdx <= 3; padIdx++ {
+		for _, badByte := range []byte{0x01, 0x10, 0x7f, 0x80, 0xff} {
+			corrupt := valid
+			corrupt[padIdx] = badByte
+
+			_, _, err := ParseNonce(corrupt)
+			if !errors.Is(err, ErrMalformedNonce) {
+				t.Errorf("padIdx %d = 0x%02x: expected ErrMalformedNonce, got %v", padIdx, badByte, err)
+			}
+		}
+	}
+}
+
+func TestParseNonceInvalidPurposeRejected(t *testing.T) {
+	for _, badP := range []byte{0x00, 0x03, 0x10, 0x80, 0xff} {
+		n := Nonce(Purpose(badP), 100)
+		_, _, err := ParseNonce(n)
+		if !errors.Is(err, ErrInvalidPurpose) {
+			t.Errorf("purpose 0x%02x: expected ErrInvalidPurpose, got %v", badP, err)
+		}
+	}
+}
+
+func TestScopeInvalidPurposeRejected(t *testing.T) {
+	s := NewScope()
+	for _, badP := range []Purpose{0, 3, 99, 255} {
+		if _, err := s.Next(badP); !errors.Is(err, ErrInvalidPurpose) {
+			t.Errorf("purpose %d: expected ErrInvalidPurpose, got %v", badP, err)
+		}
 	}
 }
