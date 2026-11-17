@@ -195,3 +195,41 @@ func TestScopeIndependentPurposesUnderCustomLimit(t *testing.T) {
 		t.Fatalf("expected wrap count 2, got %d", s.Count(PurposeWrap))
 	}
 }
+
+func TestScopeMaxUint64OverflowSafety(t *testing.T) {
+	s := NewScopeWithLimit(math.MaxUint64)
+	s.next[PurposeBody] = math.MaxUint64
+
+	// If counter is at MaxUint64, it must return ErrExhausted rather than overflowing to 0
+	if _, err := s.Next(PurposeBody); !errors.Is(err, ErrExhausted) {
+		t.Fatalf("expected ErrExhausted at MaxUint64 boundary, got %v", err)
+	}
+}
+
+func TestPurposeStringAndValidity(t *testing.T) {
+	if !PurposeBody.Valid() {
+		t.Error("PurposeBody should be valid")
+	}
+	if !PurposeWrap.Valid() {
+		t.Error("PurposeWrap should be valid")
+	}
+	if Purpose(0).Valid() {
+		t.Error("Purpose(0) must not be valid")
+	}
+	if Purpose(42).Valid() {
+		t.Error("Purpose(42) must not be valid")
+	}
+
+	if PurposeBody.String() != "body" {
+		t.Errorf("got %q, want %q", PurposeBody.String(), "body")
+	}
+	if PurposeWrap.String() != "wrap" {
+		t.Errorf("got %q, want %q", PurposeWrap.String(), "wrap")
+	}
+	if Purpose(0).String() != "unknown(0)" {
+		t.Errorf("got %q, want %q", Purpose(0).String(), "unknown(0)")
+	}
+	if Purpose(99).String() != "unknown(99)" {
+		t.Errorf("got %q, want %q", Purpose(99).String(), "unknown(99)")
+	}
+}
