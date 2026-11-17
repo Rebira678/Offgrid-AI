@@ -76,6 +76,16 @@ func NewScopeWithLimit(limit uint64) *Scope {
 	return &Scope{limit: limit}
 }
 
+// Count returns the number of nonces already issued for the given purpose.
+func (s *Scope) Count(p Purpose) uint64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.next[p]
+}
+
 // Remaining returns how many nonces remain available for the purpose before hitting limit.
 func (s *Scope) Remaining(p Purpose) uint64 {
 	if s == nil {
