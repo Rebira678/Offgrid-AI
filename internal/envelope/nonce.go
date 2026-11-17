@@ -62,13 +62,13 @@ const DefaultLimit = 1 << 32
 // never goes backwards, and a Scope never hands out the same nonce twice.
 type Scope struct {
 	mu    sync.Mutex
-	next  map[Purpose]uint64
+	next  [256]uint64
 	limit uint64
 }
 
 // NewScope starts a scope for a new key with DefaultLimit.
 func NewScope() *Scope {
-	return &Scope{next: map[Purpose]uint64{}, limit: DefaultLimit}
+	return &Scope{limit: DefaultLimit}
 }
 
 // Next returns the next unused nonce for the purpose.
