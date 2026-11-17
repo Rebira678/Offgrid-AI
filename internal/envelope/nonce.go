@@ -71,6 +71,25 @@ func NewScope() *Scope {
 	return &Scope{limit: DefaultLimit}
 }
 
+// NewScopeWithLimit starts a scope for a new key with a custom maximum nonces limit per purpose.
+func NewScopeWithLimit(limit uint64) *Scope {
+	return &Scope{limit: limit}
+}
+
+// Remaining returns how many nonces remain available for the purpose before hitting limit.
+func (s *Scope) Remaining(p Purpose) uint64 {
+	if s == nil {
+		return 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.next[p]
+	if c >= s.limit {
+		return 0
+	}
+	return s.limit - c
+}
+
 // Next returns the next unused nonce for the purpose.
 func (s *Scope) Next(p Purpose) ([NonceSize]byte, error) {
 	s.mu.Lock()
