@@ -5,7 +5,9 @@ package envelope
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"sync"
 )
 
 // NonceSize is the size of a ChaCha20-Poly1305 nonce (12 bytes / 96 bits).
@@ -47,4 +49,36 @@ func (p Purpose) String() string {
 	default:
 		return fmt.Sprintf("unknown(%d)", byte(p))
 	}
+}
+
+// ErrExhausted means a key has used all the nonces it may. The caller must pick a new key.
+var ErrExhausted = errors.New("envelope: this key has used all its nonces; use a new key")
+
+// DefaultLimit is how many nonces one key may use per purpose. A content key is one-time (limit 1 would do);
+// the limit exists so a bug that reuses a scope fails loudly long before 2^32 messages.
+const DefaultLimit = 1 << 32
+
+// Scope hands out nonces for one key. It is safe for concurrent use. Each purpose counts separately and
+// never goes backwards, and a Scope never hands out the same nonce twice.
+type Scope struct {
+	mu    sync.Mutex
+	next  map[Purpose]uint64
+	limit uint64
+}
+
+// NewScope starts a scope for a new key with DefaultLimit.
+func NewScope() *Scope {
+	return &Scope{next: map[Purpose]uint64{}, limit: DefaultLimit}
+}
+
+// Next returns the next unused nonce for the purpose.
+func (s *Scope) Next(p Purpose) ([NonceSize]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := s.next[p]
+	if c >= s.limit {
+		return [NonceSize]byte{}, ErrExhausted
+	}
+	s.next[p] = c + 1
+	return Nonce(p, c), nil
 }
