@@ -4,6 +4,7 @@
 package envelope
 
 import (
+	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -180,4 +181,9 @@ func NonceFromHex(s string) ([NonceSize]byte, error) {
 // NonceHex returns the 24-character lowercase hex string representation of the nonce.
 func NonceHex(n [NonceSize]byte) string {
 	return hex.EncodeToString(n[:])
+}
+
+// Equal returns true if two nonces are byte-for-byte identical in constant time.
+func Equal(a, b [NonceSize]byte) bool {
+	return subtle.ConstantTimeCompare(a[:], b[:]) == 1
 }
