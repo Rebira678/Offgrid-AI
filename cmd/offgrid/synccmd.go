@@ -464,6 +464,10 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	})
 	st, err := openSyncStore(ctx, stderr, *db, *maxDrift, *create, explicitRequireSigned, *allowUnsigned)
 	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(stdout, "stopped")
+			return 0
+		}
 		if code, ok := noDatabaseExitHint(stderr, err, syncCreateHint); ok {
 			return code
 		}
@@ -474,6 +478,10 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	var wk work
 	stopStats, err := stats.start(ctx, stderr, "run", st, &wk)
 	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Fprintln(stdout, "stopped")
+			return 0
+		}
 		fmt.Fprintln(stderr, "error:", err)
 		return 1
 	}
