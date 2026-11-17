@@ -3,6 +3,8 @@ package envelope
 import (
 	"errors"
 	"math"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -231,5 +233,117 @@ func TestPurposeStringAndValidity(t *testing.T) {
 	}
 	if Purpose(99).String() != "unknown(99)" {
 		t.Errorf("got %q, want %q", Purpose(99).String(), "unknown(99)")
+	}
+}
+
+func TestConcurrentMixedPurposesStress(t *testing.T) {
+	s := NewScope()
+	const goroutines = 32
+	const drawsPerRoutine = 2_000
+
+	var mu sync.Mutex
+	seen := make(map[[NonceSize]byte]struct{}, goroutines*drawsPerRoutine)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for g := 0; g < goroutines; g++ {
+		routineID := g
+		go func() {
+			defer wg.Done()
+			for i := 0; i < drawsPerRoutine; i++ {
+				// Alternate between PurposeBody and PurposeWrap
+				p := PurposeBody
+				if (routineID+i)%2 == 1 {
+					p = PurposeWrap
+				}
+
+				n, err := s.Next(p)
+				if err != nil {
+					t.Errorf("routine %d iteration %d: unexpected error: %v", routineID, i, err)
+					return
+				}
+
+				// Validate on the fly
+				parsedP, _, parseErr := ParseNonce(n)
+				if parseErr != nil {
+					t.Errorf("routine %d: parse error on nonce %x: %v", routineID, n, parseErr)
+					return
+				}
+				if parsedP != p {
+					t.Errorf("routine %d: parsed purpose %v != expected %v", routineID, parsedP, p)
+					return
+				}
+
+				mu.Lock()
+				if _, dup := seen[n]; dup {
+					t.Errorf("collision detected! Nonce %x issued twice", n)
+				}
+				seen[n] = struct{}{}
+				mu.Unlock()
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	totalExpected := goroutines * drawsPerRoutine
+	if len(seen) != totalExpected {
+		t.Fatalf("expected %d distinct nonces, got %d", totalExpected, len(seen))
+	}
+
+	totalCounted := s.Count(PurposeBody) + s.Count(PurposeWrap)
+	if totalCounted != uint64(totalExpected) {
+		t.Fatalf("expected total count %d, got %d", totalExpected, totalCounted)
+	}
+}
+
+func TestConcurrentExhaustionRace(t *testing.T) {
+	const limit = 250
+	s := NewScopeWithLimit(limit)
+
+	const workers = 20
+	const drawsPerWorker = 50 // total 1,000 attempts for 250 available nonces
+
+	var successCount atomic.Int64
+	var exhaustedCount atomic.Int64
+	var mu sync.Mutex
+	seen := make(map[[NonceSize]byte]struct{}, limit)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < drawsPerWorker; i++ {
+				n, err := s.Next(PurposeBody)
+				if err == nil {
+					successCount.Add(1)
+					mu.Lock()
+					if _, dup := seen[n]; dup {
+						t.Errorf("duplicate nonce issued in race: %x", n)
+					}
+					seen[n] = struct{}{}
+					mu.Unlock()
+				} else if errors.Is(err, ErrExhausted) {
+					exhaustedCount.Add(1)
+				} else {
+					t.Errorf("unexpected error: %v", err)
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if successCount.Load() != limit {
+		t.Fatalf("expected %d successful draws, got %d", limit, successCount.Load())
+	}
+	if exhaustedCount.Load() != (workers*drawsPerWorker)-limit {
+		t.Fatalf("expected %d exhausted draws, got %d", (workers*drawsPerWorker)-limit, exhaustedCount.Load())
+	}
+	if len(seen) != limit {
+		t.Fatalf("expected %d unique nonces in seen map, got %d", limit, len(seen))
 	}
 }
