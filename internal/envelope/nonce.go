@@ -105,7 +105,7 @@ func (s *Scope) Next(p Purpose) ([NonceSize]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c := s.next[p]
-	if c >= s.limit {
+	if c >= s.limit || c == ^uint64(0) {
 		return [NonceSize]byte{}, ErrExhausted
 	}
 	s.next[p] = c + 1
