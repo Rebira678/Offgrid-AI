@@ -5,6 +5,7 @@ package envelope
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 // NonceSize is the size of a ChaCha20-Poly1305 nonce (12 bytes / 96 bits).
@@ -29,4 +30,21 @@ func Nonce(p Purpose, counter uint64) [NonceSize]byte {
 	n[0] = byte(p)
 	binary.BigEndian.PutUint64(n[4:], counter)
 	return n
+}
+
+// Valid reports whether the purpose is one of the recognized envelope purposes.
+func (p Purpose) Valid() bool {
+	return p == PurposeBody || p == PurposeWrap
+}
+
+// String returns a human-readable identifier for the purpose.
+func (p Purpose) String() string {
+	switch p {
+	case PurposeBody:
+		return "body"
+	case PurposeWrap:
+		return "wrap"
+	default:
+		return fmt.Sprintf("unknown(%d)", byte(p))
+	}
 }
