@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -40,7 +41,11 @@ func TestAgentRulesAnswerWithoutAnyModel(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	for _, want := range []string{"tier 0 (rules)", "rule list", "ok: 3 tasks", "Leaking pump", " µs]"} {
+	// the time is shown in µs when the machine is quiet and in ms when it is busy (it was a flaky assertion on " µs]")
+	if !regexp.MustCompile(` [0-9.]+ (µs|ms)\]`).MatchString(out) {
+		t.Errorf("output shows no timing:\n%s", out)
+	}
+	for _, want := range []string{"tier 0 (rules)", "rule list", "ok: 3 tasks", "Leaking pump"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
