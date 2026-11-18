@@ -87,8 +87,8 @@ func TestHubCrossTenantAntiEnumeration(t *testing.T) {
 
 	// Founder B tries to probe for "secure-group" (exists, but caller is not in it)
 	// versus "phantom-group" (does not exist at all)
-	codeExisting, bodyExisting := rawGet(t, e, node{id: founderB}, Prefix+"secure-group"+syncer.PathSummary)
-	codePhantom, bodyPhantom := rawGet(t, e, node{id: founderB}, Prefix+"phantom-group"+syncer.PathSummary)
+	codeExisting, _ := rawGet(t, e, node{id: founderB}, Prefix+"secure-group"+syncer.PathSummary)
+	codePhantom, _ := rawGet(t, e, node{id: founderB}, Prefix+"phantom-group"+syncer.PathSummary)
 	if codeExisting != 0 || codePhantom != 0 {
 		t.Fatalf("stranger handshake should be refused before enrollment, got %d and %d", codeExisting, codePhantom)
 	}
@@ -99,8 +99,8 @@ func TestHubCrossTenantAntiEnumeration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	codeExisting, bodyExisting = rawGet(t, e, node{id: founderB}, Prefix+"secure-group"+syncer.PathSummary)
-	codePhantom, bodyPhantom = rawGet(t, e, node{id: founderB}, Prefix+"phantom-group"+syncer.PathSummary)
+	codeExisting, bodyExisting := rawGet(t, e, node{id: founderB}, Prefix+"secure-group"+syncer.PathSummary)
+	codePhantom, bodyPhantom := rawGet(t, e, node{id: founderB}, Prefix+"phantom-group"+syncer.PathSummary)
 
 	if codeExisting != http.StatusNotFound || codePhantom != http.StatusNotFound {
 		t.Fatalf("expected 404 for both, got %d and %d", codeExisting, codePhantom)
