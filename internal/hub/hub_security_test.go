@@ -89,6 +89,9 @@ func TestHubCrossTenantAntiEnumeration(t *testing.T) {
 	// versus "phantom-group" (does not exist at all)
 	codeExisting, bodyExisting := rawGet(t, e, node{id: founderB}, Prefix+"secure-group"+syncer.PathSummary)
 	codePhantom, bodyPhantom := rawGet(t, e, node{id: founderB}, Prefix+"phantom-group"+syncer.PathSummary)
+	if codeExisting != 0 || codePhantom != 0 {
+		t.Fatalf("stranger handshake should be refused before enrollment, got %d and %d", codeExisting, codePhantom)
+	}
 
 	// In this test, founderB has not founded any group so the handshake itself drops it,
 	// or if founderB is enrolled in another group, both return identical 404 responses.

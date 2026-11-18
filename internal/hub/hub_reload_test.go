@@ -87,7 +87,7 @@ func TestHubReloadEdgeCases(t *testing.T) {
 	if err := writeRegistry(e.dir, recs); err != nil {
 		t.Fatal(err)
 	}
-	n, err = e.hub.Reload(ctx)
+	_, err = e.hub.Reload(ctx)
 	if err == nil || !strings.Contains(err.Error(), "limit of 2 groups") {
 		t.Fatalf("expected MaxGroups limit error on reload, got %v", err)
 	}
