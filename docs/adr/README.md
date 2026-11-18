@@ -13,10 +13,11 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [008](008-sync-protocol.md) | Sync protocol v2: version header and "upgrade required", MAC-chained frames, gzip, JSON kept, a maintained summary table | Day 41 (done; 007 is kept for the phone web client) |
 | [009](009-envelope-encryption.md) | Envelope encryption for a hosted relay: a key per op, wrapped to each member | Day 42 (proposed, design only, not reviewed) |
 | [010](010-compaction.md) | Compaction: snapshot plus signed checkpoint, with a maximum time away | Day 42 (proposed, design only, not reviewed) |
+| [011](011-relay.md) | Relay: a hub run by the site owner that hosts one replica per group and can read, not forge | Day 43 (built; one hub, no Pi test) |
 
 ## Decisions in the plan that have no record yet
 
-Relay, storage engine, durability, log growth, attachments, phone web client, clocks on offline devices, history before signing, licence. The phone web client has the most new evidence (the Day 33 spike) and should be **ADR 007** next.
+Storage engine, durability, log growth, attachments, phone web client, clocks on offline devices, history before signing, licence. The phone web client has the most new evidence (the Day 33 spike) and should be **ADR 007** next.
 
 ## Dependencies added after the beta
 
