@@ -113,6 +113,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdCA(args[1:], stdout, stderr)
 	case "identity":
 		return cmdIdentity(args[1:], stdout, stderr)
+	case "hub":
+		return cmdHub(args[1:], stdout, stderr)
 	case "version":
 		fmt.Fprintln(stdout, "offgrid", version)
 		return 0
@@ -146,6 +148,7 @@ Usage:
   offgrid net    [-url A,B] [-dns HOST] [-interval D] [-once] [-for D]   watch ONLINE / DEGRADED / OFFLINE
   offgrid task   -db FILE list|delete REF|remove-note REF N          show and delete tasks (no model involved)
   offgrid sync   serve|once|summary -db FILE ...                       exchange tasks with another replica over HTTP (HMAC-signed)
+  offgrid hub    serve|group add|group list                            a relay that routes ops between groups over mutual TLS
   offgrid clock  demo [-skew 10m]                                     why wall clocks cannot order edits, and the hybrid clock that can
   offgrid orset  demo                                                 what happens when I delete a task while you edit it
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
