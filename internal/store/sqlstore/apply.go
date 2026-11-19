@@ -280,7 +280,7 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			return err
 		}
 		if exists != 1 {
-			return bad("suggests a change to task %q, which does not exist", p.Task)
+			return dangling(ctx, x, bad("suggests a change to task %q, which does not exist", p.Task), func() (bool, error) { return taskIsVoid(ctx, x, p.Task) })
 		}
 		var st, pr any
 		if p.Status != nil {
@@ -310,7 +310,7 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		err := x.QueryRowContext(ctx, `SELECT task_id, state, status, priority, note FROM suggestions WHERE node = ? AND seq = ?`,
 			p.Node, p.Seq).Scan(&taskID, &state, &st, &pr, &note)
 		if errors.Is(err, sql.ErrNoRows) {
-			return bad("resolves suggestion %s/%d, which does not exist", p.Node, p.Seq)
+			return dangling(ctx, x, bad("resolves suggestion %s/%d, which does not exist", p.Node, p.Seq), func() (bool, error) { return suggestionIsVoid(ctx, x, p.Node, p.Seq) })
 		}
 		if err != nil {
 			return err
