@@ -26,6 +26,7 @@ func replay(ctx context.Context, dst, src execer, after int64) (n int, last int6
 	if err != nil {
 		return 0, last, err
 	}
+	ctx = withVoid(ctx, void, src)
 	for {
 		ops, err := loadOps(ctx, src, last, replayBatch)
 		if err != nil {
