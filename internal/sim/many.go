@@ -70,6 +70,15 @@ func (s *Stats) add(o Stats) {
 	s.Reversed += o.Reversed
 	s.Gapped += o.Gapped
 	s.GapRefused += o.GapRefused
+	s.Revokes += o.Revokes
+	s.Forged += o.Forged
+	s.ForgedRefused += o.ForgedRefused
+	s.ForgedIgnored += o.ForgedIgnored
+	s.Rogue += o.Rogue
+	s.RogueRefused += o.RogueRefused
+	s.Replays += o.Replays
+	s.ReplayHeld += o.ReplayHeld
+	s.VoidOps += o.VoidOps
 }
 
 // Shrink cuts a failing schedule down to a small one that fails the same way
