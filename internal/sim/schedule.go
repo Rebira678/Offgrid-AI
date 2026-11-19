@@ -84,10 +84,28 @@ func Generate(seed int64, cfg Config) []Action {
 	for _, w := range weights {
 		total += w.w
 	}
+	extra := 0
+	if cfg.Secure {
+		for _, e := range secureExtra {
+			extra += e.w
+		}
+	}
 	out := make([]Action, 0, cfg.Steps)
 	for i := 0; i < cfg.Steps; i++ {
-		pick := rng.Intn(total)
+		pick := rng.Intn(total + extra)
 		var k Kind
+		if pick >= total { // a hostile action (Secure runs only; the plain schedule draws exactly as before)
+			pick -= total
+			for _, e := range secureExtra {
+				if pick < e.w {
+					k = e.k
+					break
+				}
+				pick -= e.w
+			}
+			out = append(out, Action{Kind: k, A: rng.Intn(cfg.Replicas), N: rng.Intn(1 << 20)})
+			continue
+		}
 		for _, w := range weights {
 			if pick < w.w {
 				k = w.k
@@ -107,6 +125,9 @@ func Generate(seed int64, cfg Config) []Action {
 		}
 		out = append(out, a)
 	}
+	if cfg.Secure {
+		securePrelude(rng, out, cfg)
+	}
 	return out
 }
 
@@ -120,7 +141,7 @@ func ParseAction(line string) (Action, error) {
 		return bad()
 	}
 	a.Kind = Kind(f[0])
-	known := false
+	known := isHostile(a.Kind)
 	for _, w := range weights {
 		if w.k == a.Kind {
 			known = true

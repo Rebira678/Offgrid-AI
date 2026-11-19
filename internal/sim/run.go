@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 
@@ -25,6 +26,8 @@ type Config struct {
 	// empty database and nobody has met anybody, which is the harder case (and
 	// the one that exposed the Day 24 bug).
 	Shared bool
+	// Secure makes the replicas a signed group and adds the hostile actions of Day 44 (hostile.go).
+	Secure bool
 }
 
 func (c Config) withDefaults() Config {
@@ -59,6 +62,8 @@ type Stats struct {
 	Dropped, Duplicated, Delayed, Truncated           int
 	DriftRefusals, Rebuilds                           int
 	Reversed, Gapped, GapRefused                      int
+	// Day 44 (Secure runs only)
+	Revokes, Forged, ForgedRefused, ForgedIgnored, Rogue, RogueRefused, Replays, ReplayHeld, VoidOps int
 }
 
 // Result is everything a run produced.
@@ -91,6 +96,7 @@ func RunActions(seed int64, acts []Action, cfg Config) Result {
 	}
 	w.dir = dir
 	defer func() {
+		w.closeHostile()
 		for _, s := range w.st {
 			if s != nil {
 				s.Close()
@@ -119,7 +125,34 @@ func RunActions(seed int64, acts []Action, cfg Config) Result {
 		w.log("files kept in %s", dir)
 	}
 	res.Trace, res.Stats, res.Hash, res.Ops = w.trace, w.stats, w.hash, w.ops
+	maskDevices(&res)
 	return res
+}
+
+var deviceRe = regexp.MustCompile(`dev_[0-9a-f]{32}`)
+
+// maskDevices renames device ids in a result's text to dev#1, dev#2, ... in order of first
+// appearance. Keys are drawn from the system's randomness and cannot be seeded, so the
+// raw ids differ on every run; the schedule and its outcome do not, and the text that
+// reports them must not either, or a failing seed would not replay "exactly".
+func maskDevices(res *Result) {
+	names := map[string]string{}
+	mask := func(s string) string {
+		return deviceRe.ReplaceAllStringFunc(s, func(id string) string {
+			if n, ok := names[id]; ok {
+				return n
+			}
+			n := fmt.Sprintf("dev#%d", len(names)+1)
+			names[id] = n
+			return n
+		})
+	}
+	for i := range res.Trace {
+		res.Trace[i] = mask(res.Trace[i])
+	}
+	if res.Failure != nil {
+		res.Failure = &Failure{res.Failure.Class, mask(res.Failure.Msg)}
+	}
 }
 
 var epoch = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
@@ -139,6 +172,7 @@ type world struct {
 	st   []*sqlstore.Store
 	down map[[2]int]bool
 	late []packet // delayed batches still in flight
+	h    hostileState
 
 	trace []string
 	stats Stats
@@ -163,6 +197,9 @@ func (w *world) path(i int) string {
 }
 
 func (w *world) open(i int) (*sqlstore.Store, error) {
+	if w.cfg.Secure && len(w.h.ids) > i {
+		return w.openSecure(i)
+	}
 	return sqlstore.Open(context.Background(), w.path(i), sqlstore.Options{NodeID: nodeName(i), Now: w.clockOf(i)})
 }
 
@@ -173,6 +210,9 @@ func (w *world) start() *Failure {
 			return &Failure{"setup", err.Error()}
 		}
 		w.st = append(w.st, s)
+	}
+	if w.cfg.Secure {
+		return w.startSecure()
 	}
 	if !w.cfg.Shared {
 		w.log("start: %d empty replicas, no shared history", w.cfg.Replicas)
@@ -261,6 +301,7 @@ func (w *world) pull(dst, src, batch int, f fault) (more bool, err error) {
 			}
 		}
 	}
+	w.capture(ops)
 	r, err := w.st[dst].ApplyRemote(ctx, ops)
 	if err != nil {
 		// A refused batch must leave the replica exactly as it was.
@@ -268,11 +309,7 @@ func (w *world) pull(dst, src, batch int, f fault) (more bool, err error) {
 			return more, &notAtomic{fmt.Sprintf("a refused batch (%v) changed what %s holds: %v -> %v", err, nodeName(dst), have, after)}
 		}
 		if gapHash != "" {
-			h, herr := w.st[dst].StateHash(ctx)
-			if herr != nil {
-				return more, herr
-			}
-			if h != gapHash {
+			if h, _ := w.st[dst].StateHash(ctx); h != gapHash {
 				return more, &notAtomic{fmt.Sprintf("a refused batch (%v) changed the state of %s", err, nodeName(dst))}
 			}
 			if errors.Is(err, sqlstore.ErrGap) || errors.Is(err, sqlstore.ErrBadOp) {
@@ -298,7 +335,8 @@ func (w *world) pull(dst, src, batch int, f fault) (more bool, err error) {
 // benign says an error is a normal refusal of a person's command, not a bug.
 func benign(err error) bool {
 	for _, e := range []error{task.ErrNotFound, task.ErrAmbiguous, task.ErrInvalid, task.ErrStale,
-		task.ErrSuggestionNotFound, task.ErrSuggestionResolved, task.ErrNothingToSuggest} {
+		task.ErrSuggestionNotFound, task.ErrSuggestionResolved, task.ErrNothingToSuggest,
+		sqlstore.ErrNotAuthorized} { // a revoked device's own store may refuse it
 		if errors.Is(err, e) {
 			return true
 		}
@@ -497,6 +535,8 @@ func (w *world) act(a Action) *Failure {
 		w.log("time passes: %v", d)
 	case Sync:
 		return w.doSync(a)
+	case Revoke, Forge, Rogue, Replay:
+		return w.hostile(a)
 	}
 	return nil
 }
@@ -656,6 +696,11 @@ func (w *world) settle() *Failure {
 			return &Failure{"rebuild", fmt.Sprintf("r%d: rebuilding the view changed the state (%v)", i, err)}
 		}
 	}
+	if w.cfg.Secure {
+		if f := w.checkHostile(); f != nil {
+			return f
+		}
+	}
 	if f := w.witness(hashes[0]); f != nil {
 		return f
 	}
@@ -722,7 +767,7 @@ func (w *world) witness(want string) *Failure {
 				if _, err = wit.ApplyRemote(ctx, by[n][:k]); err == nil {
 					break
 				}
-				if !errors.Is(err, sqlstore.ErrBadOp) {
+				if !errors.Is(err, sqlstore.ErrBadOp) && !errors.Is(err, sqlstore.ErrNotAuthorized) {
 					return &Failure{"witness", fmt.Sprintf("a fresh replica refused ops from %s: %v", n, err)}
 				}
 			}
