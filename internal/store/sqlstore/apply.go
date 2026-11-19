@@ -196,7 +196,12 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
-			return bad("removes a note (%s/%d) of task %q that does not exist", p.Node, p.Seq, p.ID)
+			return dangling(ctx, x, bad("removes a note (%s/%d) of task %q that does not exist", p.Node, p.Seq, p.ID), func() (bool, error) {
+				if v, err := opIsVoid(ctx, x, p.Node, p.Seq); err != nil || v {
+					return v, err
+				}
+				return taskIsVoid(ctx, x, p.ID)
+			})
 		}
 
 	case KindTaskRemoved:
@@ -217,7 +222,7 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			return err
 		}
 		if exists != 1 {
-			return bad("removes task %q, which does not exist", p.ID)
+			return dangling(ctx, x, bad("removes task %q, which does not exist", p.ID), func() (bool, error) { return taskIsVoid(ctx, x, p.ID) })
 		}
 		seen, _ := json.Marshal(p.Seen) // map keys are sorted: the same text on every replica
 		if _, err := x.ExecContext(ctx, `INSERT INTO task_removals (task_id, node, seq, seen) VALUES (?, ?, ?, ?)`,
