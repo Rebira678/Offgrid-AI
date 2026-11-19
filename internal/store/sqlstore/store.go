@@ -425,6 +425,9 @@ func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) + 1 FROM ops WHERE node_id = ?`, s.node).Scan(&seq); err != nil {
 		return err
 	}
+	if err := s.refuseIfRevoked(ctx, tx, kind, seq); err != nil {
+		return err
+	}
 	stamp := s.clock.Now()
 	res, err := tx.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, counter, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
 		s.node, seq, stamp.Wall, stamp.Counter, kind, string(raw))
