@@ -38,10 +38,41 @@ func checkAgainstTheLog(ctx context.Context, s *sqlstore.Store, ops []sqlstore.O
 	madeOn := map[string]string{}    // suggestion "node.seq" -> task
 	resolved := map[string]string{}  // suggestion -> resolution of the FIRST resolve in fold order
 	resolvedBy := map[string]opRef{} // suggestion -> that resolve op
+	voided := map[[2]string]bool{}   // ops that do not count (a revoked device past its cutoff) are not part of the decision
+	if void, err := s.VoidOps(ctx); err == nil {
+		for _, v := range void {
+			voided[[2]string{v.Node, fmt.Sprint(v.Seq)}] = true
+		}
+	}
+	// A task whose every creating op is void was never part of the group's work. Honest ops
+	// built on it (notes, changes, suggestions, removals) are kept as evidence and do nothing.
+	madeLive, madeVoid := map[string]bool{}, map[string]bool{}
 	for _, op := range ops {
+		if op.Kind != sqlstore.KindTaskCreated {
+			continue
+		}
 		var p opPayload
 		if err := json.Unmarshal(op.Payload, &p); err != nil {
 			return &Failure{"oracle", fmt.Sprintf("%s/%d: %v", op.NodeID, op.Seq, err)}
+		}
+		if voided[[2]string{op.NodeID, fmt.Sprint(op.Seq)}] {
+			madeVoid[p.ID] = true
+		} else {
+			madeLive[p.ID] = true
+		}
+	}
+	inert := func(id string) bool { return madeVoid[id] && !madeLive[id] }
+	for _, op := range ops {
+		if voided[[2]string{op.NodeID, fmt.Sprint(op.Seq)}] {
+			continue
+		}
+		var p opPayload
+
+		if err := json.Unmarshal(op.Payload, &p); err != nil {
+			return &Failure{"oracle", fmt.Sprintf("%s/%d: %v", op.NodeID, op.Seq, err)}
+		}
+		if (op.Kind != sqlstore.KindTaskCreated && p.ID != "" && inert(p.ID)) || (op.Kind == sqlstore.KindSuggestionMade && inert(p.Task)) {
+			continue
 		}
 		switch op.Kind {
 		case sqlstore.KindTaskCreated:
