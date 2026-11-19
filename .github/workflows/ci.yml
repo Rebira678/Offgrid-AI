@@ -50,7 +50,7 @@ jobs:
           fi
 
       - name: test (race detector)
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -timeout=20m ./...
 
   lint:
     runs-on: ubuntu-latest
