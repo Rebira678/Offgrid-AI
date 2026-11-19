@@ -454,6 +454,7 @@ func replayCanonical(ctx context.Context, dst, src execer) (n int, maxPos int64,
 	if err != nil {
 		return 0, 0, err
 	}
+	ctx = withVoid(ctx, void, src)
 	after := opKey{TS: -1}
 	for {
 		ops, err := loadOpsCanonical(ctx, src, after, replayBatch)
