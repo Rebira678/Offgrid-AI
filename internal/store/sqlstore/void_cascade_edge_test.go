@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -207,7 +206,7 @@ func TestConcurrentTaskCreationOneVoidOneLive(t *testing.T) {
 
 	// Pi (B) creates task before being revoked
 	e.clkB.tick(time.Minute)
-	voidPayload := fmt.Sprintf(`{"id":"T1.common","title":"common task","site":"plant","priority":"medium"}`)
+	voidPayload := `{"id":"T1.common","title":"common task","site":"plant","priority":"medium"}`
 
 	// Admin revokes B
 	e.clkA.tick(time.Minute)
