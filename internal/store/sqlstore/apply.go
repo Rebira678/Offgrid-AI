@@ -160,7 +160,7 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		if n, err := setFields(ctx, x, p.ID, p.Status, p.Priority, ts); err != nil {
 			return err
 		} else if n != 1 {
-			return bad("refers to task %q, which does not exist", p.ID)
+			return dangling(ctx, x, bad("refers to task %q, which does not exist", p.ID), func() (bool, error) { return taskIsVoid(ctx, x, p.ID) })
 		}
 		if err := mark(ctx, x, p.ID, op); err != nil {
 			return err
@@ -177,7 +177,7 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 		if n, err := insertNote(ctx, x, p.ID, p.Text, ts, op); err != nil {
 			return err
 		} else if n != 1 {
-			return bad("refers to task %q, which does not exist", p.ID)
+			return dangling(ctx, x, bad("refers to task %q, which does not exist", p.ID), func() (bool, error) { return taskIsVoid(ctx, x, p.ID) })
 		}
 		if err := mark(ctx, x, p.ID, op); err != nil {
 			return err
