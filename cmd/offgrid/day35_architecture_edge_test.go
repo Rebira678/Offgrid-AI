@@ -48,7 +48,7 @@ func TestDay35ThreatModelV2Completeness(t *testing.T) {
 			}
 		}
 	}
-	expectIDs("N", 27)
+	expectIDs("N", 30)
 	expectIDs("P", 9)
 	expectIDs("R", 6)
 	expectIDs("U", 6)
@@ -82,10 +82,10 @@ func TestDay35ThreatModelV2Completeness(t *testing.T) {
 		}
 	}
 
-	if total := mitigated + planned + accepted; total != 48 {
-		t.Errorf("parsed %d threats, want 48 (mitigated=%d planned=%d accepted=%d)", total, mitigated, planned, accepted)
+	if total := mitigated + planned + accepted; total != 51 {
+		t.Errorf("parsed %d threats, want 51 (mitigated=%d planned=%d accepted=%d)", total, mitigated, planned, accepted)
 	}
-	if !strings.Contains(text, fmt.Sprintf("48 threats: **%d mitigated**, **%d planned**, **%d accepted**", mitigated, planned, accepted)) {
+	if !strings.Contains(text, fmt.Sprintf("51 threats: **%d mitigated**, **%d planned**, **%d accepted**", mitigated, planned, accepted)) {
 		t.Errorf("summary counts out of sync with parsed table (mitigated=%d planned=%d accepted=%d)", mitigated, planned, accepted)
 	}
 }
