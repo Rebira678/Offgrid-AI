@@ -3,11 +3,81 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"offgrid/internal/task"
 )
+
+// Fixtures. A benchmark function is called again and again (b.N = 1, then larger, and once
+// per -count), and each call used to rebuild its whole log with durable writes: 100,000 fsyncs
+// for CatchUp10 on a slow disk, minutes per call, so the suite could not be run ten times.
+// fixtureDB builds a seeded database once per test process and hands out private copies.
+var fixtures struct {
+	sync.Mutex
+	dir   string
+	built map[string]string
+}
+
+func fixtureDB(b *testing.B, key string, opts Options, build func(b *testing.B, s *Store)) string {
+	b.Helper()
+	fixtures.Lock()
+	defer fixtures.Unlock()
+	if fixtures.dir == "" {
+		dir, err := os.MkdirTemp("", "offgrid-bench-")
+		if err != nil {
+			b.Fatal(err)
+		}
+		fixtures.dir, fixtures.built = dir, map[string]string{}
+	}
+	src, ok := fixtures.built[key]
+	if !ok {
+		src = filepath.Join(fixtures.dir, key+".db")
+		s, err := Open(context.Background(), src, opts)
+		if err != nil {
+			b.Fatal(err)
+		}
+		build(b, s)
+		if err := s.Close(); err != nil {
+			b.Fatal(err)
+		}
+		fixtures.built[key] = src
+	}
+	dst := filepath.Join(b.TempDir(), "bench.db")
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		if err := copyBenchFile(src+suffix, dst+suffix); err != nil && !(suffix != "" && os.IsNotExist(err)) {
+			b.Fatal(err)
+		}
+	}
+	return dst
+}
+
+func removeFixtures() {
+	if fixtures.dir != "" {
+		os.RemoveAll(fixtures.dir)
+	}
+}
+
+func copyBenchFile(from, to string) error {
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(to)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
 
 // fill appends n ops: tasks, notes and status changes in a realistic mix.
 func fill(b *testing.B, s *Store, n int) {
@@ -64,13 +134,8 @@ func BenchmarkAppend(b *testing.B) {
 func BenchmarkRebuild(b *testing.B) {
 	for _, n := range []int{1_000, 10_000, 50_000} {
 		b.Run(fmt.Sprintf("%d-ops", n), func(b *testing.B) {
-			clk := &clock{t: epoch}
-			s, err := Open(context.Background(), newBenchDB(b), Options{NodeID: "bench", Now: clk.now})
-			if err != nil {
-				b.Fatal(err)
-			}
+			s := openFilled(b, n)
 			defer s.Close()
-			fill(b, s, n)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if _, err := s.Rebuild(context.Background()); err != nil {
@@ -86,13 +151,8 @@ func BenchmarkRebuild(b *testing.B) {
 func BenchmarkFields(b *testing.B) {
 	for _, n := range []int{1_000, 10_000} {
 		b.Run(fmt.Sprintf("%d-ops", n), func(b *testing.B) {
-			clk := &clock{t: epoch}
-			s, err := Open(context.Background(), newBenchDB(b), Options{NodeID: "bench", Now: clk.now})
-			if err != nil {
-				b.Fatal(err)
-			}
+			s := openFilled(b, n)
 			defer s.Close()
-			fill(b, s, n)
 			ctx := context.Background()
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -105,17 +165,25 @@ func BenchmarkFields(b *testing.B) {
 	}
 }
 
+// openFilled opens a private copy of a database whose log holds n ops from fill.
+func openFilled(b *testing.B, n int) *Store {
+	b.Helper()
+	opts := Options{NodeID: "bench", Now: (&clock{t: epoch}).now}
+	path := fixtureDB(b, fmt.Sprintf("filled-%d", n), opts, func(b *testing.B, s *Store) { fill(b, s, n) })
+	s, err := Open(context.Background(), path, opts)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return s
+}
+
 func newBenchDB(b *testing.B) string { return b.TempDir() + "/bench.db" }
 
 // BenchmarkVerifyChain: the cost of recomputing every hash in a 10,000-op log.
 func BenchmarkVerifyChain10k(b *testing.B) {
 	ctx := context.Background()
-	s, err := Open(ctx, b.TempDir()+"/bench.db", Options{NodeID: "bench"})
-	if err != nil {
-		b.Fatal(err)
-	}
+	s := openFilled(b, 10000)
 	defer s.Close()
-	fill(b, s, 10000)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := s.VerifyChain(ctx); err != nil {
