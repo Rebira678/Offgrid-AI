@@ -12,5 +12,7 @@ import (
 // property. Pass -rapid.checks=N to choose another number (the command line wins).
 func TestMain(m *testing.M) {
 	_ = flag.Set("rapid.checks", "2000")
-	os.Exit(m.Run())
+	code := m.Run()
+	removeFixtures()
+	os.Exit(code)
 }
