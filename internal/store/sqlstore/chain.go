@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 )
 
 // GenesisHash is the "previous hash" of a replica's first op.
@@ -63,26 +64,51 @@ func (e *TamperError) Unwrap() error { return ErrTampered }
 // two different ops can produce the same bytes by shifting text between fields,
 // and the payload is compacted so JSON whitespace never matters.
 func OpHash(op Op, prev string) string {
-	h := sha256.New()
-	put := func(b []byte) {
-		var n [binary.MaxVarintLen64]byte
-		h.Write(n[:binary.PutUvarint(n[:], uint64(len(b)))])
-		h.Write(b)
+	sc := hashScratch.Get().(*hashBuf)
+	defer hashScratch.Put(sc)
+	var num [24]byte
+	m := sc.msg[:0]
+	m = putField(m, "offgrid-op-v1")
+	m = putField(m, op.NodeID)
+	m = putFieldBytes(m, strconv.AppendInt(num[:0], op.Seq, 10))
+	m = putFieldBytes(m, strconv.AppendInt(num[:0], nanos(op.TS), 10))
+	m = putFieldBytes(m, strconv.AppendUint(num[:0], uint64(op.Counter), 10))
+	m = putField(m, op.Kind)
+	m = putField(m, prev)
+	sc.compact.Reset()
+	if err := json.Compact(&sc.compact, op.Payload); err != nil {
+		sc.compact.Reset()
+		sc.compact.Write(op.Payload) // not JSON: hash the bytes as they are; Verify will still notice a change
 	}
-	put([]byte("offgrid-op-v1"))
-	put([]byte(op.NodeID))
-	put([]byte(strconv.FormatInt(op.Seq, 10)))
-	put([]byte(strconv.FormatInt(nanos(op.TS), 10)))
-	put([]byte(strconv.FormatUint(uint64(op.Counter), 10)))
-	put([]byte(op.Kind))
-	put([]byte(prev))
-	var c bytes.Buffer
-	if err := json.Compact(&c, op.Payload); err != nil {
-		c.Reset()
-		c.Write(op.Payload) // not JSON: hash the bytes as they are; Verify will still notice a change
-	}
-	put(c.Bytes())
-	return hex.EncodeToString(h.Sum(nil))
+	m = putFieldBytes(m, sc.compact.Bytes())
+	sc.msg = m[:0] // keep the grown buffer for the next call
+	sum := sha256.Sum256(m)
+	var out [sha256.Size * 2]byte
+	hex.Encode(out[:], sum[:])
+	return string(out[:])
+}
+
+// OpHash runs for every op written, received and verified. It used to build the message with a
+// fresh hasher, seven byte-slice conversions and a bytes.Buffer per call; the message is now built
+// in one reused buffer and hashed in one call. The bytes hashed are exactly the same
+// (TestOpHashMatchesTheReference holds the old construction next to the new).
+type hashBuf struct {
+	msg     []byte
+	compact bytes.Buffer
+}
+
+var hashScratch = sync.Pool{New: func() any { return &hashBuf{msg: make([]byte, 0, 512)} }}
+
+func putField(m []byte, s string) []byte {
+	var n [binary.MaxVarintLen64]byte
+	m = append(m, n[:binary.PutUvarint(n[:], uint64(len(s)))]...)
+	return append(m, s...)
+}
+
+func putFieldBytes(m []byte, b []byte) []byte {
+	var n [binary.MaxVarintLen64]byte
+	m = append(m, n[:binary.PutUvarint(n[:], uint64(len(b)))]...)
+	return append(m, b...)
 }
 
 // chainPrev is the stored hash of node's op seq-1, or GenesisHash for seq 1.
