@@ -27,6 +27,7 @@ func replay(ctx context.Context, dst, src execer, after int64) (n int, last int6
 		return 0, last, err
 	}
 	ctx = withVoid(ctx, void, src)
+	dst = cached(dst) // one transaction, thousands of ops, a handful of statements
 	for {
 		ops, err := loadOps(ctx, src, last, replayBatch)
 		if err != nil {
