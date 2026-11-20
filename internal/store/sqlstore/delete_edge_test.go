@@ -370,7 +370,7 @@ func TestRandomOracleResurrectionFuzz(t *testing.T) {
 // BenchmarkDeleteTask measures the cost of a single task deletion.
 func BenchmarkDeleteTask(b *testing.B) {
 	ctx := context.Background()
-	s, _ := replicaAt(nil, "node-a", epoch)
+	s, _ := replicaBench(b, "node-a", epoch)
 	var tids []string
 	for i := 0; i < b.N; i++ {
 		t, _, _ := s.Create(ctx, task.NewTask{Title: fmt.Sprintf("bench-task-%d", i), Priority: task.PriorityLow})
@@ -388,7 +388,7 @@ func BenchmarkDeleteTask(b *testing.B) {
 // BenchmarkRemoveNote measures the cost of removing a note.
 func BenchmarkRemoveNote(b *testing.B) {
 	ctx := context.Background()
-	s, _ := replicaAt(nil, "node-a", epoch)
+	s, _ := replicaBench(b, "node-a", epoch)
 	t, _, _ := s.Create(ctx, task.NewTask{Title: "note-bench", Priority: task.PriorityLow})
 	for i := 0; i < b.N; i++ {
 		s.AddNote(ctx, t.ID, fmt.Sprintf("note-%d", i))
