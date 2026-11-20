@@ -347,12 +347,14 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 		return res, qerr
 	}
 
+	// One transaction, one handful of statements run once per op: prepare each once.
+	ax := cached(tx)
 	for i := range fresh {
 		var compact bytes.Buffer
 		if err = json.Compact(&compact, fresh[i].Payload); err != nil {
 			return res, fmt.Errorf("%w: %v", ErrBadOp, err)
 		}
-		r, ierr := tx.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, counter, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
+		r, ierr := ax.ExecContext(ctx, `INSERT INTO ops (node_id, seq, ts, counter, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
 			fresh[i].NodeID, fresh[i].Seq, nanos(fresh[i].TS), fresh[i].Counter, fresh[i].Kind, compact.String())
 		if ierr != nil {
 			return res, fmt.Errorf("sqlstore: append remote op %s/%d: %w", fresh[i].NodeID, fresh[i].Seq, ierr)
@@ -363,7 +365,7 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 		fresh[i].Payload = json.RawMessage(compact.Bytes())
 		claimed := fresh[i].Hash
 		var mine string
-		if mine, err = chainAppend(ctx, tx, fresh[i]); err != nil {
+		if mine, err = chainAppend(ctx, ax, fresh[i]); err != nil {
 			return res, err
 		}
 		if claimed != "" && claimed != mine {
@@ -371,7 +373,7 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 		}
 		fresh[i].Hash = mine
 		if sg := fresh[i].Sig; sg != nil {
-			if err = storeSig(ctx, tx, fresh[i].NodeID, fresh[i].Seq, *sg, keys[sg.Device]); err != nil {
+			if err = storeSig(ctx, ax, fresh[i].NodeID, fresh[i].Seq, *sg, keys[sg.Device]); err != nil {
 				return res, err
 			}
 		}
@@ -394,7 +396,7 @@ func (s *Store) ApplyRemote(ctx context.Context, ops []Op) (res ApplyResult, err
 	if !refold && (!anyHeld || maxHeld.less(keyOf(fresh[0]))) {
 		// every new op sorts after everything already applied: apply on top
 		for _, op := range fresh {
-			if err = applyOp(ctx, tx, op); err != nil {
+			if err = applyOp(ctx, ax, op); err != nil {
 				return res, wrapApplyError(err)
 			}
 		}
@@ -455,6 +457,7 @@ func replayCanonical(ctx context.Context, dst, src execer) (n int, maxPos int64,
 		return 0, 0, err
 	}
 	ctx = withVoid(ctx, void, src)
+	dst = cached(dst)
 	after := opKey{TS: -1}
 	for {
 		ops, err := loadOpsCanonical(ctx, src, after, replayBatch)
