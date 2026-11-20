@@ -1,0 +1,14 @@
+{
+  "hardware": "Intel(R) Xeon(R) Processor",
+  "note": "Reference machine: the 2-vCPU cloud container the Day 45 baseline was measured on. Ceilings are roughly 2 to 10 times the measured median, so they catch a real loss, not noise. They are NOT numbers for your laptop or a Raspberry Pi: copy this file to perf/budgets.<name>.json, set \"hardware\" to the cpu line at the top of your bench output, run scripts/perf/bench.sh there, and set each max from what that machine gives and what a person waiting would accept (see docs/day-45.md).",
+  "budgets": [
+    {"bench": "store/sqlstore.Append", "metric": "ns/op", "max": 5000000, "why": "A committed write (fsync included) must stay far below one 16 ms screen frame so adding a task never feels slow. Measured 0.47 ms here; the fsync of the disk is most of it."},
+    {"bench": "store/sqlstore.Rebuild/10000-ops", "metric": "ns/op", "max": 400000000, "why": "Rebuilding the view from 10,000 ops happens at upgrade and in repair; it must not hold a start-up for half a second. Measured 180 ms."},
+    {"bench": "store/sqlstore.CatchUp10/log-10000", "metric": "ns/op", "max": 3000000, "why": "Catching up 10 new ops is the product-spec catch-up case; its cost must be flat in the size of the log (Day 25). Measured 1.16 ms."},
+    {"bench": "store/sqlstore.ApplyRemote1000/signed=true", "metric": "ns/op", "max": 200000000, "why": "Taking in 1,000 signed ops after a long offline spell must finish well inside a sync round. Measured 87 ms."},
+    {"bench": "store/sqlstore.VerifyChain10k", "metric": "ns/op", "max": 100000000, "why": "A full integrity check of 10,000 ops (offgrid store verify) is run by hand and after upgrades; it must stay a blink. Measured 39 ms."},
+    {"bench": "store/sqlstore.Record/signed=true", "metric": "allocs/op", "max": 600, "why": "Every local write allocates this many times; the count does not jitter, so a rise means new work per write. Measured 502."},
+    {"bench": "syncer.SyncRoundTrip", "metric": "ns/op", "max": 1500000, "why": "The cost of one authenticated sync exchange, without the network. Measured 0.58 ms."},
+    {"bench": "hlc.Now", "metric": "ns/op", "max": 500, "why": "Called for every write and every received op; it must stay a few hundred nanoseconds at most. Measured 57 ns."}
+  ]
+}
