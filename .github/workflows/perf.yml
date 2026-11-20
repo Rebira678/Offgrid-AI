@@ -1,0 +1,91 @@
+# Day 45. Is this change slower than the code it is based on?
+#
+# The base branch and the pull request are measured one after the other on the SAME runner:
+# GitHub's shared runners differ from day to day, so a stored baseline from another run would
+# measure the machine, not the change. Both runs use the pull request's copy of the suite script.
+#
+# A failure can be overridden on purpose: put a line `Perf-Override: <reason in words>` in the
+# pull request description. The reason is printed in the report. Not every slowdown is a mistake
+# (a safer write path may be slower); the point is that someone says so and why.
+name: perf
+
+on:
+  pull_request:
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/perf/**"
+      - "perf/**"
+      - ".github/workflows/perf.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: head
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: measure the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          ROOT: ${{ github.workspace }}/base
+          COUNT: "6"
+        run: bash head/scripts/perf/bench.sh "$RUNNER_TEMP/base.txt"
+
+      - name: measure this change
+        env:
+          ROOT: ${{ github.workspace }}/head
+          COUNT: "6"
+        run: bash head/scripts/perf/bench.sh "$RUNNER_TEMP/head.txt"
+
+      - name: benchstat table (for reading; the gate below decides)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          go install golang.org/x/perf/cmd/benchstat@latest
+          "$(go env GOPATH)/bin/benchstat" "$RUNNER_TEMP/base.txt" "$RUNNER_TEMP/head.txt" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: gate
+        working-directory: head
+        env:
+          # The description is passed as data (an environment variable), never pasted into the shell.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          override="$(printf '%s\n' "$PR_BODY" | tr -d '\r' | sed -n 's/^[[:space:]]*Perf-Override:[[:space:]]*//p' | head -n 1)"
+          old=()
+          if [ -f "$RUNNER_TEMP/base.txt" ]; then old=(-old "$RUNNER_TEMP/base.txt"); fi
+          set +e
+          PERF_OVERRIDE="$override" go run ./cmd/perfgate "${old[@]}" -new "$RUNNER_TEMP/head.txt" -budgets perf/budgets.json -md "$RUNNER_TEMP/report.md"
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/base.txt
+            ${{ runner.temp }}/head.txt
+            ${{ runner.temp }}/report.md
