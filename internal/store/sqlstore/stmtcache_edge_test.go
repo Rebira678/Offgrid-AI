@@ -18,7 +18,7 @@ func TestStmtCacheCapacityBoundary(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	c := newStmtCache(tx)
+	c := newStmtCache(tx, nil)
 
 	// Step 1: Fill cache exactly up to maxCachedStmts (64)
 	for i := 0; i < maxCachedStmts; i++ {
@@ -75,7 +75,7 @@ func TestStmtCacheContextCancellation(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	c := newStmtCache(tx)
+	c := newStmtCache(tx, nil)
 
 	// Pre-cancel context
 	canceledCtx, cancel := context.WithCancel(ctx)
@@ -107,7 +107,7 @@ func TestStmtCacheMalformedQueryFallback(t *testing.T) {
 	}
 	defer tx.Rollback()
 
-	c := newStmtCache(tx)
+	c := newStmtCache(tx, nil)
 
 	badQuery := "SYNTAX ERROR NOT A VALID SQL STATEMENT"
 
@@ -136,12 +136,16 @@ func TestStmtCacheMalformedQueryFallback(t *testing.T) {
 		t.Fatalf("malformed query should not be cached, cache len: %d", len(c.m))
 	}
 
-	// Valid query afterwards should succeed and be cached
+	// Valid data query afterwards should succeed and be cached
 	if _, err := c.ExecContext(ctx, "CREATE TABLE t_ok (x INT)"); err != nil {
-		t.Fatalf("valid query failed after malformed queries: %v", err)
+		t.Fatalf("valid create table failed: %v", err)
+	}
+	// DDL like CREATE TABLE is not cached (by design), but INSERT is cached
+	if _, err := c.ExecContext(ctx, "INSERT INTO t_ok (x) VALUES (?)", 42); err != nil {
+		t.Fatalf("valid insert failed after malformed queries: %v", err)
 	}
 	if len(c.m) != 1 {
-		t.Fatalf("expected 1 cached query, got %d", len(c.m))
+		t.Fatalf("expected 1 cached query (the insert), got %d", len(c.m))
 	}
 }
 
