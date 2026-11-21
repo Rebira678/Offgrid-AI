@@ -166,7 +166,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		s.gc.close()
 		s.pool.close()
 		db.Close()
-		if created {
+		if created && !isBusyOrLocked(err) {
 			removeEmptyDBStub(path)
 		}
 		if opt.MustExist && path != ":memory:" {
@@ -177,8 +177,20 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		}
 		return nil, err
 	}
+	if created {
+		ensurePrivate(path)
+	}
 	s.rdb = openReaders(path)
 	return s, nil
+}
+
+func ensurePrivate(path string) {
+	if path == "" || path == ":memory:" || strings.HasPrefix(path, "file:") {
+		return
+	}
+	_ = os.Chmod(path, 0o600)
+	_ = os.Chmod(path+"-wal", 0o600)
+	_ = os.Chmod(path+"-shm", 0o600)
 }
 
 // readConns is the size of the reader pool: enough for the UI, the sync server and a status
@@ -227,7 +239,21 @@ func checkNonDanglingSymlink(path string) error {
 	return nil
 }
 
+func isBusyOrLocked(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "locked") || strings.Contains(msg, "busy")
+}
+
 func removeEmptyDBStub(path string) {
+	if _, err := os.Stat(path + "-wal"); err == nil {
+		return
+	}
+	if _, err := os.Stat(path + "-shm"); err == nil {
+		return
+	}
 	fi, err := os.Stat(path)
 	if err == nil && fi.Size() == 0 {
 		_ = os.Remove(path)
