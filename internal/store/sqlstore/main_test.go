@@ -11,6 +11,9 @@ import (
 // TestMain raises rapid's default from 100 to 2000 generated cases per
 // property. Pass -rapid.checks=N to choose another number (the command line wins).
 func TestMain(m *testing.M) {
+	if p := os.Getenv(killChildEnv); p != "" {
+		killChild(p) // never returns
+	}
 	_ = flag.Set("rapid.checks", "2000")
 	code := m.Run()
 	removeFixtures()
