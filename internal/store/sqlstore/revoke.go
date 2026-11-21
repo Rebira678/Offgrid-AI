@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"sort"
@@ -128,7 +127,7 @@ func sortedVoid(v map[opID]VoidOp) []VoidOp {
 // may have applied, or stopped being void (a later-arriving earlier founding can
 // change who was an admin). Rows are only ever added; a row whose op is no longer
 // void stays as the record that it once was, and `store verify` says so.
-func reconcileVoid(ctx context.Context, tx *sql.Tx, now int64) (refold bool, err error) {
+func reconcileVoid(ctx context.Context, tx execer, now int64) (refold bool, err error) {
 	v, _, err := currentVoid(ctx, tx)
 	if err != nil {
 		return false, err
@@ -169,7 +168,7 @@ func reconcileVoid(ctx context.Context, tx *sql.Tx, now int64) (refold bool, err
 }
 
 // refoldView throws the view away and recomputes it, leaving void ops out.
-func refoldView(ctx context.Context, tx *sql.Tx) error {
+func refoldView(ctx context.Context, tx execer) error {
 	if err := resetProjection(ctx, tx); err != nil {
 		return err
 	}
@@ -206,7 +205,7 @@ func (s *Store) cutoffsFor(ctx context.Context, x execer, device string) ([]Cuto
 // group (an admin can re-enter it by hand). This device must be an admin.
 func (s *Store) Revoke(ctx context.Context, device string) (Revocation, error) {
 	var rev Revocation
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		cut, err := s.cutoffsFor(ctx, tx, device)
 		if err != nil {
 			return err
@@ -219,10 +218,10 @@ func (s *Store) Revoke(ctx context.Context, device string) (Revocation, error) {
 
 // RevokeAt is Revoke with the cutoffs given, for an admin who holds more than this replica does.
 func (s *Store) RevokeAt(ctx context.Context, device string, cutoffs []Cutoff) error {
-	return s.write(ctx, func(tx *sql.Tx) error { return s.revokeIn(ctx, tx, device, cutoffs) })
+	return s.write(ctx, func(tx execer) error { return s.revokeIn(ctx, tx, device, cutoffs) })
 }
 
-func (s *Store) revokeIn(ctx context.Context, tx *sql.Tx, device string, cutoffs []Cutoff) error {
+func (s *Store) revokeIn(ctx context.Context, tx execer, device string, cutoffs []Cutoff) error {
 	rep, err := s.requireAdmin(ctx, tx)
 	if err != nil {
 		return err

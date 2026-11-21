@@ -420,7 +420,7 @@ func (s *Store) Attest(ctx context.Context) (Attestation, error) {
 	if s.signer == nil {
 		return out, errors.New("sqlstore: attest needs a device key (create one with `offgrid identity init`)")
 	}
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		heads, err := headsOf(ctx, tx)
 		if err != nil {
 			return err
