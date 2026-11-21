@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -27,7 +26,7 @@ func (s *Store) RecordAnswer(ctx context.Context, key, question, text, model, so
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx execer) error {
 		var n int
 		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM answers WHERE key = ?`, key).Scan(&n); err != nil {
 			return err

@@ -117,7 +117,7 @@ func (s *Store) Suggest(ctx context.Context, d task.Draft) (sug task.Suggestion,
 	if err := ctx.Err(); err != nil {
 		return sug, false, err
 	}
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx execer) error {
 		if d.Key != "" {
 			if got, err := oneSuggestion(ctx, tx, `key = ? ORDER BY at, node, seq LIMIT 1`, d.Key); err == nil {
 				sug = got
@@ -167,7 +167,7 @@ func (s *Store) Resolve(ctx context.Context, id string, accept bool) (task.Task,
 	if err != nil {
 		return out, err
 	}
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx execer) error {
 		sg, err := oneSuggestion(ctx, tx, `node = ? AND seq = ?`, node, seq)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s", task.ErrSuggestionNotFound, id)
