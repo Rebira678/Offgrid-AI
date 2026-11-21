@@ -162,7 +162,7 @@ func TestSuggestionIsVoidWithCorruptJSONPayload(t *testing.T) {
 	e := trio(t)
 
 	// Insert an op with unexpected payload schema (valid JSON, but task is number or missing)
-	err := e.a.write(ctx, func(tx *sql.Tx) error {
+	err := e.a.write(ctx, func(tx execer) error {
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO ops (node_id, seq, ts, counter, kind, payload) VALUES (?, ?, ?, ?, ?, ?)`,
 			"corrupt_node", 1, 1000, 1, KindSuggestionMade, `{"task": 12345, "invalid": true}`)

@@ -305,7 +305,7 @@ func TestTaskFilterQueryIsolationForDeletedTasks(t *testing.T) {
 		p := prios[i%len(prios)]
 		site := sites[i%len(sites)]
 		s.Update(ctx, tk.ID, task.Changes{Status: &st, Priority: &p})
-		s.write(ctx, func(tx *sql.Tx) error {
+		s.write(ctx, func(tx execer) error {
 			_, err := tx.ExecContext(ctx, `UPDATE tasks SET site = ?, site_key = ? WHERE id = ?`, site, site, tk.ID)
 			return err
 		})
