@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -73,7 +72,7 @@ func BenchmarkRefuseIfRevoked_FastPathNoRevokes(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err := e.a.write(ctx, func(tx *sql.Tx) error {
+		err := e.a.write(ctx, func(tx execer) error {
 			return e.a.refuseIfRevoked(ctx, tx, KindTaskCreated, 100)
 		})
 		if err != nil {

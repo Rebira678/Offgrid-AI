@@ -55,9 +55,6 @@ func voidSetFor(ctx context.Context, x execer) (map[opID]VoidOp, error) {
 // taskIsVoid reports whether the task has no place in the view because every op that
 // created it is void. A task with no creating op in the log at all is not void: it is missing.
 func taskIsVoid(ctx context.Context, x execer, id string) (bool, error) {
-	if id == "" {
-		return false, nil
-	}
 	rows, err := logOf(ctx, x).QueryContext(ctx, `SELECT node_id, seq FROM ops WHERE kind = ? AND json_extract(payload, '$.id') = ?`, KindTaskCreated, id)
 	if err != nil {
 		return false, err
@@ -103,9 +100,6 @@ func opIsVoid(ctx context.Context, x execer, node string, seq int64) (bool, erro
 // suggestionIsVoid reports whether the suggestion (node, seq) is absent from the view
 // because its op is void or because the task it concerns is void.
 func suggestionIsVoid(ctx context.Context, x execer, node string, seq int64) (bool, error) {
-	if node == "" || seq <= 0 {
-		return false, nil
-	}
 	if isVoid, err := opIsVoid(ctx, x, node, seq); err != nil || isVoid {
 		return isVoid, err
 	}
@@ -147,7 +141,7 @@ func dangling(ctx context.Context, x execer, corrupt error, isVoid func() (bool,
 // that view different from every other replica's. The refusal wraps ErrRevoked.
 // A device that has not yet heard of its revocation writes as before, and its work
 // past the cutoff goes void when the revocation reaches it.
-func (s *Store) refuseIfRevoked(ctx context.Context, tx *sql.Tx, kind string, seq int64) error {
+func (s *Store) refuseIfRevoked(ctx context.Context, tx execer, kind string, seq int64) error {
 	if s.signer == nil {
 		return nil
 	}
