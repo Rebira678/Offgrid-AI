@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -215,7 +214,7 @@ func TestConcurrentTaskCreationOneVoidOneLive(t *testing.T) {
 	}
 
 	// Pi (B) creates void op after revocation
-	err := e.b.write(ctx, func(tx *sql.Tx) error {
+	err := e.b.write(ctx, func(tx execer) error {
 		return e.b.record(ctx, tx, KindTaskCreated, json.RawMessage(voidPayload))
 	})
 	if err != nil {
@@ -223,7 +222,7 @@ func TestConcurrentTaskCreationOneVoidOneLive(t *testing.T) {
 	}
 
 	// Tab (C) creates live op for same task ID
-	err = e.c.write(ctx, func(tx *sql.Tx) error {
+	err = e.c.write(ctx, func(tx execer) error {
 		return e.c.record(ctx, tx, KindTaskCreated, json.RawMessage(voidPayload))
 	})
 	if err != nil {

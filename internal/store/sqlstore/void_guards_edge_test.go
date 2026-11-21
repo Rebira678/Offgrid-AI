@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -58,7 +57,7 @@ func TestTrueCorruptionIsNeverTolerated(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := e.a.write(ctx, func(tx *sql.Tx) error {
+			err := e.a.write(ctx, func(tx execer) error {
 				return applyOp(ctx, tx, tc.op)
 			})
 			if err == nil || !errors.Is(err, ErrCorruptLog) {
@@ -158,7 +157,7 @@ func TestRefuseIfRevokedUnsignedOrEmptyFastPath(t *testing.T) {
 	}
 	defer s.Close()
 
-	err = s.write(ctx, func(tx *sql.Tx) error {
+	err = s.write(ctx, func(tx execer) error {
 		return s.refuseIfRevoked(ctx, tx, KindTaskCreated, 1)
 	})
 	if err != nil {
@@ -176,7 +175,7 @@ func TestRefuseIfRevokedUnsignedOrEmptyFastPath(t *testing.T) {
 	if err := s2.Found(ctx, "signed_node"); err != nil {
 		t.Fatal(err)
 	}
-	err = s2.write(ctx, func(tx *sql.Tx) error {
+	err = s2.write(ctx, func(tx execer) error {
 		return s2.refuseIfRevoked(ctx, tx, KindTaskCreated, 2)
 	})
 	if err != nil {
