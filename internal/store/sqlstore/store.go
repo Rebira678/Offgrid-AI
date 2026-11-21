@@ -46,6 +46,15 @@ type Store struct {
 	// signer signs every op this replica writes (nil: unsigned, as before Day 36).
 	signer        Signer
 	requireSigned bool
+
+	// rdb serves the plain reads (Get, List) from connections of their own, so a read does not
+	// wait behind a commit that is on its way to disk. nil for ":memory:" databases (each
+	// connection to one is a separate database) and when the extra connections cannot be opened:
+	// reads then share db, as before. See read.
+	rdb *sql.DB
+
+	gc   *committer // the one writer: group commit (groupcommit.go)
+	pool *stmtPool  // prepared statements shared by transactions (stmtcache.go)
 }
 
 var _ task.Store = (*Store)(nil)
@@ -82,6 +91,13 @@ type Options struct {
 	// (ErrUnsigned), and makes Open fail without a Signer. For a replica that
 	// has no legacy history to receive.
 	RequireSigned bool
+	// FlushWindow is how long the writer waits for more writes to share a commit after the first
+	// one arrives. Zero (the default) waits for nothing: writes that are already queued share a
+	// commit, and batches form on their own while a commit is on its way to disk. A window adds
+	// that much latency to a lone write and buys bigger batches for bursty writers.
+	FlushWindow time.Duration
+	// MaxBatch caps how many writes share one commit. Zero is 128.
+	MaxBatch int
 }
 
 // ErrNoDatabase means there is no database at the path and the caller asked
@@ -140,11 +156,15 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned}
+	s.pool = newStmtPool(db)
+	s.gc = newCommitter(s, opt.FlushWindow, opt.MaxBatch)
 	if s.now == nil {
 		s.now = time.Now
 	}
 	s.clock = hlc.New(hlc.Config{Now: s.now, MaxDrift: opt.MaxDrift})
 	if err := s.init(ctx, opt); err != nil {
+		s.gc.close()
+		s.pool.close()
 		db.Close()
 		if created {
 			removeEmptyDBStub(path)
@@ -157,7 +177,40 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		}
 		return nil, err
 	}
+	s.rdb = openReaders(path)
 	return s, nil
+}
+
+// readConns is the size of the reader pool: enough for the UI, the sync server and a status
+// command to read at once, few enough that they cannot starve the single writer of CPU.
+const readConns = 4
+
+// openReaders opens read-only connections to the same file, or returns nil to mean "use the
+// writer's connection". WAL lets them read while the writer commits: a read sees the last
+// committed state, which after a write returns includes that write.
+func openReaders(path string) *sql.DB {
+	if path == ":memory:" || strings.HasPrefix(path, "file:") {
+		return nil
+	}
+	esc := strings.NewReplacer("%", "%25", "?", "%3f", "#", "%23").Replace(path)
+	db, err := sql.Open(driverName, "file:"+esc+"?mode=ro&_busy_timeout=5000&_query_only=1")
+	if err != nil {
+		return nil
+	}
+	db.SetMaxOpenConns(readConns)
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil
+	}
+	return db
+}
+
+// read is where plain reads go.
+func (s *Store) read() *sql.DB {
+	if s.rdb != nil {
+		return s.rdb
+	}
+	return s.db
 }
 
 // checkNonDanglingSymlink refuses creating a brand-new database through a
@@ -169,7 +222,7 @@ func checkNonDanglingSymlink(path string) error {
 		return nil
 	}
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("sqlstore: refusing to create database through dangling symlink %s", path)
+		return fmt.Errorf("sqlstore: refusal: dangling symlink %s", path)
 	}
 	return nil
 }
@@ -356,7 +409,14 @@ func (s *Store) catchUp(ctx context.Context) (err error) {
 }
 
 // Close releases the database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	s.gc.close() // finish the batch in flight, refuse the rest, stop the writer
+	s.pool.close()
+	if s.rdb != nil {
+		s.rdb.Close()
+	}
+	return s.db.Close()
+}
 
 // NodeID is this replica's identity.
 func (s *Store) NodeID() string { return s.node }
@@ -391,22 +451,12 @@ func appliedPos(ctx context.Context, x execer) (int64, error) {
 
 // ---- writing ----------------------------------------------------------------
 
-// write runs fn in a transaction. If fn returns an error the transaction is
-// rolled back: nothing it did, in the log or in the view, is kept.
-func (s *Store) write(ctx context.Context, fn func(tx *sql.Tx) error) (err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		}
-	}()
-	if err = fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
+// write runs fn in a transaction, shared with other writers that are waiting (group commit,
+// groupcommit.go). If fn returns an error, nothing it did, in the log or in the view, is
+// kept, and other writers' work is not affected. write returns after the commit that holds
+// fn's changes has reached the disk.
+func (s *Store) write(ctx context.Context, fn func(tx execer) error) error {
+	return s.gc.submit(ctx, fn)
 }
 
 // record appends one op to the log and applies it to the view, in the caller's
@@ -416,7 +466,7 @@ func (s *Store) write(ctx context.Context, fn func(tx *sql.Tx) error) (err error
 // This is where write-time decisions are frozen into the op: the sequence
 // number and the hybrid logical clock timestamp are chosen here, once, and
 // stored.
-func (s *Store) record(ctx context.Context, tx *sql.Tx, kind string, payload any) error {
+func (s *Store) record(ctx context.Context, tx execer, kind string, payload any) error {
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("sqlstore: encode %s: %w", kind, err)
@@ -466,7 +516,7 @@ func (s *Store) Create(ctx context.Context, n task.NewTask) (task.Task, bool, er
 
 	var out task.Task
 	var created bool
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		// An unfinished task with the same title and site is the same task:
 		// return it and record nothing. The check and the insert share one
 		// write-locked transaction, so two racing requests cannot both pass it.
@@ -529,7 +579,7 @@ func (s *Store) Update(ctx context.Context, id string, c task.Changes) (task.Tas
 
 	var out task.Task
 	var changed bool
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		cur, err := getTask(ctx, tx, id)
 		if err != nil {
 			return err
@@ -570,7 +620,7 @@ func (s *Store) AddNote(ctx context.Context, id, text string) (task.Task, error)
 		return task.Task{}, fmt.Errorf("%w: empty note", task.ErrInvalid)
 	}
 	var out task.Task
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		if _, err := getTask(ctx, tx, id); err != nil {
 			return err
 		}
@@ -592,7 +642,7 @@ func (s *Store) DeleteTask(ctx context.Context, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx execer) error {
 		if _, err := getTask(ctx, tx, id); err != nil {
 			return err
 		}
@@ -612,7 +662,7 @@ func (s *Store) RemoveNote(ctx context.Context, id string, number int) (task.Tas
 		return task.Task{}, err
 	}
 	var out task.Task
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		if _, err := getTask(ctx, tx, id); err != nil {
 			return err
 		}
@@ -686,14 +736,14 @@ func (s *Store) Get(ctx context.Context, id string) (task.Task, error) {
 	if err := ctx.Err(); err != nil {
 		return task.Task{}, err
 	}
-	return getTask(ctx, s.db, id)
+	return getTask(ctx, s.read(), id)
 }
 
 func (s *Store) List(ctx context.Context, f task.Filter) ([]task.Task, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return listTasks(ctx, s.db, f)
+	return listTasks(ctx, s.read(), f)
 }
 
 // listTasks is shared with the state hash, which reads the whole view.
