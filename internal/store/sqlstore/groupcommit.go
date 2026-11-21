@@ -244,10 +244,10 @@ func (c *committer) commit(batch []*writeReq) {
 	if ok == 0 {
 		tx.Rollback()
 		c.s.pool.fill(context.Background())
+		c.failed.Add(int64(len(live)))
 		for i, r := range live {
 			r.done <- results[i]
 		}
-		c.failed.Add(int64(len(live)))
 		return
 	}
 	var cerr error
@@ -269,13 +269,11 @@ func (c *committer) commit(batch []*writeReq) {
 		ok = 0
 	}
 	c.s.pool.fill(context.Background())
-	// Only now, with the commit behind us, is anyone told.
 	failed := 0
-	for i, r := range live {
+	for i := range live {
 		if results[i].err != nil || results[i].panicked {
 			failed++
 		}
-		r.done <- results[i]
 	}
 	c.batches.Add(1)
 	c.writes.Add(int64(ok))
@@ -285,6 +283,10 @@ func (c *committer) commit(batch []*writeReq) {
 		if int64(len(live)) <= cur || c.maxSeen.CompareAndSwap(cur, int64(len(live))) {
 			break
 		}
+	}
+	// Only now, with the commit behind us and stats updated, is anyone told.
+	for i, r := range live {
+		r.done <- results[i]
 	}
 }
 
