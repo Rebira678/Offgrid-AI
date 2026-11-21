@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -127,7 +126,7 @@ func TestMemberRemoteArrivalRejectsUnauthorizedAdds(t *testing.T) {
 	}
 
 	// Member B directly records a member.add into its own log using recordAdd
-	err = b.write(ctx, func(tx *sql.Tx) error {
+	err = b.write(ctx, func(tx execer) error {
 		return b.recordAdd(ctx, tx, idc.PublicKey(), RoleMember, "forged-add")
 	})
 	if err != nil {

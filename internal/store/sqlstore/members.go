@@ -25,7 +25,6 @@ package sqlstore
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -291,7 +290,7 @@ func (s *Store) requireAdmin(ctx context.Context, tx execer) (MembershipReport, 
 	return rep, fmt.Errorf("%w: this device (%s) is not an admin of the membership", ErrNotAuthorized, s.signer.ID())
 }
 
-func (s *Store) recordAdd(ctx context.Context, tx *sql.Tx, pub string, role Role, label string) error {
+func (s *Store) recordAdd(ctx context.Context, tx execer, pub string, role Role, label string) error {
 	dev, err := identity.DeviceID(pub)
 	if err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
@@ -309,7 +308,7 @@ func (s *Store) Found(ctx context.Context, label string) error {
 	if s.signer == nil {
 		return errors.New("sqlstore: founding a membership needs a device key (offgrid identity init)")
 	}
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx execer) error {
 		rep, err := s.membersOf(ctx, tx)
 		if err != nil {
 			return err
@@ -323,7 +322,7 @@ func (s *Store) Found(ctx context.Context, label string) error {
 
 // AddMember enrolls a device whose public key is already known. This device must be an admin.
 func (s *Store) AddMember(ctx context.Context, publicKey string, role Role, label string) error {
-	return s.write(ctx, func(tx *sql.Tx) error {
+	return s.write(ctx, func(tx execer) error {
 		rep, err := s.requireAdmin(ctx, tx)
 		if err != nil {
 			return err
@@ -332,7 +331,7 @@ func (s *Store) AddMember(ctx context.Context, publicKey string, role Role, labe
 	})
 }
 
-func (s *Store) addChecked(ctx context.Context, tx *sql.Tx, rep MembershipReport, publicKey string, role Role, label string) error {
+func (s *Store) addChecked(ctx context.Context, tx execer, rep MembershipReport, publicKey string, role Role, label string) error {
 	dev, err := identity.DeviceID(publicKey)
 	if err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
