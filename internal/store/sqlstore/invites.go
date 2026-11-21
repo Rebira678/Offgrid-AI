@@ -109,7 +109,7 @@ func (s *Store) CreateInvite(ctx context.Context, role Role, label string, ttl t
 	if err := checkLabel(label); err != nil {
 		return inv, fmt.Errorf("sqlstore: %w", err)
 	}
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		if _, err := s.requireAdmin(ctx, tx); err != nil {
 			return err
 		}
@@ -186,7 +186,7 @@ func (s *Store) RedeemInvite(ctx context.Context, token, publicKey, label string
 	if !ok {
 		return en, ErrInviteInvalid
 	}
-	err := s.write(ctx, func(tx *sql.Tx) error {
+	err := s.write(ctx, func(tx execer) error {
 		var salt, want []byte
 		var role string
 		var expires int64
