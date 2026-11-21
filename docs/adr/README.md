@@ -14,6 +14,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [009](009-envelope-encryption.md) | Envelope encryption for a hosted relay: a key per op, wrapped to each member | Day 42 (proposed, design only, not reviewed) |
 | [010](010-compaction.md) | Compaction: snapshot plus signed checkpoint, with a maximum time away | Day 42 (proposed, design only, not reviewed) |
 | [011](011-relay.md) | Relay: a hub run by the site owner that hosts one replica per group and can read, not forge | Day 43 (built; one hub, no Pi test) |
+| [012](012-group-commit-and-driver.md) | Storage: one writer goroutine with group commit; stay on the cgo driver | Day 46 (built; real power pull and modernc numbers are the user's part) |
 
 ## Decisions in the plan that have no record yet
 
