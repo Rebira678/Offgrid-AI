@@ -47,7 +47,7 @@ func FieldsFromOps(ops []Op) (crdt.Map, error) {
 			if p.Priority != nil {
 				put(op, p.ID, crdt.FieldPriority, string(*p.Priority))
 			}
-		case KindNoteAdded, KindNoteRemoved:
+		case KindNoteAdded, KindNoteRemoved, KindAttachmentAdded:
 			// an append or its removal, not a register
 		case KindTaskRemoved:
 			// whether a task is deleted is not a field: it depends on what the deleter had seen
@@ -122,7 +122,7 @@ func NotesFromOps(ops []Op) (crdt.Set, error) {
 			tag := crdt.Tag{Node: op.NodeID, Stamp: op.Stamp()}
 			tags[id{op.NodeID, op.Seq}] = tag
 			set.AddInPlace(crdt.NoteElement(p.ID, tag, p.Text), tag)
-		case KindTaskCreated, KindTaskUpdated, KindTaskRemoved, KindNoteRemoved:
+		case KindTaskCreated, KindTaskUpdated, KindTaskRemoved, KindNoteRemoved, KindAttachmentAdded:
 		default:
 			return crdt.Set{}, fmt.Errorf("%w: op %d has unknown kind %q", ErrCorruptLog, op.Pos, op.Kind)
 		}
