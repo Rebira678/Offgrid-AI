@@ -27,8 +27,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"offgrid/internal/blobstore"
 	"offgrid/internal/hlc"
 	"offgrid/internal/task"
 )
@@ -52,6 +54,11 @@ type Store struct {
 	// connection to one is a separate database) and when the extra connections cannot be opened:
 	// reads then share db, as before. See read.
 	rdb *sql.DB
+
+	blobDir string // where attachment bytes live; "" when there is nowhere
+	blobMax int64
+	blobMu  sync.Mutex
+	blobs   *blobstore.Store // opened on first use
 
 	gc   *committer // the one writer: group commit (groupcommit.go)
 	pool *stmtPool  // prepared statements shared by transactions (stmtcache.go)
@@ -98,6 +105,12 @@ type Options struct {
 	FlushWindow time.Duration
 	// MaxBatch caps how many writes share one commit. Zero is 128.
 	MaxBatch int
+	// BlobDir is where attachment bytes are kept (see attachments.go). Empty means "<database path>.blobs"
+	// for a database file, and no blob storage for ":memory:" (AddAttachment then fails with ErrNoBlobStore).
+	// The directory is created when the first attachment is stored, not before.
+	BlobDir string
+	// MaxBlobBytes caps one attachment. Zero is blobstore.DefaultMaxBytes (25 MiB).
+	MaxBlobBytes int64
 }
 
 // ErrNoDatabase means there is no database at the path and the caller asked
@@ -155,7 +168,13 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	// databases behave (each connection to ":memory:" is a separate database).
 	db.SetMaxOpenConns(1)
 
-	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned}
+	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned, blobMax: opt.MaxBlobBytes}
+	switch {
+	case opt.BlobDir != "":
+		s.blobDir = opt.BlobDir
+	case path != ":memory:" && !strings.HasPrefix(path, "file:"):
+		s.blobDir = path + ".blobs"
+	}
 	s.pool = newStmtPool(db)
 	s.gc = newCommitter(s, opt.FlushWindow, opt.MaxBatch)
 	if s.now == nil {
@@ -395,10 +414,10 @@ func (s *Store) ensureProjection(ctx context.Context) error {
 	}
 	var present int
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_notes', 'answers', 'suggestions')`).Scan(&present); err != nil {
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tasks', 'task_notes', 'answers', 'suggestions', 'attachments')`).Scan(&present); err != nil {
 		return err
 	}
-	if version != projectionVersion || present != 4 {
+	if version != projectionVersion || present != 5 {
 		_, err := s.Rebuild(ctx)
 		return err
 	}
