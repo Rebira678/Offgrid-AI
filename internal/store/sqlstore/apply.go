@@ -17,7 +17,7 @@ import (
 // projectionVersion identifies the shape of these tables and the meaning of
 // applyOp. Change either, bump the number, and every database rebuilds its view
 // the next time it is opened. There is never a data migration for derived data.
-const projectionVersion = "4"
+const projectionVersion = "5"
 
 const projectionDDL = `
 CREATE TABLE tasks (
@@ -87,6 +87,21 @@ CREATE TABLE suggestions (
 	PRIMARY KEY (node, seq)
 ) WITHOUT ROWID;
 CREATE INDEX suggestions_key ON suggestions (key);
+-- Attachments: one row per attachment.added op. The bytes are not here (they are in the blob store,
+-- named by hash, and may not have arrived yet); this is the reference.
+CREATE TABLE attachments (
+	node    TEXT    NOT NULL,   -- identity of the op that added it
+	seq     INTEGER NOT NULL,
+	task_id TEXT    NOT NULL,
+	hash    TEXT    NOT NULL,
+	size    INTEGER NOT NULL,
+	type    TEXT    NOT NULL,
+	name    TEXT    NOT NULL DEFAULT '',
+	at      INTEGER NOT NULL,
+	PRIMARY KEY (node, seq)
+) WITHOUT ROWID;
+CREATE INDEX attachments_task ON attachments (task_id, at);
+CREATE INDEX attachments_hash ON attachments (hash);
 CREATE TABLE task_removals (
 	task_id TEXT    NOT NULL,
 	node    TEXT    NOT NULL,
@@ -98,7 +113,7 @@ CREATE TABLE task_removals (
 
 // resetProjection drops and recreates the materialized tables, empty.
 func resetProjection(ctx context.Context, x execer) error {
-	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS suggestions; DROP TABLE IF EXISTS answers; DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
+	if _, err := x.ExecContext(ctx, `DROP TABLE IF EXISTS attachments; DROP TABLE IF EXISTS suggestions; DROP TABLE IF EXISTS answers; DROP TABLE IF EXISTS task_removals; DROP TABLE IF EXISTS task_marks; DROP TABLE IF EXISTS task_notes; DROP TABLE IF EXISTS tasks;`); err != nil {
 		return err
 	}
 	_, err := x.ExecContext(ctx, projectionDDL)
@@ -230,6 +245,27 @@ func applyOp(ctx context.Context, x execer, op Op) error {
 			return bad("removal recorded twice: %v", err)
 		}
 		if err := settleDeleted(ctx, x, p.ID); err != nil {
+			return err
+		}
+
+	case KindAttachmentAdded:
+		var p attachmentPayload
+		if err := decodeStrict(op.Payload, &p); err != nil {
+			return bad("bad payload: %v", err)
+		}
+		if err := checkAttachment(p); err != nil {
+			return bad("%v", err)
+		}
+		if exists, err := taskRowExists(ctx, x, p.Task); err != nil {
+			return err
+		} else if !exists {
+			return dangling(ctx, x, bad("refers to task %q, which does not exist", p.Task), func() (bool, error) { return taskIsVoid(ctx, x, p.Task) })
+		}
+		if _, err := x.ExecContext(ctx, `INSERT INTO attachments (node, seq, task_id, hash, size, type, name, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			op.NodeID, op.Seq, p.Task, p.Hash, p.Size, p.Type, p.Name, ts); err != nil {
+			return bad("attachment recorded twice: %v", err)
+		}
+		if err := mark(ctx, x, p.Task, op); err != nil {
 			return err
 		}
 
