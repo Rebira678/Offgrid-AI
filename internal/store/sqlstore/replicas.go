@@ -85,6 +85,8 @@ func (o Op) Describe() string {
 		return fmt.Sprintf("%s suggested a change to %s", by, task.ShortID(p.Task))
 	case KindSuggestionResolved:
 		return "a suggestion was " + p.Resolution
+	case KindAttachmentAdded:
+		return "attached a file to " + task.ShortID(p.Task)
 	}
 	return o.Kind
 }
