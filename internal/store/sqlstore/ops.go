@@ -40,6 +40,9 @@ const (
 	// KindSuggestionResolved: a person accepted or dismissed a suggestion.
 	// Accepting is the only way a suggestion ever changes a task.
 	KindSuggestionResolved = "suggestion.resolved"
+	// KindAttachmentAdded: a file (a photo of the fault) belongs to a task. The op carries the file's
+	// SHA-256, size and media type, never its bytes; the bytes travel and live in the blob store.
+	KindAttachmentAdded = "attachment.added"
 	// KindHistoryAttested: a device signed the chain head of every replica it
 	// held at that moment, so older unsigned ops are "trusted as of" then. It
 	// changes no task. It must itself be signed (see sigs.go).
