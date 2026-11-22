@@ -162,7 +162,7 @@ type ApplyResult struct {
 }
 
 // knownKinds are the op kinds this version understands.
-var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true, KindMemberAdd: true, KindMemberRevoke: true}
+var knownKinds = map[string]bool{KindTaskCreated: true, KindTaskUpdated: true, KindNoteAdded: true, KindTaskRemoved: true, KindNoteRemoved: true, KindAnswerRecorded: true, KindSuggestionMade: true, KindSuggestionResolved: true, KindHistoryAttested: true, KindAttachmentAdded: true, KindMemberAdd: true, KindMemberRevoke: true}
 
 func validateRemote(op Op) error {
 	switch {
