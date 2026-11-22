@@ -147,13 +147,18 @@ func stateHash(ctx context.Context, x execer) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	atts, err := canonAttachments(ctx, x)
+	if err != nil {
+		return "", err
+	}
 	var payload any = canon
-	if len(answers) > 0 || len(sugs) > 0 { // omitted when empty, so older databases keep their old hashes
+	if len(answers) > 0 || len(sugs) > 0 || len(atts) > 0 { // omitted when empty, so older databases keep their old hashes
 		payload = struct {
 			Tasks       []canonTask       `json:"tasks"`
 			Answers     []Answer          `json:"answers,omitempty"`
 			Suggestions []canonSuggestion `json:"suggestions,omitempty"`
-		}{canon, answers, sugs}
+			Attachments []canonAttachment `json:"attachments,omitempty"`
+		}{canon, answers, sugs, canonAtt(atts)}
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -356,4 +361,25 @@ func (s *Store) LastOps(ctx context.Context, n int) ([]Op, error) {
 		return nil, nil
 	}
 	return loadOps(ctx, s.db, first-1, n)
+}
+
+// canonAttachment is an attachment as the fingerprint sees it: what the op said, not whether the bytes
+// have arrived on this replica (two replicas converge on the log even while one is missing a file).
+type canonAttachment struct {
+	Task string `json:"task"`
+	Hash string `json:"hash"`
+	Size int64  `json:"size"`
+	Type string `json:"type"`
+	Name string `json:"name"`
+	At   int64  `json:"at"`
+	Node string `json:"node"`
+	Seq  int64  `json:"seq"`
+}
+
+func canonAtt(in []Attachment) []canonAttachment {
+	out := make([]canonAttachment, len(in))
+	for i, a := range in {
+		out[i] = canonAttachment{a.Task, a.Hash, a.Size, a.Type, a.Name, nanos(a.At), a.Node, a.Seq}
+	}
+	return out
 }
