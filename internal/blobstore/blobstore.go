@@ -32,6 +32,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // DefaultMaxBytes is the cap on one blob when none is configured: generous for a phone photo, small
@@ -42,6 +43,16 @@ const (
 	tmpDir  = "tmp"
 	bufSize = 32 << 10
 )
+
+var bufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, bufSize)
+		return &b
+	},
+}
+
+func getBuf() *[]byte  { return bufPool.Get().(*[]byte) }
+func putBuf(b *[]byte) { bufPool.Put(b) }
 
 var (
 	ErrTooLarge     = errors.New("blobstore: the blob is over the size cap")
@@ -138,7 +149,9 @@ func (s *Store) Verify(h string) error {
 	}
 	defer f.Close()
 	hs := sha256.New()
-	if _, err := io.CopyBuffer(hs, f, make([]byte, bufSize)); err != nil {
+	bufPtr := getBuf()
+	defer putBuf(bufPtr)
+	if _, err := io.CopyBuffer(hs, f, *bufPtr); err != nil {
 		return err
 	}
 	if hex.EncodeToString(hs.Sum(nil)) != h {
@@ -196,7 +209,9 @@ func (s *Store) put(ctx context.Context, r io.Reader, want string, declared int6
 		return Ref{}, err
 	}
 	hs := sha256.New()
-	n, err := io.CopyBuffer(&teeWriter{hs, tmp}, &ctxReader{ctx, io.LimitReader(r, limit)}, make([]byte, bufSize))
+	bufPtr := getBuf()
+	defer putBuf(bufPtr)
+	n, err := io.CopyBuffer(&teeWriter{hs, tmp}, &ctxReader{ctx, io.LimitReader(r, limit)}, *bufPtr)
 	if err != nil {
 		return Ref{}, err
 	}
