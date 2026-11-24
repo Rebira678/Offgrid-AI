@@ -98,6 +98,29 @@ function metricsStrip(s) {
 
 // ---- Task Table Component -------------------------------------------------
 
+// renderFile shows one attachment: a thumbnail for a picture, a link otherwise, and an honest "not on
+// this device yet" when the op has synced but the bytes have not.
+function fileSize(n) {
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + " MB";
+  if (n >= 1024) return Math.round(n / 1024) + " KB";
+  return n + " B";
+}
+
+function renderFile(t, f) {
+  const label = (f.name || f.hash.slice(0, 12)) + " (" + fileSize(f.size) + ")";
+  if (!f.present) {
+    return h("div", { class: "task-file missing" },
+      h("span", null, label),
+      h("span", { class: "muted" }, " not on this device yet; it arrives when this device syncs with one that has it")
+    );
+  }
+  const url = "/api/tasks/" + encodeURIComponent(t.id) + "/attachments/" + f.hash;
+  return h("div", { class: "task-file" },
+    f.image ? h("a", { href: url, target: "_blank", rel: "noopener" }, h("img", { src: url, alt: label, loading: "lazy", class: "task-thumb" })) : null,
+    h("a", { href: url, target: "_blank", rel: "noopener" }, label)
+  );
+}
+
 function renderTasksTable(s, limit) {
   const list = limit ? s.tasks.slice(0, limit) : s.tasks;
   if (!list.length) return empty("No tasks recorded in this replica.");
@@ -106,12 +129,15 @@ function renderTasksTable(s, limit) {
   list.forEach((t) => {
     const isExpanded = expandedNotes.has(t.id);
     const hasNotes = t.notes_list && t.notes_list.length > 0;
+    const files = t.files || [];
+    const hasFiles = files.length > 0;
+    const expandable = hasNotes || hasFiles;
     const tooltip = hasNotes ? t.notes_list.map((n, i) => `${i + 1}. ${n}`).join("\n") : "No notes attached";
 
     rows.push(h("tr", {
-      class: hasNotes ? "clickable-task" : "",
+      class: expandable ? "clickable-task" : "",
       onclick: () => {
-        if (!hasNotes) return;
+        if (!expandable) return;
         if (expandedNotes.has(t.id)) expandedNotes.delete(t.id);
         else expandedNotes.add(t.id);
         render(s);
@@ -127,17 +153,20 @@ function renderTasksTable(s, limit) {
       h("td", { class: "num muted", title: tooltip },
         t.notes ? h("span", { class: hasNotes ? "notes-badge" : "" }, t.notes) : "—"
       ),
+      h("td", { class: "num muted" }, hasFiles ? String(files.length) : "—"),
       h("td", { class: "num muted" }, ago(t.updated_at, s.now))
     ));
 
-    if (isExpanded && hasNotes) {
+    if (isExpanded && expandable) {
       rows.push(h("tr", { class: "task-notes-row" },
-        h("td", { colspan: 6 },
+        h("td", { colspan: 7 },
           h("div", { class: "task-notes-expanded" },
-            h("div", { class: "task-notes-title" }, "Notes (" + t.notes_list.length + ")"),
-            h("ul", { class: "task-notes-list" },
+            hasNotes ? h("div", { class: "task-notes-title" }, "Notes (" + t.notes_list.length + ")") : null,
+            hasNotes ? h("ul", { class: "task-notes-list" },
               t.notes_list.map((note) => h("li", null, note))
-            )
+            ) : null,
+            hasFiles ? h("div", { class: "task-notes-title" }, "Files (" + files.length + ")") : null,
+            hasFiles ? h("div", { class: "task-files" }, files.map((f) => renderFile(t, f))) : null
           )
         )
       ));
@@ -152,6 +181,7 @@ function renderTasksTable(s, limit) {
         h("th", null, "Status"),
         h("th", null, "Priority"),
         h("th", { class: "num" }, "Notes"),
+        h("th", { class: "num" }, "Files"),
         h("th", { class: "num" }, "Updated")
       ),
       rows

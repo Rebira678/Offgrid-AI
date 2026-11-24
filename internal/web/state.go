@@ -16,6 +16,7 @@ package web
 import (
 	"context"
 	"errors"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -183,16 +184,37 @@ type FeedItem struct {
 }
 
 type Task struct {
-	ID        string    `json:"id"`
-	ShortID   string    `json:"short_id"`
-	Title     string    `json:"title"`
-	Site      string    `json:"site,omitempty"`
-	Status    string    `json:"status"`
-	Priority  string    `json:"priority"`
-	Notes     int       `json:"notes"`
-	NotesList []string  `json:"notes_list,omitempty"`
+	ID        string   `json:"id"`
+	ShortID   string   `json:"short_id"`
+	Title     string   `json:"title"`
+	Site      string   `json:"site,omitempty"`
+	Status    string   `json:"status"`
+	Priority  string   `json:"priority"`
+	Notes     int      `json:"notes"`
+	NotesList []string `json:"notes_list,omitempty"`
+	// Files are the task's attachments. Present is false until the bytes have reached this device.
+	Files     []File    `json:"files,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+// File is one attachment as the page shows it.
+type File struct {
+	Hash    string `json:"hash"`
+	Name    string `json:"name,omitempty"`
+	Type    string `json:"type"`
+	Size    int64  `json:"size"`
+	Present bool   `json:"present"`
+	Image   bool   `json:"image"` // a type a browser shows in an <img>
+}
+
+// attachmentStore is what a store offers when it keeps attachments; the dashboard works without it.
+type attachmentStore interface {
+	AttachmentsByTask(ctx context.Context) (map[string][]sqlstore.Attachment, error)
+	OpenAttachment(ctx context.Context, taskID, hash string) (*os.File, sqlstore.Attachment, error)
+}
+
+// inlineTypes are shown by the browser as pictures; everything else is offered as a download.
+var inlineTypes = map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true}
 
 type Suggestion struct {
 	ID       string    `json:"id"`
@@ -276,6 +298,12 @@ func Build(ctx context.Context, c Config) (State, error) {
 	if err != nil {
 		return State{}, err
 	}
+	var files map[string][]sqlstore.Attachment
+	if as, ok := c.Store.(attachmentStore); ok {
+		if files, err = as.AttachmentsByTask(ctx); err != nil {
+			return State{}, err
+		}
+	}
 	byID := make(map[string]task.Task, len(tasks))
 	for _, t := range tasks {
 		byID[t.ID] = t
@@ -292,7 +320,7 @@ func Build(ctx context.Context, c Config) (State, error) {
 			}
 		}
 		st.Tasks = append(st.Tasks, Task{ID: t.ID, ShortID: task.ShortID(t.ID), Title: t.Title, Site: t.Site,
-			Status: string(t.Status), Priority: string(t.Priority), Notes: len(t.Notes), NotesList: noteTexts, UpdatedAt: utc(t.UpdatedAt)})
+			Status: string(t.Status), Priority: string(t.Priority), Notes: len(t.Notes), NotesList: noteTexts, Files: pageFiles(files[t.ID]), UpdatedAt: utc(t.UpdatedAt)})
 	}
 
 	sugs, err := c.Store.Suggestions(ctx, false)
@@ -395,3 +423,14 @@ type Resolved struct {
 
 // Errors the HTTP layer turns into status codes.
 var errReadOnly = errors.New("the dashboard was started read-only")
+
+func pageFiles(in []sqlstore.Attachment) []File {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]File, len(in))
+	for i, a := range in {
+		out[i] = File{Hash: a.Hash, Name: a.Name, Type: a.Type, Size: a.Size, Present: a.Present, Image: inlineTypes[a.Type]}
+	}
+	return out
+}
