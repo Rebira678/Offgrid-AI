@@ -74,10 +74,12 @@ func Handler(rep Replica, opt ServerOptions) http.Handler {
 		mux.HandleFunc("GET "+PathSummary, s.secure(s.summary))
 		mux.HandleFunc("POST "+PathOps, s.secure(s.ops))
 		mux.HandleFunc("POST "+PathPush, s.secure(s.push))
+		s.blobRoutes(mux, s.secureBlob, s.secure)
 	default:
 		mux.HandleFunc("GET "+PathSummary, s.wrap(s.summary))
 		mux.HandleFunc("POST "+PathOps, s.wrap(s.ops))
 		mux.HandleFunc("POST "+PathPush, s.wrap(s.push))
+		s.blobRoutes(mux, s.wrapBlob, s.wrap)
 		if opt.Enroller != nil {
 			mux.HandleFunc("POST "+PathEnroll, s.enroll)
 		}
@@ -275,18 +277,9 @@ func classify(err error) (int, string) {
 // reaches h otherwise.
 func (s *server) secure(h func(ctx context.Context, peer string, body []byte) reply) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-			s.send(w, "", fail(http.StatusUnauthorized, CodeUnauthorized, "this endpoint needs a mutual-TLS connection"))
-			return
-		}
-		now := s.opt.Now()
-		dev, key, err := identity.DeviceOfCertificate(r.TLS.PeerCertificates[0], now)
-		if err == nil && s.opt.Authorizer != nil {
-			err = s.opt.Authorizer(dev, key)
-		}
-		if err != nil {
-			s.logf("refused %s %s from %s: %v", r.Method, r.URL.Path, dev, err)
-			s.send(w, "", fail(http.StatusForbidden, CodeNotAuthorized, err.Error()))
+		dev, now, bad := s.tlsDevice(r)
+		if bad != nil {
+			s.send(w, "", *bad)
 			return
 		}
 		var body []byte
@@ -298,33 +291,11 @@ func (s *server) secure(h func(ctx context.Context, peer string, body []byte) re
 				return
 			}
 		}
-		unix, perr := strconv.ParseInt(r.Header.Get(HeaderTime), 10, 64)
-		if perr != nil {
-			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderTime))
-			return
-		}
-		if diff := now.Sub(time.Unix(unix, 0)); diff < -s.opt.Window || diff > s.opt.Window {
-			s.send(w, "", fail(http.StatusUnauthorized, CodeClockSkew, fmt.Sprintf("the clocks differ by %s, more than the allowed %s", diff.Round(time.Second).Abs(), s.opt.Window)))
-			return
-		}
-		id := r.Header.Get(HeaderRequest)
-		if !validRequestID(id) {
-			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderRequest))
-			return
-		}
-		switch err := s.replay.see(dev+"/"+id, now); {
-		case errors.Is(err, errReplay):
-			s.logf("refused a replayed request from %s", dev)
-			s.send(w, "", fail(http.StatusConflict, CodeReplay, "this request ID was already used"))
-			return
-		case err != nil:
-			s.send(w, "", fail(http.StatusServiceUnavailable, CodeBusy, "too many requests in the replay window; try again shortly"))
-			return
-		}
-		if bad := checkProto(r); bad != nil {
+		if bad := s.tlsFresh(r, dev, now); bad != nil {
 			s.send(w, "", *bad)
 			return
 		}
+		var err error
 		if body, err = inflate(r, body); err != nil {
 			s.send(w, "", fail(http.StatusBadRequest, CodeBadRequest, err.Error()))
 			return
@@ -335,6 +306,69 @@ func (s *server) secure(h func(ctx context.Context, peer string, body []byte) re
 		}
 		s.send(w, "", rep)
 	}
+}
+
+// tlsPeer is every check a mutual-TLS request must pass before its body is handled: the certificate names an
+// allowed device, the request is fresh and not replayed, and the caller speaks an accepted protocol version. It
+// returns the device, or the refusal to send. (Ops read their body between the two halves, so an oversized body is
+// refused as such whatever else is wrong with the request.)
+func (s *server) tlsPeer(r *http.Request) (string, *reply) {
+	dev, now, bad := s.tlsDevice(r)
+	if bad != nil {
+		return "", bad
+	}
+	if bad := s.tlsFresh(r, dev, now); bad != nil {
+		return "", bad
+	}
+	return dev, nil
+}
+
+// tlsDevice: the certificate names a device that is still allowed.
+func (s *server) tlsDevice(r *http.Request) (string, time.Time, *reply) {
+	now := s.opt.Now()
+	refuse := func(status int, code, msg string) (string, time.Time, *reply) {
+		rep := fail(status, code, msg)
+		return "", now, &rep
+	}
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		return refuse(http.StatusUnauthorized, CodeUnauthorized, "this endpoint needs a mutual-TLS connection")
+	}
+	dev, key, err := identity.DeviceOfCertificate(r.TLS.PeerCertificates[0], now)
+	if err == nil && s.opt.Authorizer != nil {
+		err = s.opt.Authorizer(dev, key)
+	}
+	if err != nil {
+		s.logf("refused %s %s from %s: %v", r.Method, r.URL.Path, dev, err)
+		return refuse(http.StatusForbidden, CodeNotAuthorized, err.Error())
+	}
+	return dev, now, nil
+}
+
+// tlsFresh: the request carries a fresh time and a request ID not seen before, and a protocol version we accept.
+func (s *server) tlsFresh(r *http.Request, dev string, now time.Time) *reply {
+	refuse := func(status int, code, msg string) *reply {
+		rep := fail(status, code, msg)
+		return &rep
+	}
+	unix, perr := strconv.ParseInt(r.Header.Get(HeaderTime), 10, 64)
+	if perr != nil {
+		return refuse(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderTime)
+	}
+	if diff := now.Sub(time.Unix(unix, 0)); diff < -s.opt.Window || diff > s.opt.Window {
+		return refuse(http.StatusUnauthorized, CodeClockSkew, fmt.Sprintf("the clocks differ by %s, more than the allowed %s", diff.Round(time.Second).Abs(), s.opt.Window))
+	}
+	id := r.Header.Get(HeaderRequest)
+	if !validRequestID(id) {
+		return refuse(http.StatusBadRequest, CodeBadRequest, "the request has no valid "+HeaderRequest)
+	}
+	switch err := s.replay.see(dev+"/"+id, now); {
+	case errors.Is(err, errReplay):
+		s.logf("refused a replayed request from %s", dev)
+		return refuse(http.StatusConflict, CodeReplay, "this request ID was already used")
+	case err != nil:
+		return refuse(http.StatusServiceUnavailable, CodeBusy, "too many requests in the replay window; try again shortly")
+	}
+	return checkProto(r)
 }
 
 // checkProto refuses a caller older than MinProtocol with a message that says what to do. A v1 client never
