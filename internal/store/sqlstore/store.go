@@ -55,10 +55,11 @@ type Store struct {
 	// reads then share db, as before. See read.
 	rdb *sql.DB
 
-	blobDir string // where attachment bytes live; "" when there is nowhere
-	blobMax int64
-	blobMu  sync.Mutex
-	blobs   *blobstore.Store // opened on first use
+	blobDir     string // where attachment bytes live; "" when there is nowhere
+	blobMax     int64
+	blobReserve int64
+	blobMu      sync.Mutex
+	blobs       *blobstore.Store // opened on first use
 
 	gc   *committer // the one writer: group commit (groupcommit.go)
 	pool *stmtPool  // prepared statements shared by transactions (stmtcache.go)
@@ -111,6 +112,9 @@ type Options struct {
 	BlobDir string
 	// MaxBlobBytes caps one attachment. Zero is blobstore.DefaultMaxBytes (25 MiB).
 	MaxBlobBytes int64
+	// BlobReserveBytes is the disk space an attachment may never eat into: a blob is accepted only if it fits
+	// and leaves this much free. Zero is blobstore.DefaultReserve (64 MiB).
+	BlobReserveBytes int64
 }
 
 // ErrNoDatabase means there is no database at the path and the caller asked
@@ -168,7 +172,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	// databases behave (each connection to ":memory:" is a separate database).
 	db.SetMaxOpenConns(1)
 
-	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned, blobMax: opt.MaxBlobBytes}
+	s := &Store{db: db, now: opt.Now, signer: opt.Signer, requireSigned: opt.RequireSigned, blobMax: opt.MaxBlobBytes, blobReserve: opt.BlobReserveBytes}
 	switch {
 	case opt.BlobDir != "":
 		s.blobDir = opt.BlobDir
