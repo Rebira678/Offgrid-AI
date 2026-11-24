@@ -32,7 +32,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 )
 
 // DefaultMaxBytes is the cap on one blob when none is configured: generous for a phone photo, small
@@ -73,6 +75,11 @@ type Ref struct {
 type Store struct {
 	dir string
 	max int64
+
+	mu      sync.Mutex
+	active  map[string]bool // blobs with a Transfer open
+	free    FreeFunc
+	reserve int64
 }
 
 // New opens (creating if needed) the blob directory dir with a per-blob cap of max bytes
@@ -92,9 +99,15 @@ func New(dir string, max int64) (*Store, error) {
 		return nil, fmt.Errorf("blobstore: %w", err)
 	}
 	for _, e := range es {
-		_ = os.Remove(filepath.Join(dir, tmpDir, e.Name()))
+		p := filepath.Join(dir, tmpDir, e.Name())
+		if strings.HasPrefix(e.Name(), "part-") { // an unfinished transfer: keep it for a resume unless it is abandoned
+			if fi, err := e.Info(); err == nil && time.Since(fi.ModTime()) < PartialTTL {
+				continue
+			}
+		}
+		_ = os.Remove(p)
 	}
-	return &Store{dir: dir, max: max}, nil
+	return &Store{dir: dir, max: max, active: map[string]bool{}, reserve: DefaultReserve}, nil
 }
 
 // Dir is the directory the blobs are in.
@@ -188,6 +201,13 @@ func (s *Store) put(ctx context.Context, r io.Reader, want string, declared int6
 	if err := ctx.Err(); err != nil {
 		return Ref{}, err
 	}
+	need := declared
+	if need < 1 {
+		need = 1
+	}
+	if err := s.CheckSpace(need); err != nil {
+		return Ref{}, err
+	}
 	// Read one byte more than allowed, so "exactly at the cap" and "over it" can be told apart
 	// without ever consuming more than cap+1 bytes.
 	limit := s.max + 1
@@ -213,7 +233,7 @@ func (s *Store) put(ctx context.Context, r io.Reader, want string, declared int6
 	defer putBuf(bufPtr)
 	n, err := io.CopyBuffer(&teeWriter{hs, tmp}, &ctxReader{ctx, io.LimitReader(r, limit)}, *bufPtr)
 	if err != nil {
-		return Ref{}, err
+		return Ref{}, wrapNoSpace(err)
 	}
 	switch {
 	case n > s.max:
@@ -232,10 +252,11 @@ func (s *Store) put(ctx context.Context, r io.Reader, want string, declared int6
 	if s.Has(sum) && s.Verify(sum) == nil { // already held, and intact: keep it, drop the copy
 		tmp.Close()
 		os.Remove(tmpName)
+		s.touch(sum)
 		return ref, nil
 	}
 	if err = tmp.Sync(); err != nil {
-		return Ref{}, err
+		return Ref{}, wrapNoSpace(err)
 	}
 	if err = tmp.Close(); err != nil {
 		return Ref{}, err
