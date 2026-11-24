@@ -30,7 +30,8 @@ suite=(
   "./internal/syncer|."
   "./internal/agent|RulesMatch"
   "./internal/sim|Run"
-  "./internal/store/sqlstore|^BenchmarkAppend\$|Rebuild/(1000|10000)|Fields/1000|VerifyChain10k|CatchUp10/log-10000$|Record|ApplyRemote|OpsSince|SignOp|VerifyOp\$|OpHash\$|DeleteTask|RemoveNote|NotesFromOps|AppendConcurrent"
+  "./internal/store/sqlstore|^BenchmarkAppend\$|Rebuild/(1000|10000)|Fields/1000|VerifyChain10k|CatchUp10/log-10000$|Record|ApplyRemote|OpsSince|SignOp|VerifyOp\$|OpHash\$|DeleteTask|RemoveNote|NotesFromOps|AppendConcurrent|ListUnderWrites"
+  "./internal/blobstore|."
 )
 
 if [ -z "$append" ]; then : >"$out"; fi
