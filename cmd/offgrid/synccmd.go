@@ -347,6 +347,7 @@ func cmdSyncOnce(args []string, stdout, stderr io.Writer) int {
 	}
 	hash, herr := st.StateHash(ctx)
 	fmt.Fprintf(stdout, "synced with %s: pulled %d, pushed %d (%d requests, %s)\n", rep.Peer, rep.Pulled, rep.Pushed, rep.Requests, rep.Duration.Round(time.Millisecond))
+	printBlobReport(stdout, stderr, rep)
 	if herr != nil {
 		// The hash is what two machines compare to see that they converged: never print an empty one.
 		fmt.Fprintf(stderr, "error: the sync finished, but the state hash could not be computed: %v\n", herr)
@@ -585,4 +586,21 @@ func roundWait(d time.Duration) time.Duration {
 		return d.Round(100 * time.Millisecond)
 	}
 	return d.Round(time.Millisecond)
+}
+
+// printBlobReport says what the attachment pass did, and why anything was not moved.
+func printBlobReport(stdout, stderr io.Writer, rep syncer.Report) {
+	b := rep.Blobs
+	if b.Pulled+b.Pushed > 0 {
+		fmt.Fprintf(stdout, "files: fetched %d, sent %d (%s received, %s sent, %d resumed)\n", b.Pulled, b.Pushed, mb(b.PulledBytes), mb(b.PushedBytes), b.Resumed)
+	}
+	for _, r := range b.Refused {
+		fmt.Fprintf(stderr, "files not moved: %s\n", r)
+	}
+	if b.Corrupt > 0 {
+		fmt.Fprintf(stderr, "files not moved: %d arrived damaged and were thrown away; they will be asked for again\n", b.Corrupt)
+	}
+	if rep.BlobErr != nil {
+		fmt.Fprintf(stderr, "files: %v (tasks are synced; the files are retried next round)\n", rep.BlobErr)
+	}
 }
