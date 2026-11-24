@@ -594,3 +594,48 @@ func TestGroupNamesFoundersAndLimitsAreChecked(t *testing.T) {
 		t.Fatal("the group limit was not enforced")
 	}
 }
+
+// A photo is bigger than a JSON batch: uploads to the hub get their own limit, and a blob still reaches the
+// other site through the hub with the ops.
+func TestABlobCrossesTheHubAndHasItsOwnBodyLimit(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, func(o *Options) { o.MaxBody = 2048; o.MaxBlobBody = 60_000 })
+	a, b := e.twoSites()
+	addTask(t, a.st, "pump")
+	all, _ := a.st.List(ctx, task.Filter{})
+	jpg := func(n int, seed byte) []byte {
+		d := bytes.Repeat([]byte{seed}, n)
+		copy(d, []byte{0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 'J', 'F', 'I', 'F', 0})
+		return d
+	}
+	small := jpg(40_000, 1) // over the 2048-byte JSON limit, under the blob limit
+	att, err := a.st.AddAttachment(ctx, all[0].ID, bytes.NewReader(small), int64(len(small)), "image/jpeg", "p.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := e.client(a, "crew", nil).Once(ctx, a.st)
+	if err != nil || rep.BlobErr != nil || rep.Blobs.Pushed != 1 {
+		t.Fatalf("%v %v %+v", err, rep.BlobErr, rep.Blobs)
+	}
+	rep, err = e.client(b, "crew", nil).Once(ctx, b.st)
+	if err != nil || rep.BlobErr != nil || rep.Blobs.Pulled != 1 {
+		t.Fatalf("%v %v %+v", err, rep.BlobErr, rep.Blobs)
+	}
+	bb, _ := b.st.Blobs()
+	if err := bb.Verify(att.Hash); err != nil {
+		t.Fatal(err)
+	}
+	// over the blob limit: refused as too large
+	url := "https://" + e.addr + Prefix + "crew" + syncer.PathBlob + att.Hash + "?size=70000"
+	req, _ := http.NewRequest("PUT", url, bytes.NewReader(make([]byte, 70_000)))
+	req.Header.Set(syncer.HeaderOffset, "0")
+	hc := e.client(a, "crew", nil).HTTP
+	resp, err := hc.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a 70,000 byte upload under a 60,000 byte blob limit got %d", resp.StatusCode)
+	}
+}

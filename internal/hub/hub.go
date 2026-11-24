@@ -67,6 +67,9 @@ type Options struct {
 	RateBurst     int
 	// MaxBody bounds every request body, as sent (default 16 MiB).
 	MaxBody int64
+	// MaxBlobBody bounds the body of a blob upload (PUT /sync/blob/...), which is a photo, not a JSON
+	// batch (default 26 MiB: the 25 MiB attachment cap and a margin).
+	MaxBlobBody int64
 	// MaxGroups bounds the groups one hub hosts (default 64).
 	MaxGroups int
 	// Window is the sync time window passed to each group's handler (zero: the syncer default).
@@ -114,6 +117,9 @@ func New(ctx context.Context, opt Options) (*Hub, error) {
 	}
 	if opt.RateBurst <= 0 {
 		opt.RateBurst = 40
+	}
+	if opt.MaxBlobBody <= 0 {
+		opt.MaxBlobBody = 26 << 20
 	}
 	if opt.MaxBody <= 0 {
 		opt.MaxBody = 16 << 20
@@ -419,14 +425,18 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reply(w, http.StatusTooManyRequests, CodeRateLimited, "this group is sending requests faster than the hub allows; wait and retry")
 		return
 	}
-	if r.ContentLength > h.opt.MaxBody {
-		reply(w, http.StatusRequestEntityTooLarge, syncer.CodeBadRequest, fmt.Sprintf("the request body is over the hub's limit of %d bytes", h.opt.MaxBody))
+	limit := h.opt.MaxBody
+	if r.Method == http.MethodPut && strings.HasPrefix(sub, strings.TrimPrefix(syncer.PathBlob, "/")) {
+		limit = h.opt.MaxBlobBody // a photo upload, not a JSON batch
+	}
+	if r.ContentLength > limit {
+		reply(w, http.StatusRequestEntityTooLarge, syncer.CodeBadRequest, fmt.Sprintf("the request body is over the hub's limit of %d bytes", limit))
 		return
 	}
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = "/" + sub
 	r2.URL.RawPath = ""
-	r2.Body = http.MaxBytesReader(w, r.Body, h.opt.MaxBody) // chunked bodies have no Content-Length to check
+	r2.Body = http.MaxBytesReader(w, r.Body, limit) // chunked bodies have no Content-Length to check
 	g.h.ServeHTTP(w, r2)
 }
 
