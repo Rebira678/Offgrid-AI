@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"offgrid/internal/blobstore"
 	"offgrid/internal/task"
 )
 
@@ -44,11 +46,58 @@ func Handler(c Config) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, st)
 	})
+	mux.HandleFunc("GET /api/tasks/{id}/attachments/{hash}", func(w http.ResponseWriter, r *http.Request) {
+		serveAttachment(w, r, c)
+	})
 	mux.HandleFunc("POST /api/suggestions/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
 		code, res := resolve(r.Context(), c, r.PathValue("id"), r.PathValue("action"))
 		writeJSON(w, code, res)
 	})
 	return guard(mux)
+}
+
+// serveAttachment sends one attachment's bytes. It is the only place the dashboard serves content that did
+// not come from this program, so it assumes the file is hostile:
+//
+//   - the type is the one the (signed) op declared, from a short allowlist with no SVG or HTML, and
+//     X-Content-Type-Options: nosniff is already on every reply;
+//   - the reply carries its own Content-Security-Policy ("default-src 'none'; sandbox; frame-ancestors 'none'"), so even a document
+//     the browser decided to render could run nothing and reach nothing;
+//   - only pictures are shown inline; every other type is a download;
+//   - the file is found by the task's own list of hashes, never by a path.
+func serveAttachment(w http.ResponseWriter, r *http.Request, c Config) {
+	as, ok := c.Store.(attachmentStore)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "this store keeps no attachments"})
+		return
+	}
+	f, att, err := as.OpenAttachment(r.Context(), r.PathValue("id"), r.PathValue("hash"))
+	switch {
+	case errors.Is(err, task.ErrNotFound) || (err != nil && att.Hash == ""):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such attachment"})
+		return
+	case errors.Is(err, blobstore.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "this file has not reached this device yet; it arrives the next time it syncs with a device that has it"})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cannot read the attachment"})
+		return
+	}
+	defer f.Close()
+	h := w.Header()
+	h.Set("Content-Type", att.Type)
+	h.Set("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'")
+	h.Set("Cache-Control", "private, max-age=3600") // the hash names the bytes: they never change
+	disp := "attachment"
+	if inlineTypes[att.Type] {
+		disp = "inline"
+	}
+	name := att.Name
+	if name == "" {
+		name = att.Hash[:12]
+	}
+	h.Set("Content-Disposition", mime.FormatMediaType(disp, map[string]string{"filename": name}))
+	http.ServeContent(w, r, "", time.Time{}, f)
 }
 
 // resolve is the only write the dashboard can make.
