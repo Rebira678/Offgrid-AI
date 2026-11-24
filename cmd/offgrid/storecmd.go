@@ -35,6 +35,12 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	label := fs.String("label", "", "with found or invite: a human name for the device")
 	ttl := fs.Duration("ttl", 15*time.Minute, "with invite: how long it stays valid (at most 24h)")
 	n := fs.Int("n", 20, "with ops: how many of the most recent ops to show")
+	taskRef := fs.String("task", "", "with attach or attachments: the task (T3, #3 or a title)")
+	file := fs.String("file", "", "with attach: the file to attach")
+	mtype := fs.String("type", "", "with attach: the media type (default: from the file extension)")
+	fname := fs.String("name", "", "with attach: the name to show (default: the file name)")
+	grace := fs.Duration("grace", 7*24*time.Hour, "with gc: only remove unnamed blobs older than this (at least 10m)")
+	dry := fs.Bool("dry-run", false, "with gc: say what would be removed and remove nothing")
 	anchor := fs.String("anchor", "", "with verify: a file of saved heads (from: offgrid store head) the log must still agree with")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -49,13 +55,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if sub == "" {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members|revoke")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members|revoke|attach|attachments|blobs|gc")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members", "revoke":
+	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members", "revoke", "attach", "attachments", "blobs", "gc":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite, members or revoke)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite, members, revoke, attach, attachments, blobs or gc)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -82,6 +88,10 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		return storeError(stderr, err)
 	}
 	defer st.Close()
+	switch sub {
+	case "attach", "attachments", "blobs", "gc":
+		return storeBlobCmd(ctx, sub, st, *taskRef, *file, *mtype, *fname, *grace, *dry, stdout, stderr)
+	}
 	if sub == "found" || sub == "invite" || sub == "members" || sub == "revoke" {
 		if sub == "revoke" && *device == "" {
 			fmt.Fprintln(stderr, "usage: offgrid store -db FILE revoke -device dev_...\nerror: -device is required")
