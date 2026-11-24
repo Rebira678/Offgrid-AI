@@ -131,6 +131,9 @@ func (s *Store) blobStore() (*blobstore.Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if s.blobReserve > 0 {
+		b.SetReserve(s.blobReserve)
+	}
 	s.blobs = b
 	return b, nil
 }
@@ -248,6 +251,20 @@ func (s *Store) Attachments(ctx context.Context, taskID string) ([]Attachment, e
 	}
 	s.markPresent(list)
 	return list, nil
+}
+
+// AttachmentsByTask lists every task's attachments in one query (for the dashboard), oldest first.
+func (s *Store) AttachmentsByTask(ctx context.Context) (map[string][]Attachment, error) {
+	list, err := canonAttachments(ctx, s.read())
+	if err != nil {
+		return nil, err
+	}
+	s.markPresent(list)
+	out := map[string][]Attachment{}
+	for _, a := range list {
+		out[a.Task] = append(out[a.Task], a)
+	}
+	return out, nil
 }
 
 func (s *Store) markPresent(list []Attachment) {
