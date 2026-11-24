@@ -52,7 +52,7 @@ func TestServeAttachmentEdgeCasesAndSecurityHeaders(t *testing.T) {
 	}
 
 	// 3. Range request (Partial Content 206)
-	code, h, body = r.do("GET", "/api/tasks/"+tk.ID+"/attachments/"+attJpg.Hash, "", map[string]string{"Range": "bytes=0-99"})
+	code, _, body = r.do("GET", "/api/tasks/"+tk.ID+"/attachments/"+attJpg.Hash, "", map[string]string{"Range": "bytes=0-99"})
 	if code != 206 || len(body) != 100 {
 		t.Fatalf("expected 206 Partial Content with 100 bytes, got %d and len %d", code, len(body))
 	}
