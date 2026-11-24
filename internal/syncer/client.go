@@ -28,6 +28,9 @@ type Client struct {
 	// Mutual means the connection is mutual TLS (set HTTP from NewTLSClient): no HMAC, the
 	// shared key is not used, and each request carries a fresh request ID and the time.
 	Mutual bool
+	// Blob tunes the attachment transfers that follow each Once; NoBlobs turns them off.
+	Blob    BlobOptions
+	NoBlobs bool
 }
 
 // Report says what one round did.
@@ -40,6 +43,10 @@ type Report struct {
 	Rebuilt     bool // applying pulled ops made this replica rebuild its view
 	Requests    int
 	Duration    time.Duration
+	// Blobs is what the attachment pass did (zero when there was nothing to move, or the replica keeps none).
+	// BlobErr is its first failure: ops are synced either way, and the next round retries the blobs.
+	Blobs   BlobReport
+	BlobErr error
 }
 
 // RemoteError is an error reply from the peer.
@@ -384,6 +391,12 @@ func (c *Client) Once(ctx context.Context, local Replica) (Report, error) {
 		}
 		if !more {
 			break
+		}
+	}
+	if !c.NoBlobs {
+		if br, ok := local.(BlobReplica); ok {
+			rep.Blobs, rep.BlobErr = c.SyncBlobs(ctx, br, c.Blob)
+			rep.Requests += rep.Blobs.Requests
 		}
 	}
 	return rep, nil
