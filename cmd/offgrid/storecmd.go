@@ -26,6 +26,7 @@ import (
 //	offgrid store -db FILE head      print the newest hash of every replica; keep it somewhere safe
 //	offgrid store -db FILE rebuild   delete the tasks view and recompute it from the log
 //	offgrid store -db FILE ops -n 20 show the last ops
+//	offgrid store -db FILE growth    sizes, a one-year projection and the growth alarm (Day 49)
 func cmdStore(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("store", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -46,7 +47,7 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	sub := fs.Arg(0)
-	if rest := fs.Args(); len(rest) > 1 { // flags may also follow the command: store -db F verify -anchor FILE
+	if rest := fs.Args(); len(rest) > 1 && sub != "growth" { // flags may also follow the command: store -db F verify -anchor FILE
 		if err := fs.Parse(rest[1:]); err != nil {
 			return 2
 		}
@@ -55,13 +56,13 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if sub == "" {
-		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members|revoke|attach|attachments|blobs|gc")
+		fmt.Fprintln(stderr, "usage: offgrid store -db FILE info|verify [-anchor FILE]|attest|head|rebuild|ops [-n N]|found|invite|members|revoke|attach|attachments|blobs|gc|growth")
 		return 2
 	}
 	switch sub {
-	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members", "revoke", "attach", "attachments", "blobs", "gc":
+	case "info", "verify", "attest", "head", "rebuild", "ops", "fields", "found", "invite", "members", "revoke", "attach", "attachments", "blobs", "gc", "growth":
 	default:
-		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite, members, revoke, attach, attachments, blobs or gc)\n", sub)
+		fmt.Fprintf(stderr, "error: unknown store command %q (use info, verify, attest, head, rebuild, ops, fields, found, invite, members, revoke, attach, attachments, blobs, gc or growth)\n", sub)
 		return 2
 	}
 	if *dbPath == "" {
@@ -89,6 +90,8 @@ func cmdStore(args []string, stdout, stderr io.Writer) int {
 	}
 	defer st.Close()
 	switch sub {
+	case "growth":
+		return growthCmd(ctx, st, *dbPath, fs.Args()[1:], stdout, stderr) // its own flags follow the word
 	case "attach", "attachments", "blobs", "gc":
 		return storeBlobCmd(ctx, sub, st, *taskRef, *file, *mtype, *fname, *grace, *dry, stdout, stderr)
 	}
