@@ -17,7 +17,7 @@ import (
 
 func hashOf(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
-func newStore(t *testing.T, max int64) *Store {
+func newStore(t testing.TB, max int64) *Store {
 	t.Helper()
 	s, err := New(filepath.Join(t.TempDir(), "blobs"), max)
 	if err != nil {
