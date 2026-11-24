@@ -16,6 +16,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [011](011-relay.md) | Relay: a hub run by the site owner that hosts one replica per group and can read, not forge | Day 43 (built; one hub, no Pi test) |
 | [012](012-group-commit-and-driver.md) | Storage: one writer goroutine with group commit; stay on the cgo driver | Day 46 (built; real power pull and modernc numbers are the user's part) |
 | [013](013-attachments.md) | Attachments: content-addressed blobs, only a reference in the log | Day 47 (built; fetching blobs from peers is Day 48) |
+| [014](014-blob-sync-gc-and-space.md) | Blob sync (have/want, resume), collection with grace, free-space guard | Day 48 (built; no real-link or real-disk measurements yet) |
 
 ## Decisions in the plan that have no record yet
 
