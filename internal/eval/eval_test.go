@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -20,8 +21,8 @@ func TestDatasetIsWellFormed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 30 {
-		t.Errorf("have %d cases, want 30", len(cases))
+	if len(cases) < 100 {
+		t.Errorf("have %d cases, want at least 100: a rate measured on fewer cannot tell a 2-point change from luck", len(cases))
 	}
 
 	ids := map[string]bool{}
@@ -56,8 +57,8 @@ func TestDatasetIsWellFormed(t *testing.T) {
 		check("when", c.When, intent.Whens())
 	}
 	for _, i := range intent.Intents() {
-		if perIntent[i] < 3 {
-			t.Errorf("intent %s has only %d cases; every intent needs at least 3", i, perIntent[i])
+		if perIntent[i] < 8 {
+			t.Errorf("intent %s has only %d cases; every intent needs at least 8", i, perIntent[i])
 		}
 	}
 }
@@ -153,11 +154,12 @@ func oracle(t *testing.T) *llm.Fake {
 
 func TestPerfectModelScoresFull(t *testing.T) {
 	cases, _ := LoadCases()
+	n := len(cases)
 	sum, err := Run(context.Background(), Config{Client: oracle(t), Model: "m", UseSchema: true}, cases)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sum.Cases != 30 || sum.CleanFirstTry != 30 || sum.ValidFirstTry != 30 || sum.IntentCorrect != 30 {
+	if sum.Cases != n || sum.CleanFirstTry != n || sum.ValidFirstTry != n || sum.IntentCorrect != n {
 		t.Errorf("summary = %+v", sum)
 	}
 	if sum.ArgsChecked == 0 || sum.ArgsCorrect != sum.ArgsChecked {
@@ -337,7 +339,8 @@ func TestReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"| good:3b | + schema + retries (up to 3) | 30/30 = 100%", "| bad:1b | prompt only | 0/4 = 0%",
+		fmt.Sprintf("| good:3b | + schema + retries (up to 3) | %d/%d = 100%%", len(cases), len(cases)),
+		"**Prompt:** v" + intent.PromptVersion + " (" + intent.PromptFingerprint() + ")", "| bad:1b | prompt only | 0/4 = 0%",
 		"95% confidence interval", "### bad:1b, prompt only", "no valid reply after 1 attempt(s)", "0.9.9",
 	} {
 		if !strings.Contains(md.String(), want) {
@@ -355,7 +358,7 @@ func TestReports(t *testing.T) {
 	var back struct {
 		Runs []Summary `json:"runs"`
 	}
-	if err := json.Unmarshal(js.Bytes(), &back); err != nil || len(back.Runs) != 1 || len(back.Runs[0].Results) != 30 {
+	if err := json.Unmarshal(js.Bytes(), &back); err != nil || len(back.Runs) != 1 || len(back.Runs[0].Results) != len(good.Results) {
 		t.Errorf("JSON did not round-trip: %v", err)
 	}
 }
