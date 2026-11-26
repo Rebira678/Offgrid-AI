@@ -114,6 +114,11 @@ type Summary struct {
 	MaxAttempts int    `json:"max_attempts"`
 	Cases       int    `json:"cases"`
 
+	// PromptVersion and PromptFingerprint say which prompt was measured, CasesFingerprint which cases.
+	PromptVersion     string `json:"prompt_version"`
+	PromptFingerprint string `json:"prompt_fingerprint"`
+	CasesFingerprint  string `json:"cases_fingerprint"`
+
 	CleanFirstTry int `json:"clean_first_try"`
 	ValidFirstTry int `json:"valid_first_try"`
 	Succeeded     int `json:"succeeded"`
@@ -158,7 +163,8 @@ func Run(ctx context.Context, cfg Config, cases []Case) (Summary, error) {
 	if cfg.Limit > 0 && cfg.Limit < len(cases) {
 		cases = cases[:cfg.Limit]
 	}
-	sum := Summary{Model: cfg.Model, UseSchema: cfg.UseSchema, MaxAttempts: cfg.attempts()}
+	sum := Summary{Model: cfg.Model, UseSchema: cfg.UseSchema, MaxAttempts: cfg.attempts(),
+		PromptVersion: intent.PromptVersion, PromptFingerprint: intent.PromptFingerprint(), CasesFingerprint: CasesFingerprint(cases)}
 	classifier := intent.Classifier{
 		Client: cfg.Client, Model: cfg.Model, UseSchema: cfg.UseSchema, MaxAttempts: cfg.MaxAttempts,
 	}
