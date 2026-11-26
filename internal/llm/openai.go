@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,7 +31,16 @@ type OpenAICompat struct {
 	BaseURL string // e.g. https://api.openai.com (no trailing /v1/chat/completions)
 	APIKey  string
 	HTTP    *http.Client // default: 2 minute timeout
+
+	// NoSchema stops the client sending response_format even when the request has a schema. Some
+	// servers reject the field; the client also learns this by itself (see schemaRefused).
+	NoSchema bool
+
+	schemaRefused atomic.Bool // a server answered HTTP 400 to a request with a schema, and 200 without it
 }
+
+// errSchemaRefused is internal: the server said 400 to a request that carried a response_format.
+var errSchemaRefused = errors.New("llm: the backend refused response_format")
 
 var _ Client = (*OpenAICompat)(nil)
 
@@ -47,6 +57,19 @@ type oaiRequest struct {
 	Temperature float64      `json:"temperature"`
 	Seed        int          `json:"seed,omitempty"`
 	Stream      bool         `json:"stream"`
+
+	// ResponseFormat constrains the reply to a JSON Schema where the server supports it (llama.cpp's
+	// server, vLLM, OpenAI). It guarantees shape, never truth; callers still validate.
+	ResponseFormat *oaiFormat `json:"response_format,omitempty"`
+}
+
+type oaiFormat struct {
+	Type       string `json:"type"`
+	JSONSchema struct {
+		Name   string          `json:"name"`
+		Strict bool            `json:"strict"`
+		Schema json.RawMessage `json:"schema"`
+	} `json:"json_schema"`
 }
 
 type oaiMessage struct {
@@ -69,7 +92,9 @@ type oaiResponse struct {
 	} `json:"error"`
 }
 
-// Chat implements Client.
+// Chat implements Client. A request with a ResponseSchema is sent with response_format; if the server
+// answers HTTP 400 to that, the same request is sent once more without it and the client remembers, so
+// a server that does not know the field costs one extra round trip, once, not one per message.
 func (o *OpenAICompat) Chat(ctx context.Context, req Request, onToken func(string)) (Response, error) {
 	if err := req.Validate(); err != nil {
 		return Response{}, err
@@ -77,7 +102,22 @@ func (o *OpenAICompat) Chat(ctx context.Context, req Request, onToken func(strin
 	if err := ctx.Err(); err != nil {
 		return Response{}, err
 	}
+	useSchema := len(req.ResponseSchema) > 0 && !o.NoSchema && !o.schemaRefused.Load()
+	resp, err := o.chat(ctx, req, onToken, useSchema)
+	if useSchema && errors.Is(err, errSchemaRefused) {
+		o.schemaRefused.Store(true)
+		return o.chat(ctx, req, onToken, false)
+	}
+	return resp, err
+}
+
+func (o *OpenAICompat) chat(ctx context.Context, req Request, onToken func(string), withSchema bool) (Response, error) {
 	body := oaiRequest{Model: req.Model, MaxTokens: req.MaxTokens, Temperature: req.Temperature, Seed: req.Seed}
+	if withSchema {
+		f := &oaiFormat{Type: "json_schema"}
+		f.JSONSchema.Name, f.JSONSchema.Strict, f.JSONSchema.Schema = "reply", true, req.ResponseSchema
+		body.ResponseFormat = f
+	}
 	for _, m := range req.Messages {
 		body.Messages = append(body.Messages, oaiMessage{Role: string(m.Role), Content: m.Content})
 	}
@@ -127,6 +167,8 @@ func (o *OpenAICompat) Chat(ctx context.Context, req Request, onToken func(strin
 		return Response{}, &ModelNotFoundError{Model: req.Model, Err: fmt.Errorf("HTTP %d%s", res.StatusCode, detail)}
 	case res.StatusCode >= 500 || res.StatusCode == http.StatusTooManyRequests:
 		return Response{}, fmt.Errorf("%w: HTTP %d%s", ErrUnavailable, res.StatusCode, detail)
+	case res.StatusCode == http.StatusBadRequest && withSchema:
+		return Response{}, errSchemaRefused
 	case res.StatusCode != http.StatusOK:
 		return Response{}, fmt.Errorf("llm: the backend answered HTTP %d%s", res.StatusCode, detail)
 	}
