@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"offgrid/internal/ollama"
 )
@@ -47,6 +48,11 @@ func TestClientContract(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(okOAI))
 			t.Cleanup(srv.Close)
 			return NewOpenAICompat(srv.URL, "k")
+		},
+		"OpenAICompat with retry": func(t *testing.T) Client {
+			srv := httptest.NewServer(http.HandlerFunc(okOAI))
+			t.Cleanup(srv.Close)
+			return WithRetry(NewOpenAICompat(srv.URL, "k"), RetryPolicy{Base: time.Millisecond, Max: time.Millisecond})
 		},
 		"Ollama": func(t *testing.T) Client {
 			return NewOllama(ollama.NewClient(chatServer(t).URL))
