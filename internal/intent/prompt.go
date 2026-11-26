@@ -1,6 +1,8 @@
 package intent
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 
 	"offgrid/internal/llm"
@@ -99,4 +101,21 @@ func Messages(text string) []llm.Message {
 		)
 	}
 	return append(msgs, llm.Message{Role: llm.RoleUser, Content: text})
+}
+
+// PromptVersion names this wording of the prompt. Change the prompt, the examples or the schema and the
+// fingerprint below changes with them; a test fails until PromptVersion is bumped and the fingerprint
+// updated on purpose, so a change to what the model is told is always a visible, versioned event, and
+// every eval report says which version it measured.
+const PromptVersion = "2"
+
+// PromptFingerprint is a short hash of everything the model is told: the version, the instructions, the
+// worked examples and the schema. Two reports with the same fingerprint measured the same prompt.
+func PromptFingerprint() string {
+	h := sha256.New()
+	h.Write([]byte(PromptVersion + "\x00" + systemPrompt + "\x00" + schema))
+	for _, m := range Messages("") { // system + examples; the empty final message adds nothing
+		h.Write([]byte("\x00" + string(m.Role) + "\x00" + m.Content))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
 }
