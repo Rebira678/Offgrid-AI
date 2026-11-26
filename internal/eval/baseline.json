@@ -1,0 +1,38 @@
+{
+  "model": "reference",
+  "prompt_version": "2",
+  "prompt_fingerprint": "9d865728ff30",
+  "cases_fingerprint": "8fa84c0de958",
+  "setups": [
+    {
+      "use_schema": false,
+      "max_attempts": 1,
+      "cases": 105,
+      "valid_first_try": 95,
+      "succeeded": 95,
+      "intent_correct": 91,
+      "args_checked": 68,
+      "args_correct": 57
+    },
+    {
+      "use_schema": false,
+      "max_attempts": 3,
+      "cases": 105,
+      "valid_first_try": 95,
+      "succeeded": 105,
+      "intent_correct": 101,
+      "args_checked": 68,
+      "args_correct": 65
+    },
+    {
+      "use_schema": true,
+      "max_attempts": 3,
+      "cases": 105,
+      "valid_first_try": 105,
+      "succeeded": 105,
+      "intent_correct": 101,
+      "args_checked": 68,
+      "args_correct": 65
+    }
+  ]
+}
