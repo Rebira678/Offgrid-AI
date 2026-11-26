@@ -147,3 +147,69 @@ func TestOpenAICompatCancelledMidRequestReturnsTheContextErrorNotAnOutage(t *tes
 		t.Fatalf("got %v: a cancelled job must not look like a network outage", err)
 	}
 }
+
+func TestASchemaIsSentAsResponseFormatAndOnlyWhenAsked(t *testing.T) {
+	var body map[string]any
+	c := oaiServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body = nil
+		json.NewDecoder(r.Body).Decode(&body)
+		okOAI(w, r)
+	})
+	req := validRequest()
+	if _, err := c.Chat(context.Background(), req, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := body["response_format"]; has {
+		t.Fatal("no schema asked for, none sent")
+	}
+	req.ResponseSchema = json.RawMessage(`{"type":"object","properties":{"a":{"type":"string"}}}`)
+	if _, err := c.Chat(context.Background(), req, nil); err != nil {
+		t.Fatal(err)
+	}
+	rf, _ := body["response_format"].(map[string]any)
+	js, _ := rf["json_schema"].(map[string]any)
+	sc, _ := js["schema"].(map[string]any)
+	if rf["type"] != "json_schema" || js["strict"] != true || js["name"] == "" || sc["type"] != "object" {
+		t.Fatalf("response_format = %v", rf)
+	}
+	c.NoSchema = true
+	if _, err := c.Chat(context.Background(), req, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, has := body["response_format"]; has {
+		t.Fatal("NoSchema must switch it off")
+	}
+}
+
+func TestAServerThatRefusesTheSchemaCostsOneExtraCallOnce(t *testing.T) {
+	var withSchema, without int
+	c := oaiServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		json.NewDecoder(r.Body).Decode(&b)
+		if _, has := b["response_format"]; has {
+			withSchema++
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"unknown field response_format"}}`))
+			return
+		}
+		without++
+		okOAI(w, r)
+	})
+	req := validRequest()
+	req.ResponseSchema = json.RawMessage(`{"type":"object"}`)
+	for i := 0; i < 3; i++ {
+		if resp, err := c.Chat(context.Background(), req, nil); err != nil || resp.Text == "" {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+	if withSchema != 1 || without != 3 {
+		t.Fatalf("with schema %d, without %d: the refusal must be learned after one call", withSchema, without)
+	}
+}
+
+func TestABadRequestWithoutASchemaIsStillAnError(t *testing.T) {
+	c := oaiServer(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusBadRequest) })
+	if _, err := c.Chat(context.Background(), validRequest(), nil); err == nil || !strings.Contains(err.Error(), "HTTP 400") {
+		t.Fatalf("%v", err)
+	}
+}
