@@ -1,0 +1,93 @@
+# Day 50. Two checks on how well a model turns a worker's message into a valid command.
+#
+#  gate     every push and pull request. Runs the 105 labelled cases through the real prompt, parser,
+#           repair, validator and retry loop against a deterministic reference model, and fails if the
+#           valid-command rate (or the intent or argument rate) falls more than 2 points below
+#           internal/eval/baseline.json. It guards the pipeline; it cannot measure a model.
+#  nightly  once a night and on demand. Runs a REAL model (Ollama on the runner), appends a row to
+#           docs/eval/history.csv on the branch "eval-history", and, if docs/eval/baseline-real.json
+#           exists on main, fails when a rate falls more than 5 points below it.
+#
+# The nightly job has never run on GitHub's hardware: expect to adjust the model or the timeout after
+# the first run (a 3B model on a shared CPU runner is slow). scripts/eval-nightly.sh does the same on
+# your own machine.
+name: eval
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama model to evaluate"
+        default: "llama3.2:3b"
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: valid-command rate against the committed baseline
+        run: go test ./internal/eval ./internal/intent -run 'Golden|Reference|Pinned|Gate|Margin|Baseline' -count=1 -v
+
+  nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    env:
+      MODEL: ${{ github.event.inputs.model || vars.EVAL_MODEL || 'llama3.2:3b' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: install and start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve >/tmp/ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:11434/api/version && break; sleep 2; done
+          ollama pull "$MODEL"
+      - name: evaluate
+        id: eval
+        run: |
+          go build -o offgrid ./cmd/offgrid
+          mkdir -p out
+          args=(eval -models "$MODEL" -md out/latest.md -json out/latest.json -record out/history.csv -margin 0.05)
+          [ -f docs/eval/baseline-real.json ] && args+=(-baseline docs/eval/baseline-real.json)
+          set +e
+          ./offgrid "${args[@]}"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+      - name: record the result on the eval-history branch
+        run: |
+          git config user.name "eval-bot"; git config user.email "eval-bot@users.noreply.github.com"
+          git fetch origin eval-history:eval-history 2>/dev/null || git branch eval-history
+          git checkout eval-history
+          mkdir -p docs/eval
+          if [ -f docs/eval/history.csv ]; then tail -n +2 out/history.csv >> docs/eval/history.csv; else cp out/history.csv docs/eval/history.csv; fi
+          cp out/latest.md docs/eval/latest.md
+          git add docs/eval/history.csv docs/eval/latest.md
+          git commit -m "eval: $(date -u +%F) $MODEL" || true
+          git push origin eval-history
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-${{ github.run_id }}
+          path: out/
+      - name: fail the night if a rate regressed
+        if: steps.eval.outputs.code != '0'
+        run: exit ${{ steps.eval.outputs.code }}
