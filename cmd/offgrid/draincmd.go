@@ -20,7 +20,6 @@ import (
 	"offgrid/internal/intent"
 	"offgrid/internal/jobqueue"
 	"offgrid/internal/llm"
-	"offgrid/internal/ollama"
 	"offgrid/internal/store/sqlstore"
 	"offgrid/internal/task"
 	"offgrid/internal/tools"
@@ -28,7 +27,7 @@ import (
 
 // Seams for tests: the real thing talks to Ollama; tests swap in fakes.
 var (
-	newChatClient  = func(host string) llm.Client { return llm.NewOllama(ollama.NewClient(normalizeHost(host))) }
+	newChatClient  = chatClient
 	newCloudClient = func(baseURL, key string) llm.Client { return llm.NewOpenAICompat(baseURL, key) }
 	// busyMeter is the CPU gate for slow jobs; tests replace it.
 	newIdleGate   = func(maxBusy float64) func() bool { return (&idle.Sampler{MaxBusy: maxBusy}).Quiet }

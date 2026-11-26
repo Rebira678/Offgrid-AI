@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"offgrid/internal/intent"
-	"offgrid/internal/llm"
-	"offgrid/internal/ollama"
 	"offgrid/internal/structured"
 )
 
@@ -54,7 +52,7 @@ func cmdParse(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	defer cancel()
 
 	classifier := intent.Classifier{
-		Client:      llm.NewOllama(ollama.NewClient(normalizeHost(*host))),
+		Client:      chatClient(*host),
 		Model:       *model,
 		UseSchema:   *schema,
 		MaxAttempts: *attempts,

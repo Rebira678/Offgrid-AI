@@ -396,7 +396,7 @@ func TestEvaluationCasesRunEndToEndAndAreCountedByTier(t *testing.T) {
 		t.Fatalf("%d results, %d logged, %d cases", len(results), logged, len(cases))
 	}
 	s := agent.CountCases(results)
-	if s.Rules+s.Model+s.Unhandled != s.Total || s.Total != 30 {
+	if s.Rules+s.Model+s.Unhandled != s.Total || s.Total != len(cases) {
 		t.Errorf("stats do not add up: %+v", s)
 	}
 	if s.Rules == 0 || s.Model == 0 {
@@ -408,9 +408,9 @@ func TestEvaluationCasesRunEndToEndAndAreCountedByTier(t *testing.T) {
 	if m.called() != s.Model {
 		t.Errorf("the model was called %d times but handled %d: the rules must not call it", m.called(), s.Model)
 	}
-	// The headline requirement: at least 20 of the 30 messages run end to end.
+	// The headline requirement: at least 20 of the evaluation messages run end to end.
 	if s.Completed < 20 {
-		t.Errorf("only %d of 30 ran to a final outcome", s.Completed)
+		t.Errorf("only %d of %d ran to a final outcome", s.Completed, len(cases))
 	}
 	var b bytes.Buffer
 	agent.WriteCases(&b, results)

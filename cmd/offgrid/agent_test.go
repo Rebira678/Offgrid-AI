@@ -167,7 +167,7 @@ func TestAgentEvalNoModelShowsWhatTheRulesAloneCanDo(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	for _, want := range []string{"c01", "c30", "0 rules", "Tier 0 (rules) handled", "of 30", "matched the label", "TIER"} {
+	for _, want := range []string{"c01", "c30", "c105", "0 rules", "Tier 0 (rules) handled", "of 105", "matched the label", "TIER"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
 		}
@@ -187,11 +187,11 @@ func TestAgentEvalWithAModelRunsAtLeast20CasesEndToEnd(t *testing.T) {
 		t.Errorf("no model tier in the report:\n%s", out)
 	}
 	var ran, total int
-	if _, err := sscanRan(out, &ran, &total); err != nil || total != 30 || ran < 20 {
+	if _, err := sscanRan(out, &ran, &total); err != nil || total != 105 || ran < 20 {
 		t.Errorf("ran %d of %d (%v):\n%s", ran, total, err, out)
 	}
-	if n := len(drain(bodies)); n == 0 || n >= 30 {
-		t.Errorf("model calls = %d; the rules should have handled some of the 30 and the model the rest", n)
+	if n := len(drain(bodies)); n == 0 || n >= 105 {
+		t.Errorf("model calls = %d; the rules should have handled some of the 105 and the model the rest", n)
 	}
 }
 

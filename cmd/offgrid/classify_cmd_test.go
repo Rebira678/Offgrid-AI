@@ -239,12 +239,12 @@ func TestEvalEndToEnd(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d, stderr:\n%s", code, errOut.String())
 	}
-	for _, want := range []string{"| tiny:1b | + schema + retries (up to 3) | 30/30 = 100%", "9.9.9-test", "cases per run:** 30"} {
+	for _, want := range []string{"| tiny:1b | + schema + retries (up to 3) | 105/105 = 100%", "9.9.9-test", "cases per run:** 105"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("report is missing %q:\n%s", want, out.String())
 		}
 	}
-	if md, err := os.ReadFile(mdPath); err != nil || !strings.Contains(string(md), "30/30") {
+	if md, err := os.ReadFile(mdPath); err != nil || !strings.Contains(string(md), "105/105") {
 		t.Errorf("markdown file: %v", err)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -257,7 +257,7 @@ func TestEvalEndToEnd(t *testing.T) {
 			Results []struct{} `json:"results"`
 		} `json:"runs"`
 	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Runs) != 1 || parsed.Runs[0].Cases != 30 || len(parsed.Runs[0].Results) != 30 {
+	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Runs) != 1 || parsed.Runs[0].Cases != 105 || len(parsed.Runs[0].Results) != 105 {
 		t.Errorf("json file wrong: %v %+v", err, parsed)
 	}
 }

@@ -16,8 +16,6 @@ import (
 	"offgrid/internal/agent"
 	"offgrid/internal/eval"
 	"offgrid/internal/intent"
-	"offgrid/internal/llm"
-	"offgrid/internal/ollama"
 	"offgrid/internal/router"
 	"offgrid/internal/structured"
 	"offgrid/internal/tools"
@@ -97,7 +95,7 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	a := &agent.Agent{Rules: agent.DefaultRules(), Registry: reg}
 	if !*noModel {
 		a.Model = timeoutModel{timeout: *timeout, inner: intent.Classifier{
-			Client:      llm.NewOllama(ollama.NewClient(normalizeHost(*host))),
+			Client:      chatClient(*host),
 			Model:       *model,
 			UseSchema:   true,
 			MaxAttempts: *attempts,

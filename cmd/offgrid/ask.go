@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"offgrid/internal/llm"
-	"offgrid/internal/ollama"
 )
 
 const defaultModel = "llama3.2:3b"
@@ -61,9 +60,9 @@ func cmdAsk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	// This is the only line that knows the backend is Ollama. Replacing it is
-	// all it takes to point the whole program at a different model server.
-	var client llm.Client = llm.NewOllama(ollama.NewClient(normalizeHost(*host)))
+	// chatClient is the one place that knows which kind of model server this is (Ollama, llama.cpp,
+	// any OpenAI-compatible endpoint, here or on another node); see providercmd.go.
+	client := chatClient(*host)
 
 	err = runAsk(ctx, client, askOptions{
 		Model:       *model,
