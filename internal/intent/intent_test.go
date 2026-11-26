@@ -259,3 +259,14 @@ func TestClassifyGivesUpWithAUsefulError(t *testing.T) {
 		t.Errorf("made %d calls, want 2", len(f.Calls()))
 	}
 }
+
+// wantFingerprint pins the prompt. If this test fails you changed what the model is told. That is
+// allowed, but it must be deliberate: bump PromptVersion, put the new fingerprint here, run the eval
+// (go test ./internal/eval, and offgrid eval against a real model) and say in the commit what moved.
+const wantFingerprint = "9d865728ff30"
+
+func TestThePromptIsPinnedByItsFingerprint(t *testing.T) {
+	if got := PromptFingerprint(); got != wantFingerprint {
+		t.Fatalf("the prompt changed: fingerprint is %s, pinned %s. Bump PromptVersion (now %q) and update wantFingerprint if this was on purpose", got, wantFingerprint, PromptVersion)
+	}
+}
