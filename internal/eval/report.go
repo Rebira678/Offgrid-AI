@@ -38,7 +38,12 @@ func WriteMarkdown(w io.Writer, meta Meta, sums []Summary) error {
 	var b strings.Builder
 	hw := meta.Hardware
 	fmt.Fprintf(&b, "**Hardware:** %s, %d threads, %.1f GiB RAM  \n", orNA(hw.CPU), hw.Threads, hw.MemGiB)
-	fmt.Fprintf(&b, "**Ollama:** %s, **date:** %s, **cases per run:** %d\n\n", orNA(meta.OllamaVersion), meta.Date, firstCases(sums))
+	fmt.Fprintf(&b, "**Server:** %s, **date:** %s, **cases per run:** %d  \n", orNA(meta.OllamaVersion), meta.Date, firstCases(sums))
+	if len(sums) > 0 {
+		fmt.Fprintf(&b, "**Prompt:** v%s (%s), **cases:** %s\n\n", sums[0].PromptVersion, sums[0].PromptFingerprint, sums[0].CasesFingerprint)
+	} else {
+		b.WriteString("\n")
+	}
 
 	b.WriteString("| Model | Setup | Clean JSON, 1st try | Valid, 1st try | Valid after retries | Intent correct | Arguments correct | Avg tries | Median s/case |\n")
 	b.WriteString("|---|---|---|---|---|---|---|---|---|\n")
