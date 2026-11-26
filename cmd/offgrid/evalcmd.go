@@ -46,7 +46,7 @@ func evalSetups(schema bool, attempts int, ablation bool) []setup {
 func cmdEval(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	host := fs.String("host", defaultHost(), "Ollama server URL (default: $OLLAMA_HOST or http://127.0.0.1:11434)")
+	host := fs.String("host", defaultHost(), "model server: an Ollama address, or llamacpp@URL / openai@URL / ollama@URL (default: $OLLAMA_HOST or http://127.0.0.1:11434)")
 	modelList := fs.String("models", "llama3.2:1b,llama3.2:3b", "comma-separated models to evaluate")
 	attempts := fs.Int("attempts", structured.DefaultMaxAttempts, "most times the model may try each message, the first included")
 	schema := fs.Bool("schema", true, "constrain replies to the command schema")
@@ -55,6 +55,10 @@ func cmdEval(args []string, stdout, stderr io.Writer) int {
 	caseTimeout := fs.Duration("case-timeout", 2*time.Minute, "give up on a single case after this long")
 	mdPath := fs.String("md", "", "also write the Markdown report to this file")
 	jsonPath := fs.String("json", "", "also write the full results as JSON to this file")
+	baselinePath := fs.String("baseline", "", "compare with this baseline file; exit 4 if a rate fell by more than -margin (needs exactly one model)")
+	margin := fs.Float64("margin", 0.05, "how far a rate may fall below the baseline, as a fraction (0.05 = 5 points); real models are noisy, the CI reference uses 0.02")
+	writeBaseline := fs.String("write-baseline", "", "write this run as a baseline file (needs exactly one model and every setup the baseline should hold)")
+	recordPath := fs.String("record", "", "append one row per run to this CSV (the nightly history)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -70,24 +74,38 @@ func cmdEval(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	oc := ollama.NewClient(normalizeHost(*host))
-
-	ver, err := oc.Version(ctx)
-	if err != nil {
-		printError(stderr, err)
-		return 1
+	if (*baselinePath != "" || *writeBaseline != "") && len(models) != 1 {
+		fmt.Fprintln(stderr, "error: -baseline and -write-baseline need exactly one model in -models")
+		return 2
 	}
-	installed, err := oc.ListModels(ctx)
-	if err != nil {
-		printError(stderr, err)
-		return 1
+	if *margin < 0 || *margin > 1 {
+		fmt.Fprintln(stderr, "error: -margin is a fraction between 0 and 1")
+		return 2
 	}
-	if missing := missingModels(installed, models); len(missing) > 0 {
-		fmt.Fprintln(stderr, "error: these models are not installed yet:")
-		for _, m := range missing {
-			fmt.Fprintf(stderr, "  ollama pull %s\n", m)
+	prov, err := llm.ParseProvider(providerSpec(*host), ollama.DefaultBaseURL)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 2
+	}
+	ver := prov.Kind + " server"
+	if prov.Kind == llm.KindOllama { // only Ollama can say its version and which models it holds
+		oc := ollama.NewClient(prov.URL)
+		if ver, err = oc.Version(ctx); err != nil {
+			printError(stderr, err)
+			return 1
 		}
-		return 1
+		installed, err := oc.ListModels(ctx)
+		if err != nil {
+			printError(stderr, err)
+			return 1
+		}
+		if missing := missingModels(installed, models); len(missing) > 0 {
+			fmt.Fprintln(stderr, "error: these models are not installed yet:")
+			for _, m := range missing {
+				fmt.Fprintf(stderr, "  ollama pull %s\n", m)
+			}
+			return 1
+		}
 	}
 
 	cases, err := eval.LoadCases()
@@ -103,7 +121,7 @@ func cmdEval(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stderr, "Evaluating %d model(s) x %d setup(s) x %d case(s). Ctrl-C stops and keeps finished runs.\n", len(models), len(setups), n)
 	fmt.Fprint(stderr, "Tip: close your browser and plug in the charger; nothing else should compete for the CPU.\n\n")
 
-	client := llm.NewOllama(oc)
+	client := chatClient(*host)
 	var sums []eval.Summary
 	var runErr error
 loop:
@@ -146,6 +164,12 @@ loop:
 				return 1
 			}
 		}
+		if *recordPath != "" {
+			if err := eval.AppendHistory(*recordPath, meta, sums); err != nil {
+				fmt.Fprintf(stderr, "error: cannot record the run: %v\n", err)
+				return 1
+			}
+		}
 	}
 	if runErr != nil {
 		if len(sums) > 0 {
@@ -156,5 +180,42 @@ loop:
 		}
 		return reportAskError(stderr, runErr, "", *caseTimeout)
 	}
+	if *writeBaseline != "" {
+		b := eval.BaselineOf(models[0], meta.Date, sums)
+		if err := writeFile(*writeBaseline, b.Write); err != nil {
+			fmt.Fprintf(stderr, "error: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stderr, "baseline written to %s: commit it, and say why the numbers are accepted.\n", *writeBaseline)
+	}
+	if *baselinePath != "" {
+		return gateAgainst(*baselinePath, sums, *margin, stderr)
+	}
+	return 0
+}
+
+// gateAgainst compares a finished run with a committed baseline: exit 0 holds, 4 regressed, 1 cannot say.
+func gateAgainst(path string, sums []eval.Summary, margin float64, stderr io.Writer) int {
+	base, err := eval.ReadBaseline(path)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	regs, notes, err := base.Compare(sums, margin)
+	for _, n := range notes {
+		fmt.Fprintln(stderr, "note:", n)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	if len(regs) > 0 {
+		for _, r := range regs {
+			fmt.Fprintln(stderr, "REGRESSION:", r)
+		}
+		fmt.Fprintf(stderr, "%d rate(s) fell more than %.0f points below %s (model %s, measured %s).\n", len(regs), 100*margin, path, base.Model, base.Date)
+		return 4
+	}
+	fmt.Fprintf(stderr, "holds: no rate fell more than %.0f points below %s.\n", 100*margin, path)
 	return 0
 }
