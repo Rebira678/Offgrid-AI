@@ -45,9 +45,15 @@ func cmdWeb(args []string, stdout, stderr io.Writer) int {
 	metrics := fs.String("metrics", "", "directory the processes publish to (default: metrics/ next to the queue file)")
 	listen := fs.String("listen", "127.0.0.1:8787", "address to listen on (this machine only)")
 	readOnly := fs.Bool("read-only", false, "do not allow Accept or Dismiss")
+	node := addNodeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	stopNode, ncode := node.start(stderr, "web")
+	if ncode != 0 {
+		return ncode
+	}
+	defer stopNode()
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "error: unexpected argument %q (web takes only flags)\n", fs.Arg(0))
 		return 2
