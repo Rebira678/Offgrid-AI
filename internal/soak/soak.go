@@ -113,12 +113,24 @@ type Limits struct {
 	// proves nothing, however many samples it took.
 	MinSamples  int
 	MinDuration time.Duration
+	// MaxRSSKB is the memory budget: the highest RSS the run may reach, warm-up included (a node is
+	// as big as its peak, not its median). 0 means no budget.
+	MaxRSSKB int64
+	// MaxRSSDriftPct24h is how much a slow, steady climb may add over 24 hours, as a percent of the
+	// steady level, extrapolated from the trend after warm-up. The end-versus-start check above misses a
+	// leak that costs a little every minute; this one does not. 0 turns it off.
+	MaxRSSDriftPct24h float64
+	// MinDriftWindow is the least time the steady part of the run must span before the trend is
+	// trusted: 2 hours by default. Caches, pools and SQLite's page cache keep filling for minutes, and
+	// a 12-minute run measured on Day 51 climbed 16 to 25 MB and then went flat; a line through that
+	// climb, extrapolated to a day, looks like a leak and is not. Hours of data separate the two.
+	MinDriftWindow time.Duration
 }
 
 // DefaultLimits: 10% warm-up; 5 goroutines; 20% RSS. The goroutine limit is
 // small on purpose: a server with a bounded number of connections has a flat
 // goroutine count. RSS is looser because the Go runtime returns memory lazily.
-var DefaultLimits = Limits{WarmUp: 0.10, MaxGoroutineGrowth: 5, MaxRSSGrowthPct: 20, MinSamples: 20, MinDuration: 10 * time.Minute}
+var DefaultLimits = Limits{WarmUp: 0.10, MaxGoroutineGrowth: 5, MaxRSSGrowthPct: 20, MinSamples: 20, MinDuration: 10 * time.Minute, MaxRSSDriftPct24h: 50, MinDriftWindow: 2 * time.Hour}
 
 // Report is what a soak showed.
 type Report struct {
@@ -131,6 +143,10 @@ type Report struct {
 	RSSStartKB, RSSMaxKB, RSSEndKB                int64
 	RSSSteadyKB                                   int64 // median after warm-up
 	RSSMeasured                                   bool
+	RSSSlopeKBPerHour                             float64 // least-squares trend after warm-up
+	TrendJudged                                   bool    // false when the steady part was too short to trust a trend
+	SteadySpan                                    time.Duration
+	RSSBudgetKB                                   int64 // the budget the run was judged against, 0 if none
 	Ops, Rounds, Failures                         int64
 
 	Problems []string // empty means the run passed
@@ -175,6 +191,7 @@ func Summarize(r io.Reader, lim Limits) (Report, error) {
 		}
 	}
 	rep.RSSMeasured = rep.RSSMaxKB > 0
+	rep.RSSBudgetKB = lim.MaxRSSKB
 
 	if len(all) < lim.MinSamples {
 		rep.Verdict = "TOO SHORT"
@@ -231,6 +248,20 @@ func Summarize(r io.Reader, lim Limits) (Report, error) {
 			rep.Problems = append(rep.Problems, fmt.Sprintf("RSS grew %.1f%% after warm-up (%d to %d KB; limit %.0f%%)", pct, baseR, endR, lim.MaxRSSGrowthPct))
 		}
 	}
+	if rep.RSSMeasured {
+		rep.RSSSlopeKBPerHour = slopePerHour(steady)
+		span := steady[len(steady)-1].At.Sub(steady[0].At)
+		rep.SteadySpan = span
+		rep.TrendJudged = lim.MaxRSSDriftPct24h > 0 && baseR > 0 && span >= lim.MinDriftWindow
+		if rep.TrendJudged {
+			if pct := rep.RSSSlopeKBPerHour * 24 * 100 / float64(baseR); pct > lim.MaxRSSDriftPct24h {
+				rep.Problems = append(rep.Problems, fmt.Sprintf("RSS is climbing %.0f KB an hour: %.0f%% more after 24 hours at this rate (limit %.0f%%)", rep.RSSSlopeKBPerHour, pct, lim.MaxRSSDriftPct24h))
+			}
+		}
+	}
+	if lim.MaxRSSKB > 0 && rep.RSSMeasured && rep.RSSMaxKB > lim.MaxRSSKB {
+		rep.Problems = append(rep.Problems, fmt.Sprintf("RSS peaked at %d KB, over the budget of %d KB", rep.RSSMaxKB, lim.MaxRSSKB))
+	}
 	if rep.Rounds > 0 && rep.Failures*2 > rep.Rounds {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("%d of %d sync rounds failed: a soak with a broken link says nothing about leaks", rep.Failures, rep.Rounds))
 	}
@@ -239,6 +270,28 @@ func Summarize(r io.Reader, lim Limits) (Report, error) {
 		rep.Verdict = "FAIL"
 	}
 	return rep, nil
+}
+
+// slopePerHour is the least-squares slope of RSS (KB) against time, in KB per hour.
+func slopePerHour(v []Sample) float64 {
+	if len(v) < 2 {
+		return 0
+	}
+	t0 := v[0].At
+	var n, sx, sy, sxx, sxy float64
+	for _, s := range v {
+		x, y := s.At.Sub(t0).Hours(), float64(s.RSSKB)
+		n++
+		sx += x
+		sy += y
+		sxx += x * x
+		sxy += x * y
+	}
+	den := n*sxx - sx*sx
+	if den == 0 {
+		return 0
+	}
+	return (n*sxy - sx*sy) / den
 }
 
 func medianInt(v []int) int {
@@ -265,7 +318,13 @@ func (r Report) Format() string {
 	fmt.Fprintf(&b, "soak %s: %d samples over %s\n", orDash(r.Role), r.Samples, r.Duration.Round(time.Second))
 	fmt.Fprintf(&b, "  goroutines  start %d  max %d  end %d  (steady %d)\n", r.GoroutinesStart, r.GoroutinesMax, r.GoroutinesEnd, r.GoroutinesSteady)
 	if r.RSSMeasured {
-		fmt.Fprintf(&b, "  RSS         start %d KB  max %d KB  end %d KB  (steady %d KB)\n", r.RSSStartKB, r.RSSMaxKB, r.RSSEndKB, r.RSSSteadyKB)
+		fmt.Fprintf(&b, "  RSS         start %d KB  max %d KB  end %d KB  (steady %d KB, trend %+.0f KB/h)\n", r.RSSStartKB, r.RSSMaxKB, r.RSSEndKB, r.RSSSteadyKB, r.RSSSlopeKBPerHour)
+		if !r.TrendJudged {
+			fmt.Fprintf(&b, "  trend       not judged: the steady part spans %s and a trend needs hours (a short run is still filling caches)\n", r.SteadySpan.Round(time.Second))
+		}
+		if r.RSSBudgetKB > 0 {
+			fmt.Fprintf(&b, "  budget      %d KB (peak is %.0f%% of it)\n", r.RSSBudgetKB, 100*float64(r.RSSMaxKB)/float64(r.RSSBudgetKB))
+		}
 	} else {
 		fmt.Fprintf(&b, "  RSS         not measured (no /proc on this system)\n")
 	}
