@@ -19,6 +19,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [014](014-blob-sync-gc-and-space.md) | Blob sync (have/want, resume), collection with grace, free-space guard | Day 48 (built; no real-link or real-disk measurements yet) |
 | [015](015-measure-growth-before-compacting.md) | Measure growth first; compaction stays unbuilt, an alarm decides | Day 49 (built; projection uses synthetic ops until the pilot's own numbers exist) |
 | [016](016-providers-prompt-versions-and-the-eval-gate.md) | One provider setting (Ollama, llama.cpp, OpenAI-compatible, LAN), retry with jitter, pinned prompt, gate on the valid-command rate | Day 50 (built; no real model has been run through the gate yet) |
+| [017](017-resource-governor-and-node-profiles.md) | Light and full node profiles, model-call slots, battery and busy back-off, memory budget in the soak, loopback-only pprof | Day 51 (built; container numbers only, no Pi measured yet) |
 
 ## Decisions in the plan that have no record yet
 
