@@ -177,9 +177,15 @@ func cmdSyncServeContext(ctx context.Context, args []string, stdout, stderr io.W
 	requireSigned := fs.Bool("require-signed", false, requireSignedHelp)
 	allowUnsigned := fs.Bool("allow-unsigned", false, "allow syncing unsigned ops from peers with legacy databases (default: false)")
 	stats := addStatsFlags(fs)
+	node := addNodeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	stopNode, ncode := node.start(stderr, "sync serve")
+	if ncode != 0 {
+		return ncode
+	}
+	defer stopNode()
 	if !requirePositive(stderr, "-window", *window) {
 		return 2
 	}
@@ -432,9 +438,15 @@ func cmdSyncRunContext(ctx context.Context, args []string, stdout, stderr io.Wri
 	name := fs.String("name", "", "label for each line (default: this replica's node ID)")
 	faults := addFaultFlags(fs)
 	stats := addStatsFlags(fs)
+	node := addNodeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	stopNode, ncode := node.start(stderr, "sync run")
+	if ncode != 0 {
+		return ncode
+	}
+	defer stopNode()
 	if *peer == "" {
 		fmt.Fprintln(stderr, "error: -peer URL is required")
 		return 2
