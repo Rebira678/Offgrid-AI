@@ -224,3 +224,120 @@ func TestFewSamplesOverALongTimeAreTooShortToo(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+func TestASlowLeakThatStaysUnderTheEndToEndLimitStillFailsOnTrend(t *testing.T) {
+	// +10 KB per 10 s on 30 MB: 3% over the 17-minute run (passes the 20% check), 3,600 KB an hour,
+	// 86 MB more after a day (288%).
+	s := series(100, flat(12), func(i int) int64 { return 30000 + int64(i)*10 })
+	lim0 := DefaultLimits
+	lim0.MinDriftWindow = 10 * time.Minute // these 100 samples span 15 minutes
+	r, _ := Summarize(strings.NewReader(s), lim0)
+	if r.Verdict != "FAIL" || !strings.Contains(strings.Join(r.Problems, "|"), "climbing") || strings.Contains(strings.Join(r.Problems, "|"), "RSS grew") {
+		t.Fatalf("%+v", r)
+	}
+	if r.RSSSlopeKBPerHour < 3500 || r.RSSSlopeKBPerHour > 3700 {
+		t.Fatalf("slope %.0f KB/h, want about 3600", r.RSSSlopeKBPerHour)
+	}
+	lim := lim0
+	lim.MaxRSSDriftPct24h = 0
+	if r2, _ := Summarize(strings.NewReader(s), lim); r2.Verdict != "PASS" {
+		t.Fatalf("the trend check can be turned off: %+v", r2)
+	}
+}
+
+func TestNoiseAroundAFlatLevelIsNotATrend(t *testing.T) {
+	wobble := func(i int) int64 { return 30000 + int64((i*7919)%400) - 200 }
+	r := summarize(t, series(200, flat(12), wobble))
+	if r.Verdict != "PASS" || r.RSSSlopeKBPerHour > 1000 || r.RSSSlopeKBPerHour < -1000 {
+		t.Fatalf("%+v slope %.0f", r, r.RSSSlopeKBPerHour)
+	}
+}
+
+func TestTheMemoryBudgetIsAboutThePeakNotTheSteadyLevel(t *testing.T) {
+	spike := func(i int) int64 {
+		if i == 3 {
+			return 90000 // early, in the warm-up: the node still needed this much
+		}
+		return 40000
+	}
+	s := series(100, flat(12), spike)
+	lim := DefaultLimits
+	lim.MaxRSSKB = 90000
+	if r, _ := Summarize(strings.NewReader(s), lim); r.Verdict != "PASS" || r.RSSBudgetKB != 90000 {
+		t.Fatalf("exactly at the budget: %+v", r)
+	}
+	lim.MaxRSSKB = 89999
+	r, _ := Summarize(strings.NewReader(s), lim)
+	if r.Verdict != "FAIL" || !strings.Contains(strings.Join(r.Problems, "|"), "RSS peaked at 90000 KB, over the budget of 89999 KB") {
+		t.Fatalf("%+v", r)
+	}
+	if out := r.Format(); !strings.Contains(out, "budget      89999 KB (peak is 100% of it)") || !strings.Contains(out, "trend") {
+		t.Fatal(out)
+	}
+	lim.MaxRSSKB = 1 // a system with no RSS cannot break a budget it cannot measure
+	if r, _ := Summarize(strings.NewReader(series(100, flat(12), flat64(0))), lim); r.Verdict != "PASS" {
+		t.Fatalf("%+v", r)
+	}
+}
+
+func TestAShortStretchIsNotExtrapolatedToADay(t *testing.T) {
+	// 40 samples, 10 s apart: the steady part spans about 6 minutes, under the 10 minutes a trend needs.
+	s := series(40, flat(12), func(i int) int64 { return 30000 + int64(i)*50 })
+	lim := DefaultLimits
+	lim.MinDuration = time.Minute
+	r, _ := Summarize(strings.NewReader(s), lim)
+	if strings.Contains(strings.Join(r.Problems, "|"), "climbing") {
+		t.Fatalf("a trend from six minutes of samples must not be trusted: %+v", r)
+	}
+	lim.MinDriftWindow = 0
+	if r, _ = Summarize(strings.NewReader(s), lim); !strings.Contains(strings.Join(r.Problems, "|"), "climbing") {
+		t.Fatalf("with no minimum window the same data is a trend: %+v", r)
+	}
+}
+
+func TestSlopeIsALeastSquaresLineInKBPerHour(t *testing.T) {
+	at := func(min int, kb int64) Sample { return Sample{At: t0.Add(time.Duration(min) * time.Minute), RSSKB: kb} }
+	if slopePerHour(nil) != 0 || slopePerHour([]Sample{at(0, 5)}) != 0 {
+		t.Fatal("fewer than two points have no slope")
+	}
+	if got := slopePerHour([]Sample{at(0, 1000), at(30, 1500)}); got != 1000 {
+		t.Fatalf("two points, 500 KB in half an hour: %v", got)
+	}
+	if got := slopePerHour([]Sample{at(0, 100), at(10, 100), at(20, 100)}); got > 1e-6 || got < -1e-6 {
+		t.Fatalf("flat: %v", got)
+	}
+	// 60 KB per 10 minutes with a +-5 KB wobble is still 360 KB an hour on average
+	got := slopePerHour([]Sample{at(0, 1005), at(10, 1055), at(20, 1125), at(30, 1175), at(40, 1245)})
+	if got < 350 || got > 370 {
+		t.Fatalf("%v", got)
+	}
+	if slopePerHour([]Sample{at(0, 1), at(0, 9)}) != 0 {
+		t.Fatal("samples at the same instant have no slope")
+	}
+}
+
+func TestTheDefaultNeedsHoursBeforeItCallsAClimbALeak(t *testing.T) {
+	// The Day 51 rehearsal: 12 minutes in which RSS climbed 16 to 25 MB and then went flat.
+	climb := func(i int) int64 {
+		if i < 30 {
+			return 16000 + int64(i)*300
+		}
+		return 25000
+	}
+	r := summarize(t, series(76, flat(8), climb))
+	if r.Verdict != "PASS" || r.TrendJudged || !strings.Contains(r.Format(), "trend       not judged") {
+		t.Fatalf("a short run that was still filling its caches must pass, saying the trend was not judged:\n%s", r.Format())
+	}
+	// Three hours of a real leak is judged, whatever the first minutes did.
+	var b strings.Builder
+	for i := 0; i < 1100; i++ {
+		x := Sample{At: t0.Add(time.Duration(i) * 10 * time.Second), Role: "run", Goroutines: 8, RSSKB: 25000 + int64(i)*3}
+		j, _ := json.Marshal(x)
+		b.Write(j)
+		b.WriteByte('\n')
+	}
+	long, _ := Summarize(strings.NewReader(b.String()), DefaultLimits)
+	if long.Verdict != "FAIL" || !long.TrendJudged || long.SteadySpan < 2*time.Hour {
+		t.Fatalf("%+v", long)
+	}
+}
