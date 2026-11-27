@@ -15,6 +15,9 @@
 #   OFFGRID=./offgrid-arm64   which binary to run (default: offgrid on PATH)
 #   MIN_DURATION=10m          shortest run that gets a verdict (rehearse with MIN_DURATION=10s)
 #   WRITE_EVERY=3             seconds between writes
+#   PROFILE=light             node profile for the process under test: light, full or auto (Day 51)
+#   MAX_RSS_MIB=128           memory budget: the soak fails if RSS ever peaked above it (default: none)
+#   PPROF=127.0.0.1:6060      serve pprof on this machine while it runs (heap/goroutine profiles on demand)
 #
 # The key file is the SAME shared key on both machines (openssl rand -hex 32).
 # Sync is signed, not encrypted: use a network you trust.
@@ -23,6 +26,10 @@ set -euo pipefail
 OFFGRID="${OFFGRID:-offgrid}"
 MIN_DURATION="${MIN_DURATION:-10m}"
 WRITE_EVERY="${WRITE_EVERY:-3}"
+PROFILE="${PROFILE:-full}"
+MAX_RSS_MIB="${MAX_RSS_MIB:-0}"
+nodeflags=(-profile "$PROFILE")
+[ -n "${PPROF:-}" ] && nodeflags+=(-pprof "$PPROF")
 
 role="${1:-}"
 case "$role" in
@@ -74,7 +81,7 @@ trap cleanup EXIT
 if [ "$role" = node ]; then
   # The node serves; its own writer runs beside it. -create: the database is new.
   "$OFFGRID" exec -db "$db" '{"intent":"create_task","title":"node soak start"}' >/dev/null
-  "$OFFGRID" sync serve -db "$db" -addr 0.0.0.0:7878 -key-file "$key" -stats "$stats" -stats-every 10s >>"$log" 2>&1 &
+  "$OFFGRID" sync serve -db "$db" -addr 0.0.0.0:7878 -key-file "$key" -stats "$stats" -stats-every 10s "${nodeflags[@]}" >>"$log" 2>&1 &
   pids+=($!)
   sleep 2
   writer
@@ -84,7 +91,7 @@ if [ "$role" = node ]; then
   pids=()
 else
   "$OFFGRID" exec -db "$db" '{"intent":"create_task","title":"laptop soak start"}' >/dev/null
-  "$OFFGRID" sync run -db "$db" -peer "$peer" -key-file "$key" -every 2s -for "$dur" -stats "$stats" -stats-every 10s >>"$log" 2>&1 &
+  "$OFFGRID" sync run -db "$db" -peer "$peer" -key-file "$key" -every 2s -for "$dur" -stats "$stats" -stats-every 10s "${nodeflags[@]}" >>"$log" 2>&1 &
   runpid=$!
   writer
   wait "$runpid" || echo "sync run exited non-zero (see $log)" | tee -a "$log"
@@ -98,6 +105,6 @@ echo "== Results ($role)" | tee -a "$log"
 echo "(compare the state hash line with the other machine's: they must be identical once both are quiet)" | tee -a "$log"
 "$OFFGRID" store -db "$db" verify 2>&1 | tee -a "$log"
 rc=0
-"$OFFGRID" sync stats -min-duration "$MIN_DURATION" "$stats" 2>&1 | tee -a "$log" || rc=$?
+"$OFFGRID" sync stats -min-duration "$MIN_DURATION" -max-rss "$MAX_RSS_MIB" "$stats" 2>&1 | tee -a "$log" || rc=$?
 echo "Paste the lines above into docs/checkpoint1-report.md. Keep $stats and $log."
 exit "$rc"
