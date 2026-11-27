@@ -16,7 +16,6 @@ import (
 	"offgrid/internal/agent"
 	"offgrid/internal/connectivity"
 	qd "offgrid/internal/drain"
-	"offgrid/internal/idle"
 	"offgrid/internal/intent"
 	"offgrid/internal/jobqueue"
 	"offgrid/internal/llm"
@@ -30,7 +29,7 @@ var (
 	newChatClient  = chatClient
 	newCloudClient = func(baseURL, key string) llm.Client { return llm.NewOpenAICompat(baseURL, key) }
 	// busyMeter is the CPU gate for slow jobs; tests replace it.
-	newIdleGate   = func(maxBusy float64) func() bool { return (&idle.Sampler{MaxBusy: maxBusy}).Quiet }
+	newIdleGate   = idleGate
 	newClassifier = func(host, model string, attempts int) agent.Model {
 		return intent.Classifier{Client: newChatClient(host), Model: model, UseSchema: true, MaxAttempts: attempts}
 	}
@@ -87,9 +86,15 @@ func cmdDrain(args []string, stdout, stderr io.Writer) int {
 	forDur := fs.Duration("for", 0, "stop after this long (default: until Ctrl-C)")
 	faults := addFaultFlags(fs)
 	oo := addObsFlags(fs)
+	node := addNodeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	stopNode, ncode := node.start(stderr, "drain")
+	if ncode != 0 {
+		return ncode
+	}
+	defer stopNode()
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "error: unexpected argument %q (drain takes only flags)\n", fs.Arg(0))
 		return 2
