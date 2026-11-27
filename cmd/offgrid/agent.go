@@ -49,9 +49,15 @@ func cmdAgent(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	faults := addFaultFlags(fs)
 	oo := addObsFlags(fs)
 	routeEval := fs.Bool("route-eval", false, "measure the complexity gate on labelled messages (no model, queue or network needed) and exit")
+	node := addNodeFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	stopNode, ncode := node.start(stderr, "agent")
+	if ncode != 0 {
+		return ncode
+	}
+	defer stopNode()
 	if *attempts < 1 {
 		fmt.Fprintln(stderr, "error: -attempts must be at least 1")
 		return 2
