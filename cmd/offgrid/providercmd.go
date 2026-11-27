@@ -38,7 +38,7 @@ func chatClient(host string) llm.Client {
 	if err != nil {
 		return failedClient{err}
 	}
-	return c
+	return governed(c, !p.Local())
 }
 
 type failedClient struct{ err error }
