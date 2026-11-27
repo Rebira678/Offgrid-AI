@@ -81,13 +81,20 @@ func cmdSyncStats(args []string, stdout, stderr io.Writer) int {
 	fs.Float64Var(&lim.WarmUp, "warmup", lim.WarmUp, "share of the run (0 to 1) ignored at the start")
 	fs.IntVar(&lim.MaxGoroutineGrowth, "max-goroutine-growth", lim.MaxGoroutineGrowth, "goroutines the end may exceed the steady level by")
 	fs.Float64Var(&lim.MaxRSSGrowthPct, "max-rss-growth", lim.MaxRSSGrowthPct, "percent the end RSS may exceed the steady level by")
+	maxRSS := fs.Int64("max-rss", 0, "memory budget in MiB: fail if RSS ever peaked above it (0 = no budget)")
+	fs.Float64Var(&lim.MaxRSSDriftPct24h, "max-rss-drift", lim.MaxRSSDriftPct24h, "percent a steady climb may add over 24 hours, from the trend (0 = off)")
 	fs.IntVar(&lim.MinSamples, "min-samples", lim.MinSamples, "fewer samples than this gives no verdict")
 	fs.DurationVar(&lim.MinDuration, "min-duration", lim.MinDuration, "a run shorter than this gives no verdict")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if *maxRSS < 0 {
+		fmt.Fprintln(stderr, "error: -max-rss must not be negative")
+		return 2
+	}
+	lim.MaxRSSKB = *maxRSS * 1024
 	if fs.NArg() != 1 {
-		fmt.Fprintln(stderr, "usage: offgrid sync stats [-warmup F] [-max-goroutine-growth N] [-max-rss-growth PCT] FILE")
+		fmt.Fprintln(stderr, "usage: offgrid sync stats [-warmup F] [-max-goroutine-growth N] [-max-rss-growth PCT] [-max-rss MiB] [-max-rss-drift PCT] FILE")
 		return 2
 	}
 	f, err := os.Open(fs.Arg(0))
