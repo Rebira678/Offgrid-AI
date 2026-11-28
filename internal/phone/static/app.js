@@ -1,777 +1,394 @@
-// Offgrid Field PWA - Client Engine (Day 52)
-// Handles offline reads, queued offline writes, Service Worker, and pairing.
+'use strict';
+// Offgrid phone client. No libraries, no inline script (the Content-Security-Policy forbids it), and no
+// HTML strings: everything from the node is put on the page as text.
+//
+// What lives where:
+//   IndexedDB  kv      the device key (non-extractable), who we are paired as, the last snapshot, id map
+//              queue   what the person did while we could not reach the node (commands, in order)
+//              photos  pictures waiting to be uploaded
+//   The page shows  VIEW = last snapshot + the queue replayed on top, so an edit appears at once and
+//   disappears from "waiting" when the node has taken it.
 
-const DB_NAME = 'offgrid_field_db';
-const DB_VERSION = 1;
-let db = null;
-let currentFilter = 'all';
-let isOnline = navigator.onLine;
+const ACTION = { 'X-Offgrid-Action': '1' };
+const $ = (s) => document.querySelector(s);
 
-// Register Service Worker for offline capability
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch((err) => {
-      console.warn('ServiceWorker registration error:', err);
-    });
-  });
-}
-
-// -------------------------------------------------------------
-// IndexedDB Setup
-// -------------------------------------------------------------
-function openDatabase() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e) => {
-      const d = e.target.result;
-      if (!d.objectStoreNames.contains('meta')) {
-        d.createObjectStore('meta');
-      }
-      if (!d.objectStoreNames.contains('tasks')) {
-        d.createObjectStore('tasks', { keyPath: 'id' });
-      }
-      if (!d.objectStoreNames.contains('queue')) {
-        d.createObjectStore('queue', { keyPath: 'op_id' });
-      }
-    };
-    req.onsuccess = (e) => {
-      db = e.target.result;
-      resolve(db);
-    };
-    req.onerror = (e) => reject(e.target.error);
-  });
-}
-
-function idbGet(storeName, key) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const req = tx.objectStore(storeName).get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbSet(storeName, key, val) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const req = key !== undefined ? tx.objectStore(storeName).put(val, key) : tx.objectStore(storeName).put(val);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbGetAll(storeName) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readonly');
-    const req = tx.objectStore(storeName).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbDelete(storeName, key) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const req = tx.objectStore(storeName).delete(key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function idbClear(storeName) {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite');
-    const req = tx.objectStore(storeName).clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// -------------------------------------------------------------
-// Network & Sync Management
-// -------------------------------------------------------------
-window.addEventListener('online', () => {
-  isOnline = true;
-  updateStatusBadge();
-  syncNow();
-});
-
-window.addEventListener('offline', () => {
-  isOnline = false;
-  updateStatusBadge();
-});
-
-async function updateStatusBadge() {
-  const badge = document.getElementById('status-indicator');
-  const text = document.getElementById('status-text');
-  const queued = await idbGetAll('queue');
-
-  badge.className = 'status-badge';
-  if (!isOnline) {
-    badge.classList.add('status-offline');
-    text.textContent = queued.length > 0 ? `OFFLINE (${queued.length} QUEUED)` : 'OFFLINE';
-  } else if (queued.length > 0) {
-    badge.classList.add('status-syncing');
-    text.textContent = `SYNCING (${queued.length})...`;
-  } else {
-    badge.classList.add('status-online');
-    text.textContent = 'ONLINE';
+// ---------------------------------------------------------------- small helpers
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, '');
+    else if (v !== false && v != null) e.setAttribute(k, v);
   }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+const enc = (s) => new TextEncoder().encode(s);
+const uid = () => b64u(crypto.getRandomValues(new Uint8Array(12)));
+const ago = (ms) => (ms < 60e3 ? 'just now' : ms < 3600e3 ? Math.round(ms / 60e3) + ' min' : Math.round(ms / 3600e3) + ' h');
+
+// ---------------------------------------------------------------- IndexedDB
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('offgrid-phone', 1);
+  r.onupgradeneeded = () => {
+    r.result.createObjectStore('kv');
+    r.result.createObjectStore('queue', { keyPath: 'id' });
+    r.result.createObjectStore('photos', { keyPath: 'id' });
+  };
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+async function tx(store, mode, fn) {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const t = db.transaction(store, mode);
+    const out = fn(t.objectStore(store));
+    t.oncomplete = () => res(out.result);
+    t.onerror = () => rej(t.error);
+    t.onabort = () => rej(t.error);
+  });
+}
+const kvGet = (k) => tx('kv', 'readonly', (s) => s.get(k));
+const kvPut = (k, v) => tx('kv', 'readwrite', (s) => s.put(v, k));
+const kvDel = (k) => tx('kv', 'readwrite', (s) => s.delete(k));
+const all = (store) => tx(store, 'readonly', (s) => s.getAll());
+const put = (store, v) => tx(store, 'readwrite', (s) => s.put(v));
+const del = (store, k) => tx(store, 'readwrite', (s) => s.delete(k));
+const clear = (store) => tx(store, 'readwrite', (s) => s.clear());
+
+// ---------------------------------------------------------------- the device key
+// ECDSA P-256, created non-extractable: the private key can sign but can never be read out, even by this page.
+async function deviceKey() {
+  let k = await kvGet('key');
+  if (!k) {
+    k = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
+    await kvPut('key', k);
+  }
+  return k;
+}
+async function publicKeyTagged() {
+  const k = await deviceKey();
+  return 'ecdsa-p256:' + b64u(await crypto.subtle.exportKey('raw', k.publicKey));
+}
+async function sign(msg) {
+  const k = await deviceKey();
+  return b64u(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, k.privateKey, enc(msg)));
 }
 
-// -------------------------------------------------------------
-// App Initialization
-// -------------------------------------------------------------
-document.addEventListener('DOMContentLoaded', async () => {
-  await openDatabase();
-  await checkSession();
-  
-  // Format code input with hyphen
-  const codeInput = document.getElementById('input-pairing-code');
-  if (codeInput) {
-    codeInput.addEventListener('input', (e) => {
-      let v = e.target.value.replace(/[^0-9]/g, '');
-      if (v.length > 3) {
-        v = v.slice(0, 3) + '-' + v.slice(3, 6);
-      }
-      e.target.value = v;
-    });
-  }
-
-  // Periodic heartbeat / queue sync every 6 seconds
-  setInterval(() => {
-    if (isOnline) {
-      syncNow();
-    }
-  }, 6000);
-});
-
-async function checkSession() {
+// ---------------------------------------------------------------- talking to the node
+class Offline extends Error {}
+async function api(method, path, body, headers) {
+  let r;
   try {
-    const res = await fetch('/api/phone/session', {
-      headers: { 'X-Offgrid-Client': 'phone' }
+    r = await fetch(path, {
+      method,
+      credentials: 'same-origin',
+      headers: { ...(method === 'POST' ? ACTION : {}), ...(body && !(body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}), ...(headers || {}) },
+      body: body == null ? undefined : body instanceof Blob ? body : JSON.stringify(body),
     });
-    if (res.ok) {
-      showMainView();
-      await loadTasks();
-      await loadSuggestions();
-    } else {
-      showPairingView();
-    }
-  } catch (err) {
-    // If network fails, check if we have cached session in IndexedDB
-    const token = await idbGet('meta', 'token');
-    if (token) {
-      showMainView();
-      await loadTasks(); // Offline reads from IndexedDB!
-    } else {
-      showPairingView();
+  } catch (e) {
+    throw new Offline(String(e));
+  }
+  let data = null;
+  try { data = await r.json(); } catch { /* an empty or non-JSON body */ }
+  return { status: r.status, data: data || {} };
+}
+
+// signIn starts a new session with the device key, no code needed. It only works for a phone that is still enrolled.
+async function signIn(device) {
+  const c = await api('POST', '/api/challenge');
+  if (c.status !== 200) return c;
+  return api('POST', '/api/login', { device, nonce: c.data.nonce, sig: await sign('offgrid-phone-login-v1\0' + device + '\0' + c.data.nonce) });
+}
+
+// ---------------------------------------------------------------- state
+const S = { me: null, snap: null, queue: [], photos: [], idmap: {}, online: navigator.onLine, screen: 'list', open: null, filter: 'open', syncing: false, notices: [], error: '' };
+
+function notice(msg) {
+  S.notices.push(msg);
+  render();
+  setTimeout(() => { S.notices.shift(); render(); }, 15000);
+}
+
+async function load() {
+  S.me = (await kvGet('paired')) || null;
+  S.snap = (await kvGet('snap')) || null;
+  S.idmap = (await kvGet('idmap')) || {};
+  S.queue = (await all('queue')).sort((a, b) => a.at - b.at);
+  S.photos = (await all('photos')).sort((a, b) => a.at - b.at);
+}
+
+// view() is what the person sees: the last snapshot with the queued commands applied on top.
+function view() {
+  if (!S.snap) return { tasks: [], suggestions: [] };
+  const tasks = S.snap.tasks.map((t) => ({ ...t, notes_list: [...(t.notes_list || [])], files: [...(t.files || [])] }));
+  let sugs = S.snap.suggestions.map((s) => ({ ...s }));
+  const find = (id) => tasks.find((t) => t.id === id || t.id === S.idmap[id.slice(1)]);
+  for (const c of S.queue) {
+    const t = c.task ? find(c.task) : null;
+    if (c.op === 'create') tasks.push({ id: '@' + c.id, short_id: '', title: c.title, site: c.site || '', status: 'open', priority: c.priority || 'medium', notes_list: [], files: [], waiting: true });
+    else if (c.op === 'status' && t) { t.status = c.status; t.waiting = true; }
+    else if (c.op === 'priority' && t) { t.priority = c.priority; t.waiting = true; }
+    else if (c.op === 'note' && t) { t.notes_list.push(c.text + ' (waiting)'); t.waiting = true; }
+    else if (c.op === 'accept' || c.op === 'dismiss') {
+      const s = sugs.find((x) => x.id === c.task);
+      sugs = sugs.filter((x) => x.id !== c.task);
+      if (s && c.op === 'accept') {
+        const st = tasks.find((x) => x.id === s.task);
+        if (st) { if (s.status) st.status = s.status; if (s.priority) st.priority = s.priority; st.waiting = true; }
+      }
     }
   }
-  updateStatusBadge();
+  for (const p of S.photos) {
+    const t = find(p.task);
+    if (t) { t.files.push({ hash: 'pending-' + p.id, pending: p, name: p.name, image: true }); t.waiting = true; }
+  }
+  return { tasks, suggestions: sugs };
 }
 
-function showPairingView() {
-  document.getElementById('view-pairing').classList.remove('hidden');
-  document.getElementById('view-main').classList.add('hidden');
+async function enqueue(cmd) {
+  cmd.id = uid();
+  cmd.at = Date.now();
+  await put('queue', cmd);
+  S.queue.push(cmd);
+  render();
+  sync();
 }
 
-function showMainView() {
-  document.getElementById('view-pairing').classList.add('hidden');
-  document.getElementById('view-main').classList.remove('hidden');
+// ---------------------------------------------------------------- syncing
+async function resolveIds() { // commands queued against a temporary task ID get the real one once we know it
+  for (const c of S.queue) {
+    if (c.task && c.task.startsWith('@') && S.idmap[c.task.slice(1)]) { c.task = S.idmap[c.task.slice(1)]; await put('queue', c); }
+  }
+  for (const p of S.photos) {
+    if (p.task.startsWith('@') && S.idmap[p.task.slice(1)]) { p.task = S.idmap[p.task.slice(1)]; await put('photos', p); }
+  }
 }
 
-// -------------------------------------------------------------
-// Pairing Flow
-// -------------------------------------------------------------
-async function pairDevice() {
-  const code = document.getElementById('input-pairing-code').value.trim();
-  const label = document.getElementById('input-device-label').value.trim() || 'Field Device';
-  const errDiv = document.getElementById('pairing-error');
+async function ensureSession(fn) {
+  let r = await fn();
+  if (r.status === 401 && S.me) {
+    const l = await signIn(S.me.device);
+    if (l.status === 200) r = await fn();
+    else if (l.status === 401) { await unpair('This phone is no longer enrolled in the node. Ask for a new pairing code.'); }
+  }
+  return r;
+}
 
-  errDiv.classList.add('hidden');
+async function refresh() {
+  const r = await ensureSession(() => api('GET', '/api/state'));
+  if (r.status === 200) {
+    S.snap = r.data;
+    await kvPut('snap', r.data);
+  }
+  return r;
+}
+
+async function sync() {
+  if (S.syncing || !S.me) return;
+  S.syncing = true;
   try {
-    const res = await fetch('/api/phone/pair', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Offgrid-Client': 'phone'
-      },
-      body: JSON.stringify({ code, label })
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      errDiv.textContent = data.error || 'Pairing failed';
-      errDiv.classList.remove('hidden');
-      return;
-    }
-
-    // Save token in IndexedDB for offline awareness
-    await idbSet('meta', 'token', data.token);
-    await idbSet('meta', 'label', data.label);
-
-    showMainView();
-    await loadTasks();
-    await loadSuggestions();
-    updateStatusBadge();
-  } catch (err) {
-    errDiv.textContent = 'Cannot reach site node: ' + err.message;
-    errDiv.classList.remove('hidden');
-  }
-}
-
-// -------------------------------------------------------------
-// Tasks & Offline Storage
-// -------------------------------------------------------------
-async function loadTasks() {
-  // 1. First render from local IndexedDB cache (offline reads!)
-  const cached = await idbGetAll('tasks');
-  if (cached && cached.length > 0) {
-    renderTasks(cached);
-  }
-
-  // 2. Fetch fresh data from network if online
-  if (isOnline) {
-    try {
-      const res = await fetch('/api/phone/tasks', {
-        headers: { 'X-Offgrid-Client': 'phone' }
-      });
-      if (res.ok) {
-        const fresh = await res.json();
-        await idbClear('tasks');
-        for (const t of fresh) {
-          await idbSet('tasks', undefined, t);
+    await resolveIds();
+    if (S.queue.length) {
+      const sent = S.queue.slice(0, 100);
+      const now = Date.now();
+      const r = await ensureSession(() => api('POST', '/api/sync', { commands: sent.map((c) => ({ id: c.id, op: c.op, task: c.task, title: c.title, site: c.site, priority: c.priority, status: c.status, text: c.text, was: c.was, age_ms: now - c.at })) }));
+      if (r.status === 200) {
+        for (const res of r.data.results) {
+          if (res.task) S.idmap[res.id] = res.task;
+          if (res.outcome === 'rejected') notice('Not applied: ' + (res.message || res.code));
+          else if (res.overwrote) notice('Applied, but it replaced a newer change (' + res.overwrote + ')');
+          await del('queue', res.id);
         }
-        renderTasks(fresh);
+        S.queue = S.queue.filter((c) => !r.data.results.some((x) => x.id === c.id));
+        await kvPut('idmap', S.idmap);
+        await resolveIds();
+      } else if (r.status === 413 || r.status === 400) {
+        notice('The node refused the queue: ' + (r.data.message || r.status));
       }
-    } catch (err) {
-      console.warn('Using offline cached tasks due to network error:', err);
     }
-  }
-  updateStatusBadge();
-}
-
-async function loadSuggestions() {
-  if (!isOnline) return;
-  try {
-    const res = await fetch('/api/phone/suggestions', {
-      headers: { 'X-Offgrid-Client': 'phone' }
-    });
-    if (res.ok) {
-      const sugs = await res.json();
-      renderSuggestions(sugs);
+    for (const p of [...S.photos]) {
+      if (p.task.startsWith('@')) continue; // its task has not reached the node yet
+      const r = await ensureSession(() => api('POST', '/api/tasks/' + encodeURIComponent(p.task) + '/photos', p.blob, { 'Content-Type': 'image/jpeg', 'X-Offgrid-Name': encodeURIComponent(p.name), 'X-Offgrid-Sha256': p.sha, 'X-Offgrid-Age-Ms': String(Date.now() - p.at) }));
+      if (r.status === 200 || r.status === 201) { await del('photos', p.id); S.photos = S.photos.filter((x) => x.id !== p.id); }
+      else if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 429) {
+        notice('Photo not stored: ' + (r.data.message || r.status));
+        await del('photos', p.id); S.photos = S.photos.filter((x) => x.id !== p.id);
+      } else break;
     }
-  } catch (err) {
-    console.warn('Cannot fetch suggestions:', err);
-  }
-}
-
-function setFilter(filter, el) {
-  currentFilter = filter;
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-  if (el) el.classList.add('active');
-  loadTasks();
-}
-
-function renderTasks(tasks) {
-  const container = document.getElementById('tasks-list');
-  const countEl = document.getElementById('task-count');
-
-  let filtered = tasks;
-  if (currentFilter === 'open') {
-    filtered = tasks.filter(t => t.status === 'open');
-  } else if (currentFilter === 'in_progress') {
-    filtered = tasks.filter(t => t.status === 'in_progress');
-  } else if (currentFilter === 'done') {
-    filtered = tasks.filter(t => t.status === 'done');
-  } else if (currentFilter === 'high') {
-    filtered = tasks.filter(t => t.priority === 'high');
-  }
-
-  countEl.textContent = `${filtered.length} of ${tasks.length}`;
-  container.innerHTML = '';
-
-  if (filtered.length === 0) {
-    container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 40px 0;">No tasks found</div>`;
-    return;
-  }
-
-  for (const t of filtered) {
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    // Header
-    const hdr = document.createElement('div');
-    hdr.className = 'card-header';
-    
-    const title = document.createElement('div');
-    title.className = 'card-title';
-    title.textContent = t.title;
-
-    const meta = document.createElement('div');
-    meta.className = 'card-meta';
-    meta.innerHTML = `
-      <span class="pill pill-id">${escapeHtml(t.short_id || t.id.slice(0, 8))}</span>
-      <span class="pill pill-${t.status}">${escapeHtml(t.status)}</span>
-      <span class="pill pill-${t.priority}">${escapeHtml(t.priority)}</span>
-    `;
-
-    hdr.appendChild(title);
-    hdr.appendChild(meta);
-    card.appendChild(hdr);
-
-    // Notes
-    if (t.notes && t.notes.length > 0) {
-      const notesBox = document.createElement('div');
-      notesBox.className = 'card-notes';
-      for (const n of t.notes) {
-        const item = document.createElement('div');
-        item.className = 'note-item';
-        if (n.text.includes('[late sync') || n.text.includes('[queued offline')) {
-          item.classList.add('late-sync');
-        }
-        item.textContent = n.text;
-        notesBox.appendChild(item);
-      }
-      card.appendChild(notesBox);
-    }
-
-    // Attachments
-    if (t.attachments && t.attachments.length > 0) {
-      const attBox = document.createElement('div');
-      attBox.className = 'card-attachments';
-      for (const a of t.attachments) {
-        const link = document.createElement('a');
-        link.className = 'attachment-badge';
-        link.href = a.url;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.textContent = '📎 ' + (a.name || a.hash.slice(0, 8));
-        attBox.appendChild(link);
-      }
-      card.appendChild(attBox);
-    }
-
-    // Actions
-    const acts = document.createElement('div');
-    acts.className = 'card-actions';
-
-    if (t.status !== 'done') {
-      if (t.status === 'open') {
-        const btnProg = document.createElement('button');
-        btnProg.className = 'btn btn-secondary btn-sm';
-        btnProg.textContent = 'Start';
-        btnProg.onclick = () => updateStatus(t.id, 'in_progress');
-        acts.appendChild(btnProg);
-      }
-      const btnDone = document.createElement('button');
-      btnDone.className = 'btn btn-secondary btn-sm';
-      btnDone.textContent = 'Complete';
-      btnDone.onclick = () => updateStatus(t.id, 'done');
-      acts.appendChild(btnDone);
-    }
-
-    const btnNote = document.createElement('button');
-    btnNote.className = 'btn btn-secondary btn-sm';
-    btnNote.textContent = '+ Note';
-    btnNote.onclick = () => openAddNoteModal(t.id);
-    acts.appendChild(btnNote);
-
-    const btnPhoto = document.createElement('button');
-    btnPhoto.className = 'btn btn-secondary btn-sm';
-    btnPhoto.textContent = '+ Photo';
-    btnPhoto.onclick = () => openAttachPhotoModal(t.id);
-    acts.appendChild(btnPhoto);
-
-    const btnDel = document.createElement('button');
-    btnDel.className = 'btn btn-danger btn-sm';
-    btnDel.textContent = 'Delete';
-    btnDel.onclick = () => deleteTask(t.id);
-    acts.appendChild(btnDel);
-
-    card.appendChild(acts);
-    container.appendChild(card);
-  }
-}
-
-function renderSuggestions(sugs) {
-  const section = document.getElementById('section-suggestions');
-  const container = document.getElementById('suggestions-list');
-  container.innerHTML = '';
-
-  if (!sugs || sugs.length === 0) {
-    section.classList.add('hidden');
-    return;
-  }
-  section.classList.remove('hidden');
-
-  for (const s of sugs) {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.borderColor = 'rgba(88, 166, 255, 0.4)';
-
-    const hdr = document.createElement('div');
-    hdr.className = 'card-header';
-    hdr.innerHTML = `
-      <div>
-        <div style="font-size: 0.75rem; color: var(--accent-blue); font-weight: 700; text-transform: uppercase;">AI Proposed Change</div>
-        <div class="card-title">${escapeHtml(s.task_title || s.task_id)}</div>
-      </div>
-      <span class="pill pill-id">${escapeHtml(s.task_id.slice(0, 8))}</span>
-    `;
-    card.appendChild(hdr);
-
-    const body = document.createElement('div');
-    body.style.fontSize = '0.9rem';
-    body.innerHTML = `
-      <div style="color: var(--text-muted); margin: 4px 0;">
-        Change: <b>${escapeHtml(s.current_status)}</b> → <b>${escapeHtml(s.proposed_status)}</b>,
-        <b>${escapeHtml(s.current_priority)}</b> → <b>${escapeHtml(s.proposed_priority)}</b>
-      </div>
-      <div style="font-size: 0.85rem; color: var(--text-dim); font-style: italic;">
-        "${escapeHtml(s.rationale)}"
-      </div>
-    `;
-    card.appendChild(body);
-
-    const acts = document.createElement('div');
-    acts.className = 'card-actions';
-
-    const btnAcc = document.createElement('button');
-    btnAcc.className = 'btn btn-primary btn-sm';
-    btnAcc.textContent = 'Accept';
-    btnAcc.onclick = () => resolveSuggestion(s.id, true);
-    acts.appendChild(btnAcc);
-
-    const btnDism = document.createElement('button');
-    btnDism.className = 'btn btn-secondary btn-sm';
-    btnDism.textContent = 'Dismiss';
-    btnDism.onclick = () => resolveSuggestion(s.id, false);
-    acts.appendChild(btnDism);
-
-    card.appendChild(acts);
-    container.appendChild(card);
-  }
-}
-
-// -------------------------------------------------------------
-// Mutations: Online Direct vs Offline Queued
-// -------------------------------------------------------------
-async function submitNewTask() {
-  const title = document.getElementById('new-task-title').value.trim();
-  const priority = document.getElementById('new-task-priority').value;
-  const note = document.getElementById('new-task-note').value.trim();
-
-  if (!title) return;
-  closeModal('modal-new-task');
-
-  const op = {
-    op_id: 'op_' + Math.random().toString(36).slice(2, 11),
-    action: 'create_task',
-    client_time: new Date().toISOString(),
-    payload: { title, priority, note }
-  };
-
-  if (!isOnline) {
-    // Offline queued write
-    await idbSet('queue', undefined, op);
-    // Optimistic local add
-    const fakeId = 'local_' + op.op_id;
-    const notes = note ? [{ text: note + ' [queued offline]', time: op.client_time }] : [{ text: '[queued offline]', time: op.client_time }];
-    await idbSet('tasks', undefined, {
-      id: fakeId,
-      short_id: 'QUEUED',
-      title: title,
-      status: 'open',
-      priority: priority,
-      notes: notes,
-      created_at: op.client_time,
-      updated_at: op.client_time
-    });
-    loadTasks();
-    updateStatusBadge();
-    return;
-  }
-
-  // Online request
-  try {
-    const res = await fetch('/api/phone/tasks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Offgrid-Client': 'phone'
-      },
-      body: JSON.stringify({ title, priority, note })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadTasks();
-  } catch (err) {
-    // Failed: queue offline
-    await idbSet('queue', undefined, op);
-    loadTasks();
-    updateStatusBadge();
-  }
-}
-
-async function updateStatus(taskId, status) {
-  const op = {
-    op_id: 'op_' + Math.random().toString(36).slice(2, 11),
-    action: 'update_status',
-    client_time: new Date().toISOString(),
-    task_id: taskId,
-    payload: { status }
-  };
-
-  if (!isOnline) {
-    // Queue offline
-    await idbSet('queue', undefined, op);
-    const t = await idbGet('tasks', taskId);
-    if (t) {
-      t.status = status;
-      t.notes = t.notes || [];
-      t.notes.push({ text: `[queued offline]: status -> ${status}`, time: op.client_time });
-      await idbSet('tasks', undefined, t);
-    }
-    loadTasks();
-    updateStatusBadge();
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/phone/tasks/${encodeURIComponent(taskId)}/status`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Offgrid-Client': 'phone'
-      },
-      body: JSON.stringify({ status })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadTasks();
-  } catch (err) {
-    await idbSet('queue', undefined, op);
-    loadTasks();
-    updateStatusBadge();
-  }
-}
-
-async function submitAddNote() {
-  const taskId = document.getElementById('note-task-id').value;
-  const text = document.getElementById('note-text').value.trim();
-  if (!text) return;
-  closeModal('modal-add-note');
-
-  const op = {
-    op_id: 'op_' + Math.random().toString(36).slice(2, 11),
-    action: 'add_note',
-    client_time: new Date().toISOString(),
-    task_id: taskId,
-    payload: { text }
-  };
-
-  if (!isOnline) {
-    await idbSet('queue', undefined, op);
-    const t = await idbGet('tasks', taskId);
-    if (t) {
-      t.notes = t.notes || [];
-      t.notes.push({ text: `${text} [queued offline]`, time: op.client_time });
-      await idbSet('tasks', undefined, t);
-    }
-    loadTasks();
-    updateStatusBadge();
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/phone/tasks/${encodeURIComponent(taskId)}/notes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Offgrid-Client': 'phone'
-      },
-      body: JSON.stringify({ note: text })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadTasks();
-  } catch (err) {
-    await idbSet('queue', undefined, op);
-    loadTasks();
-    updateStatusBadge();
-  }
-}
-
-async function deleteTask(taskId) {
-  if (!confirm('Are you sure you want to delete this task?')) return;
-
-  const op = {
-    op_id: 'op_' + Math.random().toString(36).slice(2, 11),
-    action: 'delete_task',
-    client_time: new Date().toISOString(),
-    task_id: taskId
-  };
-
-  if (!isOnline) {
-    await idbSet('queue', undefined, op);
-    await idbDelete('tasks', taskId);
-    loadTasks();
-    updateStatusBadge();
-    return;
-  }
-
-  try {
-    const res = await fetch(`/api/phone/tasks/${encodeURIComponent(taskId)}/delete`, {
-      method: 'POST',
-      headers: { 'X-Offgrid-Client': 'phone' }
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadTasks();
-  } catch (err) {
-    await idbSet('queue', undefined, op);
-    await idbDelete('tasks', taskId);
-    loadTasks();
-    updateStatusBadge();
-  }
-}
-
-async function resolveSuggestion(sugId, accept) {
-  const op = {
-    op_id: 'op_' + Math.random().toString(36).slice(2, 11),
-    action: 'resolve_suggestion',
-    client_time: new Date().toISOString(),
-    suggestion_id: sugId,
-    payload: { accept }
-  };
-
-  if (!isOnline) {
-    await idbSet('queue', undefined, op);
-    loadSuggestions();
-    updateStatusBadge();
-    return;
-  }
-
-  const endpoint = accept ? 'accept' : 'dismiss';
-  try {
-    const res = await fetch(`/api/phone/suggestions/${encodeURIComponent(sugId)}/${endpoint}`, {
-      method: 'POST',
-      headers: { 'X-Offgrid-Client': 'phone' }
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadSuggestions();
-    loadTasks();
-  } catch (err) {
-    await idbSet('queue', undefined, op);
-    updateStatusBadge();
-  }
-}
-
-async function submitPhoto() {
-  const taskId = document.getElementById('photo-task-id').value;
-  const fileInput = document.getElementById('photo-file');
-  if (!fileInput.files || fileInput.files.length === 0) return;
-  const file = fileInput.files[0];
-  closeModal('modal-attach-photo');
-
-  if (!isOnline) {
-    alert('Photo uploads require an active connection to the site node.');
-    return;
-  }
-
-  const formData = new FormData();
-  formData.append('photo', file);
-
-  try {
-    const res = await fetch(`/api/phone/tasks/${encodeURIComponent(taskId)}/attachments`, {
-      method: 'POST',
-      headers: {
-        'X-Offgrid-Client': 'phone'
-      },
-      body: formData
-    });
-    if (!res.ok) throw new Error(await res.text());
-    loadTasks();
-  } catch (err) {
-    alert('Upload failed: ' + err.message);
-  }
-}
-
-// -------------------------------------------------------------
-// Offline Queue Replay Engine
-// -------------------------------------------------------------
-async function syncNow() {
-  const queue = await idbGetAll('queue');
-  if (!queue || queue.length === 0) {
-    updateStatusBadge();
-    return;
-  }
-
-  const btnSync = document.getElementById('btn-sync');
-  if (btnSync) btnSync.disabled = true;
-
-  try {
-    const batch = {
-      client_id: await idbGet('meta', 'label') || 'phone-client',
-      operations: queue
-    };
-
-    const res = await fetch('/api/phone/sync/replay', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Offgrid-Client': 'phone'
-      },
-      body: JSON.stringify(batch)
-    });
-
-    if (res.ok) {
-      const result = await res.json();
-      console.log('Replay sync finished:', result);
-      // Clear replayed queue items
-      await idbClear('queue');
-      await loadTasks();
-      await loadSuggestions();
-    }
-  } catch (err) {
-    console.warn('Sync attempt failed:', err);
+    S.online = true;
+    await refresh();
+  } catch (e) {
+    if (e instanceof Offline) S.online = false;
+    else throw e;
   } finally {
-    if (btnSync) btnSync.disabled = false;
-    updateStatusBadge();
+    S.syncing = false;
+    render();
   }
 }
 
-// -------------------------------------------------------------
-// UI Modals & Helpers
-// -------------------------------------------------------------
-function openNewTaskModal() {
-  document.getElementById('new-task-title').value = '';
-  document.getElementById('new-task-note').value = '';
-  document.getElementById('modal-new-task').classList.remove('hidden');
-  document.getElementById('new-task-title').focus();
+async function unpair(msg) {
+  try { await api('POST', '/api/logout'); } catch { /* offline: the cookie is cleared when we next can */ }
+  for (const s of ['queue', 'photos']) await clear(s);
+  for (const k of ['paired', 'snap', 'idmap', 'key']) await kvDel(k);
+  S.me = null; S.snap = null; S.queue = []; S.photos = []; S.idmap = {}; S.error = msg || '';
+  render();
 }
 
-function openAddNoteModal(taskId) {
-  document.getElementById('note-task-id').value = taskId;
-  document.getElementById('note-text').value = '';
-  document.getElementById('modal-add-note').classList.remove('hidden');
-  document.getElementById('note-text').focus();
+// ---------------------------------------------------------------- photos
+// Re-drawing the picture to a canvas does two useful things: it shrinks a 4 MB camera file to a few hundred KB,
+// and it throws away the EXIF block, which on a phone includes where the picture was taken.
+async function prepare(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+  bmp.close();
+  const blob = await new Promise((res) => cv.toBlob(res, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('could not read that picture');
+  return blob;
 }
 
-function openAttachPhotoModal(taskId) {
-  document.getElementById('photo-task-id').value = taskId;
-  document.getElementById('photo-file').value = '';
-  document.getElementById('modal-attach-photo').classList.remove('hidden');
+async function addPhoto(taskId, file) {
+  try {
+    const blob = await prepare(file);
+    const p = { id: uid(), task: taskId, blob, name: (file.name || 'photo').replace(/\.[^.]*$/, '') + '.jpg', at: Date.now(), sha: hex(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())) };
+    await put('photos', p);
+    S.photos.push(p);
+    render();
+    sync();
+  } catch (e) {
+    notice('Could not add that photo: ' + e.message);
+  }
 }
 
-function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
+// ---------------------------------------------------------------- screens
+function pairScreen() {
+  const code = h('input', { type: 'text', id: 'code', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'XXXX-XXXX-XXXX-XXXX-XXXX' });
+  const label = h('input', { type: 'text', id: 'label', placeholder: 'Name this phone, e.g. Ana’s phone', maxlength: '64' });
+  const msg = h('p', { class: 'err', id: 'pair-error' }, S.error);
+  const go = h('button', { class: 'primary', id: 'pair-go', onclick: async () => {
+    go.disabled = true; msg.textContent = '';
+    try {
+      const norm = code.value.toUpperCase().replace(/[-\s]/g, '');
+      const lab = label.value.trim() || 'phone';
+      const pub = await publicKeyTagged();
+      const proof = await sign('offgrid-enroll-v1\0' + norm.slice(0, 8) + '\0' + pub + '\0' + lab);
+      const r = await api('POST', '/api/pair', { code: code.value, public_key: pub, label: lab, proof });
+      if (r.status === 200) {
+        S.me = { device: r.data.device, label: r.data.label };
+        await kvPut('paired', S.me);
+        S.error = '';
+        render();
+        sync();
+      } else msg.textContent = r.data.message || 'Could not pair (' + r.status + ')';
+    } catch (e) {
+      msg.textContent = e instanceof Offline ? 'Cannot reach the node. Check you are on the site’s WiFi.' : String(e.message || e);
+    } finally { go.disabled = false; }
+  } }, 'Pair this phone');
+  return h('section', {}, h('h2', {}, 'Pair this phone'),
+    h('p', { class: 'muted' }, 'Ask the site admin for a pairing code (offgrid phone pair). It works once and expires.'),
+    h('div', { class: 'card' }, code, h('div', { class: 'gap' }), label, h('div', { class: 'gap' }), go, msg));
 }
 
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function taskCard(t) {
+  return h('button', { class: 'task card' + (t.status === 'done' ? ' done' : ''), 'data-task': t.id, onclick: () => { S.screen = 'task'; S.open = t.id; render(); } },
+    h('div', { class: 't' }, t.title),
+    h('div', { class: 's' },
+      t.priority === 'high' ? h('span', { class: 'tag high' }, 'high') : null,
+      h('span', { class: 'tag' }, t.status.replace('_', ' ')),
+      t.waiting ? h('span', { class: 'tag waiting' }, 'waiting to sync') : null,
+      t.site || '', (t.files || []).length ? ' · ' + t.files.length + ' photo' + (t.files.length > 1 ? 's' : '') : ''));
 }
+
+function listScreen() {
+  const v = view();
+  const title = h('input', { type: 'text', id: 'new-title', placeholder: 'Add a task…', maxlength: '200', enterkeyhint: 'done' });
+  const add = () => { const x = title.value.trim(); if (x) { enqueue({ op: 'create', title: x, priority: 'medium' }); title.value = ''; } };
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  const shown = v.tasks.filter((t) => S.filter === 'all' || t.status !== 'done');
+  const out = [h('div', { class: 'row' }, h('div', { class: 'grow' }, title), h('button', { class: 'primary', id: 'add', onclick: add }, 'Add'))];
+  if (v.suggestions.length) {
+    out.push(h('h2', {}, 'The AI suggests'));
+    for (const s of v.suggestions) {
+      out.push(h('div', { class: 'card suggestion', 'data-sug': s.id },
+        h('div', { class: 't' }, s.task_name),
+        h('div', { class: 'muted' }, [s.status && 'status → ' + s.status.replace('_', ' '), s.priority && 'priority → ' + s.priority, s.note].filter(Boolean).join(' · ')),
+        s.stale ? h('div', { class: 'err' }, 'The task changed since; accepting would be refused.') : null,
+        h('div', { class: 'row' },
+          h('button', { class: 'primary', onclick: () => enqueue({ op: 'accept', task: s.id }) }, 'Accept'),
+          h('button', { onclick: () => enqueue({ op: 'dismiss', task: s.id }) }, 'Dismiss'))));
+    }
+  }
+  out.push(h('h2', {}, 'Tasks'),
+    h('div', { class: 'seg' },
+      h('button', { 'aria-pressed': String(S.filter === 'open'), onclick: () => { S.filter = 'open'; render(); } }, 'Open'),
+      h('button', { 'aria-pressed': String(S.filter === 'all'), onclick: () => { S.filter = 'all'; render(); } }, 'All')));
+  if (!shown.length) out.push(h('p', { class: 'muted' }, S.snap ? 'Nothing here.' : 'No data yet. Connect to the node once to load the list.'));
+  for (const t of shown) out.push(taskCard(t));
+  if (S.snap) out.push(h('p', { class: 'muted' }, 'Last read ' + ago(Date.now() - Date.parse(S.snap.now)) + (S.snap.tasks_total > S.snap.tasks.length ? ' · showing ' + S.snap.tasks.length + ' of ' + S.snap.tasks_total : '')));
+  out.push(h('p', {}, h('button', { class: 'danger', onclick: () => { if (confirm('Forget this phone? Waiting changes that have not reached the node are lost.')) unpair(); } }, 'Forget this phone')));
+  return h('section', {}, out);
+}
+
+function taskScreen() {
+  const t = view().tasks.find((x) => x.id === S.open);
+  if (!t) { S.screen = 'list'; return listScreen(); }
+  const seg = (items, cur, op, field) => h('div', { class: 'seg' }, items.map(([val, text]) =>
+    h('button', { 'aria-pressed': String(cur === val), 'data-set': val, onclick: () => cur !== val && enqueue({ op, task: t.id, [field]: val, was: cur }) }, text)));
+  const note = h('textarea', { id: 'note', rows: '2', placeholder: 'Add a note…', maxlength: '1000' });
+  const file = h('input', { type: 'file', accept: 'image/*', id: 'photo', hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) addPhoto(t.id, f); } });
+  const imgs = (t.files || []).map((f) => f.pending
+    ? h('img', { src: URL.createObjectURL(f.pending.blob), alt: 'waiting to upload' })
+    : (S.online ? h('img', { src: '/api/tasks/' + encodeURIComponent(t.id) + '/attachments/' + encodeURIComponent(f.hash), alt: f.name || 'photo', loading: 'lazy' }) : null));
+  return h('section', {},
+    h('p', {}, h('button', { id: 'back', onclick: () => { S.screen = 'list'; render(); } }, '‹ Tasks')),
+    h('div', { class: 'card' }, h('div', { class: 't' }, t.title), h('div', { class: 'muted' }, t.site || ''), t.waiting ? h('span', { class: 'tag waiting' }, 'waiting to sync') : null),
+    h('h2', {}, 'Status'), seg([['open', 'Open'], ['in_progress', 'In progress'], ['done', 'Done']], t.status, 'status', 'status'),
+    h('h2', {}, 'Priority'), seg([['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], t.priority, 'priority', 'priority'),
+    h('h2', {}, 'Photos'), h('div', { class: 'photos' }, imgs), file,
+    h('button', { id: 'add-photo', onclick: () => file.click() }, 'Add a photo'),
+    !S.online && (t.files || []).some((f) => !f.pending) ? h('p', { class: 'muted' }, 'Photos already on the node show when you are connected.') : null,
+    h('h2', {}, 'Notes'), h('ul', { class: 'notes' }, (t.notes_list || []).map((n) => h('li', {}, n.replace(/\s*\[c:[^\]]+\]/g, '')))),
+    note, h('div', { class: 'gap' }), h('button', { class: 'primary', id: 'add-note', onclick: () => { const x = note.value.trim(); if (x) { enqueue({ op: 'note', task: t.id, text: x }); note.value = ''; } } }, 'Add note'));
+}
+
+function render() {
+  const pill = $('#pill');
+  const waiting = S.queue.length + S.photos.length;
+  pill.className = 'pill ' + (S.online ? 'online' : 'offline');
+  pill.textContent = (S.online ? 'online' : 'offline') + (waiting ? ' · ' + waiting + ' waiting' : '');
+  const main = $('#main');
+  // A redraw (a sync finishing, the 30-second timer) must not wipe what the person is typing.
+  const typed = {};
+  for (const id of ['new-title', 'note', 'code', 'label']) { const e = document.getElementById(id); if (e) typed[id] = e.value; }
+  const focused = document.activeElement && document.activeElement.id;
+  main.replaceChildren(!S.me ? pairScreen() : S.screen === 'task' ? taskScreen() : listScreen());
+  for (const [id, v] of Object.entries(typed)) { const e = document.getElementById(id); if (e && v) e.value = v; }
+  if (focused && typed[focused] !== undefined) { const e = document.getElementById(focused); if (e) e.focus(); }
+  $('#notices').replaceChildren(...S.notices.map((n) => h('div', { class: 'notice' }, n)));
+}
+
+// ---------------------------------------------------------------- start
+window.addEventListener('online', () => { S.online = true; render(); sync(); });
+window.addEventListener('offline', () => { S.online = false; render(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
+setInterval(() => { if (!document.hidden && S.me) sync(); }, 30000);
+
+(async () => {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  try {
+    await load();
+  } catch (e) {
+    // No IndexedDB (a private tab, a browser that blocks it): there is nowhere to keep the device key or the queue,
+    // so the offline app cannot work here. Say so instead of showing a blank page.
+    $('#main').replaceChildren(h('p', { class: 'err', id: 'no-storage' }, 'This browser will not let the app keep data on the phone, so it cannot work offline here. Open it in a normal (not private) tab, or in Chrome.'));
+    return;
+  }
+  render();
+  if (S.me) sync();
+})();
