@@ -30,6 +30,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"offgrid/internal/api"
 	"offgrid/internal/blobstore"
 	"offgrid/internal/identity"
 	"offgrid/internal/store/sqlstore"
@@ -152,8 +153,18 @@ func build(c Config) (*handler, http.Handler, error) {
 	mux.HandleFunc("POST /api/sync", h.authed(h.sync))
 	mux.HandleFunc("POST /api/tasks/{id}/photos", h.authed(h.photo))
 	mux.HandleFunc("GET /api/tasks/{id}/attachments/{hash}", h.authed(func(w http.ResponseWriter, r *http.Request, _ session) {
-		web.ServeAttachment(w, r, c.Store)
+		web.ServeAttachment(w, r, c.Store, fail)
 	}))
+	// The stable API (Day 53) behind the same session. Import stays off: a phone has no business writing
+	// ten thousand tasks at once. It is mounted only if the store can do all it needs (the real one can).
+	if as, ok := c.Store.(api.Store); ok {
+		ah, _ := api.Handler(api.Config{Store: as, MaxUpload: c.MaxPhoto, Now: c.Now})
+		serve := h.authed(func(w http.ResponseWriter, r *http.Request, _ session) { ah.ServeHTTP(w, r) })
+		for _, m := range []string{"GET", "POST", "PATCH"} { // per method: a bare "/v1/" would clash with "GET /"
+			mux.HandleFunc(m+" /v1/", serve)
+			mux.HandleFunc(m+" /v0/", serve)
+		}
+	}
 	return h, h.guard(mux), nil
 }
 
@@ -231,7 +242,12 @@ func (h *handler) guard(next http.Handler) http.Handler {
 		}
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
-		case http.MethodPost:
+		case http.MethodPost, http.MethodPatch:
+			if r.Method == http.MethodPatch && !strings.HasPrefix(r.URL.Path, "/v1/") && !strings.HasPrefix(r.URL.Path, "/v0/") {
+				hd.Set("Allow", "GET, HEAD, POST")
+				fail(w, http.StatusMethodNotAllowed, "method", "method not allowed")
+				return
+			}
 			if r.Header.Get(ActionHeader) != "1" {
 				fail(w, http.StatusForbidden, "missing_header", "missing "+ActionHeader+" header")
 				return
@@ -248,7 +264,7 @@ func (h *handler) guard(next http.Handler) http.Handler {
 				return
 			}
 		default:
-			hd.Set("Allow", "GET, HEAD, POST")
+			hd.Set("Allow", "GET, HEAD, POST, PATCH")
 			fail(w, http.StatusMethodNotAllowed, "method", "method not allowed")
 			return
 		}
