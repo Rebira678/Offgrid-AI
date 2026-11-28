@@ -1,0 +1,17 @@
+{
+  "name": "Offgrid Field Client",
+  "short_name": "Offgrid",
+  "description": "Offline-first field task management and AI suggestion review",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0f12",
+  "theme_color": "#0d0f12",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
