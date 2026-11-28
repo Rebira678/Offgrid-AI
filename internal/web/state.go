@@ -294,53 +294,11 @@ func Build(ctx context.Context, c Config) (State, error) {
 		st.Merges = append(st.Merges, Merge{At: utc(o.TS), Node: o.NodeID, Seq: o.Seq, Text: o.Describe()})
 	}
 
-	tasks, err := c.Store.List(ctx, task.Filter{})
+	w, err := Work(ctx, c.Store)
 	if err != nil {
 		return State{}, err
 	}
-	var files map[string][]sqlstore.Attachment
-	if as, ok := c.Store.(attachmentStore); ok {
-		if files, err = as.AttachmentsByTask(ctx); err != nil {
-			return State{}, err
-		}
-	}
-	byID := make(map[string]task.Task, len(tasks))
-	for _, t := range tasks {
-		byID[t.ID] = t
-	}
-	st.TasksTotal = len(tasks)
-	for i, t := range tasks {
-		if i == MaxTasks {
-			break
-		}
-		var noteTexts []string
-		for _, n := range t.Notes {
-			if strings.TrimSpace(n.Text) != "" {
-				noteTexts = append(noteTexts, n.Text)
-			}
-		}
-		st.Tasks = append(st.Tasks, Task{ID: t.ID, ShortID: task.ShortID(t.ID), Title: t.Title, Site: t.Site,
-			Status: string(t.Status), Priority: string(t.Priority), Notes: len(t.Notes), NotesList: noteTexts, Files: pageFiles(files[t.ID]), UpdatedAt: utc(t.UpdatedAt)})
-	}
-
-	sugs, err := c.Store.Suggestions(ctx, false)
-	if err != nil {
-		return State{}, err
-	}
-	for _, s := range sugs {
-		x := Suggestion{ID: s.ID, Task: s.Task, TaskName: task.ShortID(s.Task), Note: s.Note, By: s.By, At: utc(s.At), Stale: s.Stale}
-		if t, ok := byID[s.Task]; ok {
-			x.TaskName = task.ShortID(s.Task) + " " + t.Title
-			x.NowStatus, x.NowPriority = string(t.Status), string(t.Priority)
-		}
-		if s.Status != nil {
-			x.Status = string(*s.Status)
-		}
-		if s.Priority != nil {
-			x.Priority = string(*s.Priority)
-		}
-		st.Suggestions = append(st.Suggestions, x)
-	}
+	st.Tasks, st.TasksTotal, st.Suggestions = w.Tasks, w.TasksTotal, w.Suggestions
 
 	// ---- queue, connection, tiers
 	if c.Queue == nil {
@@ -433,4 +391,66 @@ func pageFiles(in []sqlstore.Attachment) []File {
 		out[i] = File{Hash: a.Hash, Name: a.Name, Type: a.Type, Size: a.Size, Present: a.Present, Image: inlineTypes[a.Type]}
 	}
 	return out
+}
+
+// WorkView is the part of the dashboard that is about the work itself: the tasks (newest limit MaxTasks) and
+// the AI suggestions still waiting. The phone client shows exactly this, so both read it from one place.
+type WorkView struct {
+	Tasks       []Task
+	TasksTotal  int
+	Suggestions []Suggestion
+}
+
+// Work reads the tasks and the open suggestions. It never writes.
+func Work(ctx context.Context, store Store) (WorkView, error) {
+	out := WorkView{Tasks: []Task{}, Suggestions: []Suggestion{}}
+	tasks, err := store.List(ctx, task.Filter{})
+	if err != nil {
+		return WorkView{}, err
+	}
+	var files map[string][]sqlstore.Attachment
+	if as, ok := store.(attachmentStore); ok {
+		if files, err = as.AttachmentsByTask(ctx); err != nil {
+			return WorkView{}, err
+		}
+	}
+	byID := make(map[string]task.Task, len(tasks))
+	for _, t := range tasks {
+		byID[t.ID] = t
+	}
+	out.TasksTotal = len(tasks)
+	for i, t := range tasks {
+		if i == MaxTasks {
+			break
+		}
+		var noteTexts []string
+		for _, n := range t.Notes {
+			if strings.TrimSpace(n.Text) != "" {
+				noteTexts = append(noteTexts, n.Text)
+			}
+		}
+		out.Tasks = append(out.Tasks, Task{ID: t.ID, ShortID: task.ShortID(t.ID), Title: t.Title, Site: t.Site,
+			Status: string(t.Status), Priority: string(t.Priority), Notes: len(t.Notes), NotesList: noteTexts, Files: pageFiles(files[t.ID]), UpdatedAt: utc(t.UpdatedAt)})
+	}
+
+	sugs, err := store.Suggestions(ctx, false)
+	if err != nil {
+		return WorkView{}, err
+	}
+	for _, s := range sugs {
+		x := Suggestion{ID: s.ID, Task: s.Task, TaskName: task.ShortID(s.Task), Note: s.Note, By: s.By, At: utc(s.At), Stale: s.Stale}
+		if t, ok := byID[s.Task]; ok {
+			x.TaskName = task.ShortID(s.Task) + " " + t.Title
+			x.NowStatus, x.NowPriority = string(t.Status), string(t.Priority)
+		}
+		if s.Status != nil {
+			x.Status = string(*s.Status)
+		}
+		if s.Priority != nil {
+			x.Priority = string(*s.Priority)
+		}
+		out.Suggestions = append(out.Suggestions, x)
+	}
+
+	return out, nil
 }
