@@ -66,7 +66,13 @@ func Handler(c Config) http.Handler {
 //   - only pictures are shown inline; every other type is a download;
 //   - the file is found by the task's own list of hashes, never by a path.
 func serveAttachment(w http.ResponseWriter, r *http.Request, c Config) {
-	as, ok := c.Store.(attachmentStore)
+	ServeAttachment(w, r, c.Store)
+}
+
+// ServeAttachment is serveAttachment for another server (the phone client) that must treat a file exactly
+// as hostilely as the dashboard does. The caller has already decided the request may read it.
+func ServeAttachment(w http.ResponseWriter, r *http.Request, st Store) {
+	as, ok := st.(attachmentStore)
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "this store keeps no attachments"})
 		return
