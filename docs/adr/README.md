@@ -21,6 +21,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [016](016-providers-prompt-versions-and-the-eval-gate.md) | One provider setting (Ollama, llama.cpp, OpenAI-compatible, LAN), retry with jitter, pinned prompt, gate on the valid-command rate | Day 50 (built; no real model has been run through the gate yet) |
 | [017](017-resource-governor-and-node-profiles.md) | Light and full node profiles, model-call slots, battery and busy back-off, memory budget in the soak, loopback-only pprof | Day 51 (built; container numbers only, no Pi measured yet) |
 | [018](018-phone-client-pwa-and-queued-commands.md) | Phone PWA served by the site node; queued commands applied on arrival and marked late; pairing by invite; signed session cookie re-checked against membership | Day 52 (built; desktop Chromium only, no phone tested) |
+| [019](019-stable-api-v1-webhooks-csv.md) | Stable `/v1` API with an enforced OpenAPI contract; webhooks and CSV import stay `/v0`; no API tokens; hooks set only from the command line | Day 53 (built; no outside user yet) |
 
 ## Decisions in the plan that have no record yet
 
