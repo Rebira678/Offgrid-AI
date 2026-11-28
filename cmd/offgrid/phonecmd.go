@@ -3,15 +3,16 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"offgrid/internal/phone"
@@ -19,56 +20,67 @@ import (
 	"offgrid/internal/store/sqlstore"
 )
 
-const phoneHelp = `offgrid phone manages the phone PWA client, pairing codes, and enrolled sessions.
+const phoneHelp = `offgrid phone: the phone client (Day 52).
 
-Usage:
-  offgrid phone pair   [-db FILE] [-label NAME] [-ttl 15m]
-        Generate a one-time 6-digit code for a phone to enroll.
-  offgrid phone serve  [-db FILE] [-addr HOST:PORT] [-cert FILE -key FILE] [-http-addr HOST:PORT] [-ca FILE] [-read-only]
-        Serve the phone client PWA and API over HTTPS or HTTP.
-  offgrid phone list   [-db FILE]
-        List all enrolled phone sessions and their last seen times.
-  offgrid phone revoke [-db FILE] -token TOKEN
-        Revoke an enrolled phone session by its full token or token prefix.
-`
+  offgrid phone pair  -db FILE [-label NAME] [-ttl 15m]
+  offgrid phone serve -db FILE -cert node.crt -key node.key [-addr :8443] [-host NAME ...]
+                      [-secret FILE] [-late-after 2m] [-session-days 30]
+  offgrid phone reset-sessions -db FILE [-secret FILE]
+
+pair      makes a one-time pairing code (an invite for a member device). Type it into the app on the phone.
+serve     serves the app over HTTPS to the phones enrolled in this node. This node must be an admin
+          (it enrolls the phones). Without -cert and -key it serves plain HTTP on this machine only,
+          to try the app in a desktop browser.
+reset-sessions
+          signs every phone out. Phones sign in again with their device keys, no new code.
+
+A lost phone: offgrid store -db FILE revoke -device DEVICE. It is cut off within seconds, whatever its
+session says. Phone pages are separate from "offgrid web", the localhost dashboard.`
 
 func cmdPhone(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, phoneHelp)
-		return 2
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprintln(stdout, phoneHelp)
+		return 0
 	}
-
 	switch args[0] {
 	case "pair":
-		return cmdPhonePair(args[1:], stdout, stderr)
+		return phonePair(args[1:], stdout, stderr)
 	case "serve":
-		return cmdPhoneServe(args[1:], stdout, stderr)
-	case "list":
-		return cmdPhoneList(args[1:], stdout, stderr)
-	case "revoke":
-		return cmdPhoneRevoke(args[1:], stdout, stderr)
-	case "help", "-h", "--help":
-		fmt.Fprint(stdout, phoneHelp)
-		return 0
-	default:
-		fmt.Fprintf(stderr, "unknown phone command %q\n\n%s", args[0], phoneHelp)
-		return 2
+		return phoneServe(args[1:], stdout, stderr)
+	case "reset-sessions":
+		return phoneReset(args[1:], stdout, stderr)
 	}
+	fmt.Fprintf(stderr, "unknown phone command %q\n\n%s\n", args[0], phoneHelp)
+	return 2
 }
 
-func cmdPhonePair(args []string, stdout, stderr io.Writer) int {
+type listFlag []string
+
+func (l *listFlag) String() string     { return strings.Join(*l, ",") }
+func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
+
+func secretPath(flagVal, db string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return filepath.Join(filepath.Dir(db), "phone-session.key")
+}
+
+func phonePair(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("phone pair", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
-	label := fs.String("label", "Field Phone", "label identifying this phone")
-	ttl := fs.Duration("ttl", phone.DefaultPairingTTL, "how long before the pairing code expires (e.g. 15m)")
-
+	db := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
+	label := fs.String("label", "phone", "a name for this phone, shown in the membership list and on late changes")
+	ttl := fs.Duration("ttl", 15*time.Minute, "how long the code works (at most 24h)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-
+	if *db == "" {
+		fmt.Fprintln(stderr, "error: use -db FILE or set OFFGRID_DB")
+		return 2
+	}
 	ctx := context.Background()
-	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
+	st, err := openExistingStore(ctx, *db, sqlstore.Options{})
 	if err != nil {
 		if code, ok := noDatabaseExit(stderr, err); ok {
 			return code
@@ -77,147 +89,85 @@ func cmdPhonePair(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer st.Close()
-
-	sessions, err := phone.NewSessionStore(st.DB(), time.Now)
+	inv, err := st.CreateInvite(ctx, sqlstore.RoleMember, *label, *ttl)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: session store init: %v\n", err)
-		return 1
+		return memberError(stderr, err)
 	}
-
-	pairCode, err := sessions.CreatePairingCode(ctx, *label, *ttl)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: create pairing code: %v\n", err)
-		return 1
-	}
-
-	fmt.Fprintf(stdout, "Offgrid Phone Pairing\n")
-	fmt.Fprintf(stdout, "---------------------\n")
-	fmt.Fprintf(stdout, "Pairing code: %s\n", pairCode.Code)
-	fmt.Fprintf(stdout, "Expires:      in %s (%s UTC)\n", ttl.Round(time.Second), pairCode.ExpiresAt.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(stdout, "Label:        %s\n\n", pairCode.Label)
-	fmt.Fprintf(stdout, "On your phone browser, open the node URL and enter this pairing code.\n")
+	fmt.Fprintf(stdout, "pairing code for %q, valid until %s, works once\n\n  %s\n\n", inv.Label, inv.Expires.Local().Format("15:04:05 Mon 2 Jan"), groupToken(inv.Token))
+	fmt.Fprintln(stdout, "On the phone: open the node's address in the browser, type the code, tap Pair.")
+	fmt.Fprintln(stdout, "Whoever types it first before it expires gets a phone enrolled in your site. Give it in person, not in a group chat.")
 	return 0
 }
 
-func cmdPhoneServe(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("phone serve", flag.ContinueOnError)
+func phoneReset(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("phone reset-sessions", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
-	addr := fs.String("addr", ":8443", "address to serve the phone PWA (host:port)")
-	certFile := fs.String("cert", "", "TLS certificate file (.crt) for HTTPS")
-	keyFile := fs.String("key", "", "TLS private key file (.key) for HTTPS")
-	caFile := fs.String("ca", "", "public CA certificate (.crt) to offer over HTTP")
-	httpAddr := fs.String("http-addr", "", "plain HTTP address to serve ca.crt (e.g. :8080); empty disables")
-	readOnly := fs.Bool("read-only", false, "refuse task modifications and resolves")
-
+	db := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
+	secret := fs.String("secret", "", "the session key file (default: phone-session.key next to the database)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if *db == "" && *secret == "" {
+		fmt.Fprintln(stderr, "error: use -db FILE (or -secret FILE)")
+		return 2
+	}
+	p := secretPath(*secret, *db)
+	if err := phone.RotateSecret(p); err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "ok: new session key in %s. Restart `offgrid phone serve`; every phone signs in again with its own key.\n", p)
+	return 0
+}
 
+func phoneServe(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
-	if err != nil {
-		if code, ok := noDatabaseExit(stderr, err); ok {
-			return code
-		}
-		fmt.Fprintf(stderr, "error: %v\n", err)
-		return 1
-	}
-	defer st.Close()
-
-	sessions, err := phone.NewSessionStore(st.DB(), time.Now)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: session store init: %v\n", err)
-		return 1
-	}
-
-	var tlsConfig *tls.Config
-	isTLS := false
-	if *certFile != "" && *keyFile != "" {
-		cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
-		if err != nil {
-			fmt.Fprintf(stderr, "error: load TLS keys: %v\n", err)
-			return 1
-		}
-		tlsConfig = &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS13,
-		}
-		isTLS = true
-	}
-
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: listen on %s: %v\n", *addr, err)
-		return 1
-	}
-	defer ln.Close()
-
-	if isTLS {
-		ln = tls.NewListener(ln, tlsConfig)
-	}
-
-	// If CA download helper requested, launch in background
-	if *caFile != "" && *httpAddr != "" {
-		ca, err := pki.LoadCACert(*caFile)
-		if err != nil {
-			fmt.Fprintf(stderr, "error: load CA certificate %s: %v\n", *caFile, err)
-			return 1
-		}
-		httpLn, err := net.Listen("tcp", *httpAddr)
-		if err != nil {
-			fmt.Fprintf(stderr, "error: listen on %s: %v\n", *httpAddr, err)
-			return 1
-		}
-		defer httpLn.Close()
-
-		caMux := http.NewServeMux()
-		caMux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/x-x509-ca-cert")
-			w.Header().Set("Content-Disposition", "attachment; filename=\"offgrid-ca.crt\"")
-			_, _ = w.Write(ca.CertPEM)
-		})
-		caSrv := &http.Server{Handler: caMux}
-		go func() { _ = caSrv.Serve(httpLn) }()
-		fmt.Fprintf(stdout, "Serving CA certificate at http://%s/ for phones to install\n", httpLn.Addr())
-	}
-
-	scheme := "http"
-	if isTLS {
-		scheme = "https"
-	}
-	fmt.Fprintf(stdout, "Offgrid Phone PWA active at %s://%s/\n", scheme, ln.Addr())
-	fmt.Fprintf(stdout, "Node ID: %s | ReadOnly: %v\n", st.NodeID(), *readOnly)
-	fmt.Fprintf(stdout, "Generate pairing code with: offgrid phone pair -db %s\n", *dbPath)
-
-	cfg := phone.Config{
-		Store:         st,
-		Sessions:      sessions,
-		Now:           time.Now,
-		SecureCookies: isTLS,
-		ReadOnly:      *readOnly,
-	}
-
-	if err := phone.Serve(ctx, ln, cfg); err != nil {
-		fmt.Fprintf(stderr, "server exited: %v\n", err)
-		return 1
-	}
-	return 0
+	return phoneServeContext(ctx, args, stdout, stderr)
 }
 
-func cmdPhoneList(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("phone list", flag.ContinueOnError)
+func phoneServeContext(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("phone serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
-
+	db := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
+	addr := fs.String("addr", ":8443", "address to listen on")
+	cert := fs.String("cert", "", "the node certificate (offgrid ca issue)")
+	key := fs.String("key", "", "the node's private key")
+	secret := fs.String("secret", "", "the session key file (default: phone-session.key next to the database; made if missing)")
+	late := fs.Duration("late-after", phone.DefaultLateAfter, "a change that waited this long on the phone is marked late")
+	days := fs.Int("session-days", 30, "how long a phone stays signed in (at most 90)")
+	var hosts listFlag
+	fs.Var(&hosts, "host", "a name or address phones use to reach this node (repeatable; default: any private address and .local/.lan/.offgrid names)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-
-	ctx := context.Background()
-	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
+	if *db == "" {
+		fmt.Fprintln(stderr, "error: use -db FILE or set OFFGRID_DB")
+		return 2
+	}
+	if (*cert == "") != (*key == "") {
+		fmt.Fprintln(stderr, "error: give both -cert and -key, or neither")
+		return 2
+	}
+	var tc *tls.Certificate
+	if *cert != "" {
+		leaf, k, err := pki.LoadKeyPair(*cert, *key)
+		if err != nil {
+			fmt.Fprintln(stderr, "error:", err)
+			return 1
+		}
+		if time.Now().After(leaf.NotAfter) {
+			fmt.Fprintf(stderr, "error: the node certificate expired on %s; issue a new one with: offgrid ca issue\n", leaf.NotAfter.Format("2006-01-02"))
+			return 1
+		}
+		tc = &tls.Certificate{Certificate: [][]byte{leaf.Raw}, PrivateKey: k, Leaf: leaf}
+	}
+	sec, err := phone.LoadOrCreateSecret(secretPath(*secret, *db))
+	if err != nil {
+		fmt.Fprintln(stderr, "error:", err)
+		return 1
+	}
+	st, err := openExistingStore(ctx, *db, sqlstore.Options{})
 	if err != nil {
 		if code, ok := noDatabaseExit(stderr, err); ok {
 			return code
@@ -226,88 +176,29 @@ func cmdPhoneList(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer st.Close()
-
-	sessions, err := phone.NewSessionStore(st.DB(), time.Now)
+	rep, err := st.Members(ctx)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: session store init: %v\n", err)
-		return 1
-	}
-
-	list, err := sessions.ListSessions(ctx)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: list sessions: %v\n", err)
-		return 1
-	}
-
-	if len(list) == 0 {
-		fmt.Fprintln(stdout, "No enrolled phone sessions found.")
-		return 0
-	}
-
-	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "TOKEN PREFIX\tLABEL\tENROLLED\tLAST SEEN\tSTATUS")
-	for _, s := range list {
-		prefix := s.Token
-		if len(prefix) > 12 {
-			prefix = prefix[:12] + "..."
-		}
-		status := "active"
-		if s.Revoked {
-			status = "revoked"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n",
-			prefix,
-			s.Label,
-			s.CreatedAt.Format("2006-01-02 15:04:05"),
-			s.LastSeenAt.Format("2006-01-02 15:04:05"),
-			status,
-		)
-	}
-	tw.Flush()
-	return 0
-}
-
-func cmdPhoneRevoke(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("phone revoke", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	dbPath := fs.String("db", os.Getenv("OFFGRID_DB"), dbHelp)
-	token := fs.String("token", "", "token or token prefix to revoke")
-
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *token == "" {
-		fmt.Fprintln(stderr, "error: -token is required")
-		return 2
-	}
-
-	ctx := context.Background()
-	st, err := openExistingStore(ctx, *dbPath, sqlstore.Options{})
-	if err != nil {
-		if code, ok := noDatabaseExit(stderr, err); ok {
-			return code
-		}
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	defer st.Close()
-
-	sessions, err := phone.NewSessionStore(st.DB(), time.Now)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: session store init: %v\n", err)
+	if len(rep.Members) == 0 {
+		fmt.Fprintln(stderr, "error: no membership yet, so no phone can be enrolled. Run: offgrid store -db FILE found")
 		return 1
 	}
-
-	n, err := sessions.RevokeSession(ctx, *token)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: revoke session: %v\n", err)
+	cfg := phone.Config{Store: st, Secret: sec, Hosts: hosts, LateAfter: *late, SessionTTL: time.Duration(*days) * 24 * time.Hour}
+	scheme := "https"
+	if tc == nil {
+		scheme = "http"
+	}
+	err = phone.Serve(ctx, *addr, cfg, tc, func(a net.Addr) {
+		fmt.Fprintf(stdout, "offgrid phone: node %s, app on %s://%s  (Ctrl-C to stop)\n", st.NodeID(), scheme, a)
+		if tc == nil {
+			fmt.Fprintln(stdout, "offgrid phone: no certificate, so this is for a desktop browser on this machine only; a phone needs -cert and -key")
+		}
+	})
+	if err != nil && !errors.Is(err, context.Canceled) {
+		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
-	if n == 0 {
-		fmt.Fprintf(stderr, "warning: no active sessions matched token prefix %q\n", *token)
-		return 1
-	}
-
-	fmt.Fprintf(stdout, "Revoked %d phone session(s) matching %q\n", n, *token)
 	return 0
 }
