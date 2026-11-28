@@ -5,12 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"offgrid/internal/identity"
+	"offgrid/internal/store/sqlstore"
 )
 
 // TestEdgeConcurrentSyncBatchesWithReferences spins up multiple concurrent phone sessions
@@ -332,5 +335,205 @@ func TestEdgeCommandAgeThresholdBoundaries(t *testing.T) {
 	resExact := r.sync(cookie, exact)
 	if !resExact[0].Late {
 		t.Errorf("exact threshold should be marked late")
+	}
+}
+
+// TestEdgeIPv6ScopedHostHeaders verifies that link-local IPv6 addresses with zone
+// identifiers and configured hosts with explicit ports are matched correctly.
+func TestEdgeIPv6ScopedHostHeaders(t *testing.T) {
+	// 1. Link-local IPv6 with zone scope
+	if !hostOK(nil, "[fe80::1%eth0]:8443") {
+		t.Error("expected link-local with zone scope to be accepted")
+	}
+	if !hostOK(nil, "fe80::2%wlan0") {
+		t.Error("expected link-local with interface scope to be accepted")
+	}
+	if !hostOK(nil, "[::1]:8443") {
+		t.Errorf("expected [::1]:8443 to be accepted as loopback")
+	}
+
+	// 2. Configured host with port in config matches requests with or without port
+	cfgHosts := []string{"192.168.1.55:8443", "field-node.local:8443"}
+	if !hostOK(cfgHosts, "192.168.1.55:8443") {
+		t.Errorf("expected exact match with port")
+	}
+	if !hostOK(cfgHosts, "192.168.1.55") {
+		t.Errorf("expected match when request omits port")
+	}
+	if !hostOK(cfgHosts, "field-node.local") {
+		t.Errorf("expected host name match when request omits port")
+	}
+	if !hostOK(cfgHosts, "field-node.local:8443") {
+		t.Errorf("expected host name match with port")
+	}
+	if hostOK(cfgHosts, "evil.example.com") {
+		t.Errorf("unconfigured host should be rejected")
+	}
+}
+
+// TestEdgeFastNonceReplayRejection tests that replaying an existing nonce is rejected
+// via the fast path without executing expensive signature verification.
+func TestEdgeFastNonceReplayRejection(t *testing.T) {
+	r := newRig(t, nil)
+	p, _ := identity.Generate()
+	code := r.invite("ReplayTester")
+	proof, _ := sqlstore.EnrollProof(code, p, "ReplayTester")
+	rp := r.do("POST", "/api/pair", pairRequest{
+		Code:      code,
+		PublicKey: p.PublicKey(),
+		Label:     "ReplayTester",
+		Proof:     base64.RawURLEncoding.EncodeToString(proof),
+	}, "", nil)
+	if rp.code != 200 {
+		t.Fatalf("pair: %d %s", rp.code, rp.body)
+	}
+
+	// Obtain challenge
+	rp = r.do("POST", "/api/challenge", map[string]string{}, "", nil)
+	var chal challengeReply
+	rp.json(t, &chal)
+
+	dev, _ := identity.DeviceID(p.PublicKey())
+	sig, _ := p.Sign(LoginMessage(dev, chal.Nonce))
+	loginReq := loginRequest{
+		Device: dev,
+		Nonce:  chal.Nonce,
+		Sig:    base64.RawURLEncoding.EncodeToString(sig),
+	}
+
+	// First login succeeds
+	rp1 := r.do("POST", "/api/login", loginReq, "", nil)
+	if rp1.code != 200 {
+		t.Fatalf("login 1 expected 200, got %d %s", rp1.code, rp1.body)
+	}
+
+	// Replayed login is immediately rejected
+	rp2 := r.do("POST", "/api/login", loginReq, "", nil)
+	if rp2.code != 401 || rp2.errCode(t) != "unpaired" {
+		t.Fatalf("login 2 expected 401 unpaired, got %d %s", rp2.code, rp2.body)
+	}
+}
+
+// TestEdgeNoncesCapacityBounding checks that nonce table is properly bounded
+// under a flood of claims.
+func TestEdgeNoncesCapacityBounding(t *testing.T) {
+	var nc nonces
+	now := time.Now()
+	for i := 0; i < maxNonces+100; i++ {
+		nonce := fmt.Sprintf("nonce-%08d", i)
+		if !nc.claim(nonce, now) {
+			t.Fatalf("fresh nonce %s should be claimable", nonce)
+		}
+	}
+	nc.mu.Lock()
+	defer nc.mu.Unlock()
+	if len(nc.used) > maxNonces {
+		t.Fatalf("nonces table exceeded maxNonces: %d > %d", len(nc.used), maxNonces)
+	}
+}
+
+// TestEdgeLimiterSelectivePruning tests that when limiter exceeds 4096 entries,
+// it selectively prunes expired entries and keeps active blocked IP entries.
+func TestEdgeLimiterSelectivePruning(t *testing.T) {
+	l := newLimiter()
+	past := time.Now().Add(-2 * time.Minute)
+	current := time.Now()
+
+	// Add 4,100 expired failures
+	for i := 0; i < 4100; i++ {
+		l.fail(fmt.Sprintf("stale-ip-%d", i), past)
+	}
+
+	// Add 5 fresh failures for an active attacker
+	activeAttacker := "203.0.113.50"
+	for i := 0; i < 5; i++ {
+		l.fail(activeAttacker, current)
+	}
+
+	// Attacker must be blocked
+	if l.allowed(activeAttacker, current) {
+		t.Errorf("active attacker should be blocked even after table pruning")
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.fails) > 4097 {
+		t.Errorf("expected pruned table size <= 4097, got %d", len(l.fails))
+	}
+}
+
+// TestEdgeDeviceClaimSanitization tests that session tokens with invalid or
+// malicious characters in the device field are strictly rejected.
+func TestEdgeDeviceClaimSanitization(t *testing.T) {
+	s := signer{key: bytes.Repeat([]byte{0x77}, MinSecret)}
+	now := time.Now()
+
+	invalidDevices := []string{
+		"dev_123\nnewline",
+		"dev_123\x00null",
+		"dev 123 space",
+		"dev\ttab",
+	}
+
+	for _, d := range invalidDevices {
+		tok := s.issue(d, now, time.Hour)
+		if _, err := s.verify(tok, now); err != errToken {
+			t.Errorf("expected errToken for device %q, got %v", d, err)
+		}
+	}
+}
+
+// TestEdgeConcurrentSecretRotation verifies that concurrent secret rotation calls
+// do not corrupt the key file or fail with file collision errors.
+func TestEdgeConcurrentSecretRotation(t *testing.T) {
+	dir := t.TempDir()
+	keyFile := filepath.Join(dir, "session-test.key")
+
+	_, err := LoadOrCreateSecret(keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const callers = 10
+	var wg sync.WaitGroup
+	errs := make(chan error, callers)
+
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := RotateSecret(keyFile); err != nil {
+				errs <- err
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Errorf("RotateSecret error: %v", err)
+	}
+
+	key, err := LoadOrCreateSecret(keyFile)
+	if err != nil || len(key) != 32 {
+		t.Fatalf("final key invalid: %v, len %d", err, len(key))
+	}
+}
+
+// TestEdgeLogoutExpiryHeader verifies that logout sets explicit epoch expiration.
+func TestEdgeLogoutExpiryHeader(t *testing.T) {
+	r := newRig(t, nil)
+	rp := r.do("POST", "/api/logout", map[string]string{}, "", nil)
+	if rp.code != 200 {
+		t.Fatalf("expected 200, got %d", rp.code)
+	}
+
+	cookieHeader := rp.h.Get("Set-Cookie")
+	if !strings.Contains(cookieHeader, "Max-Age=0") && !strings.Contains(cookieHeader, "Max-Age=-1") {
+		t.Errorf("expected Max-Age to invalidate cookie: %s", cookieHeader)
+	}
+	if !strings.Contains(cookieHeader, "1970") {
+		t.Errorf("expected 1970 epoch expiry date: %s", cookieHeader)
 	}
 }
