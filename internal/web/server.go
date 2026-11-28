@@ -66,27 +66,32 @@ func Handler(c Config) http.Handler {
 //   - only pictures are shown inline; every other type is a download;
 //   - the file is found by the task's own list of hashes, never by a path.
 func serveAttachment(w http.ResponseWriter, r *http.Request, c Config) {
-	ServeAttachment(w, r, c.Store)
+	ServeAttachment(w, r, c.Store, func(w http.ResponseWriter, status int, _, msg string) {
+		writeJSON(w, status, map[string]string{"error": msg})
+	})
 }
+
+// FailFunc writes an error reply in the caller's own error shape: the dashboard's {"error"}, or the API's {code, message}.
+type FailFunc func(w http.ResponseWriter, status int, code, msg string)
 
 // ServeAttachment is serveAttachment for another server (the phone client) that must treat a file exactly
 // as hostilely as the dashboard does. The caller has already decided the request may read it.
-func ServeAttachment(w http.ResponseWriter, r *http.Request, st Store) {
+func ServeAttachment(w http.ResponseWriter, r *http.Request, st Store, fail FailFunc) {
 	as, ok := st.(attachmentStore)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "this store keeps no attachments"})
+		fail(w, http.StatusNotFound, "not_found", "this store keeps no attachments")
 		return
 	}
 	f, att, err := as.OpenAttachment(r.Context(), r.PathValue("id"), r.PathValue("hash"))
 	switch {
 	case errors.Is(err, task.ErrNotFound) || (err != nil && att.Hash == ""):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no such attachment"})
+		fail(w, http.StatusNotFound, "not_found", "no such attachment")
 		return
 	case errors.Is(err, blobstore.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "this file has not reached this device yet; it arrives the next time it syncs with a device that has it"})
+		fail(w, http.StatusNotFound, "not_found", "this file has not reached this device yet; it arrives the next time it syncs with a device that has it")
 		return
 	case err != nil:
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "cannot read the attachment"})
+		fail(w, http.StatusInternalServerError, "internal", "cannot read the attachment")
 		return
 	}
 	defer f.Close()
