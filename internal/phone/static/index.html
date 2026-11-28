@@ -1,143 +1,23 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0d0f12">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Offgrid Field</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/app.css">
-  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14532d">
+<meta name="color-scheme" content="light dark">
+<title>Offgrid</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header>
-    <div class="brand">
-      <svg viewBox="0 0 512 512"><path d="M160 352 L256 160 L352 352 Z" fill="none" stroke="#00ff88" stroke-width="48" stroke-linejoin="round"/><circle cx="256" cy="288" r="32" fill="#00ff88"/></svg>
-      <span>OFFGRID</span>
-    </div>
-    <div id="status-indicator" class="status-badge status-online">
-      <span class="dot">●</span> <span id="status-text">ONLINE</span>
-    </div>
-  </header>
-
-  <div class="container">
-    <!-- 1. Pairing View (shown when unpaired) -->
-    <div id="view-pairing" class="pairing-box hidden">
-      <h2 style="margin-bottom: 8px;">Pair Field Device</h2>
-      <p style="color: var(--text-muted); font-size: 0.9rem;">
-        Enter the 6-digit pairing code generated on the site node via <code>offgrid phone pair</code>.
-      </p>
-      
-      <form id="form-pair" onsubmit="event.preventDefault(); pairDevice();">
-        <input id="input-pairing-code" class="code-input" type="text" placeholder="000-000" maxlength="7" autocomplete="off" required>
-        
-        <div class="form-group" style="max-width: 280px; margin: 0 auto 16px auto; text-align: left;">
-          <label for="input-device-label">Device Name (optional)</label>
-          <input id="input-device-label" class="form-input" type="text" placeholder="e.g. Android Field Phone">
-        </div>
-
-        <div id="pairing-error" style="color: var(--accent-red); font-size: 0.85rem; margin-bottom: 12px;" class="hidden"></div>
-
-        <button type="submit" class="btn btn-primary" style="max-width: 280px; margin: 0 auto; width: 100%;">
-          Pair Device
-        </button>
-      </form>
-    </div>
-
-    <!-- 2. Main App View (shown when paired) -->
-    <div id="view-main" class="hidden">
-      <div class="action-banner">
-        <button class="btn btn-primary" onclick="openNewTaskModal()">+ New Task</button>
-        <button id="btn-sync" class="btn btn-secondary" onclick="syncNow()">Sync Now</button>
-      </div>
-
-      <div class="filter-bar">
-        <button class="filter-pill active" onclick="setFilter('all', this)">All</button>
-        <button class="filter-pill" onclick="setFilter('open', this)">Open</button>
-        <button class="filter-pill" onclick="setFilter('in_progress', this)">In Progress</button>
-        <button class="filter-pill" onclick="setFilter('done', this)">Done</button>
-        <button class="filter-pill" onclick="setFilter('high', this)">High Priority</button>
-      </div>
-
-      <!-- AI Suggestions Section -->
-      <div id="section-suggestions" class="hidden">
-        <div class="section-title">AI Suggestions Waiting</div>
-        <div id="suggestions-list" class="card-list" style="margin-bottom: 20px;"></div>
-      </div>
-
-      <!-- Task List Section -->
-      <div>
-        <div class="section-title">
-          <span>Field Tasks</span>
-          <span id="task-count" style="font-family: var(--font-mono); font-size: 0.8rem;">0</span>
-        </div>
-        <div id="tasks-list" class="card-list"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: New Task -->
-  <div id="modal-new-task" class="modal-overlay hidden">
-    <div class="modal">
-      <h3>New Field Task</h3>
-      <div class="form-group">
-        <label for="new-task-title">Title *</label>
-        <input id="new-task-title" class="form-input" type="text" placeholder="Describe the task or fault" required>
-      </div>
-      <div class="form-group">
-        <label for="new-task-priority">Priority</label>
-        <select id="new-task-priority" class="form-select">
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="new-task-note">Initial Note</label>
-        <textarea id="new-task-note" class="form-textarea" placeholder="Optional details, location or observations"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeModal('modal-new-task')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitNewTask()">Create Task</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Add Note -->
-  <div id="modal-add-note" class="modal-overlay hidden">
-    <div class="modal">
-      <h3>Add Note to Task</h3>
-      <input type="hidden" id="note-task-id">
-      <div class="form-group">
-        <label for="note-text">Note Text *</label>
-        <textarea id="note-text" class="form-textarea" placeholder="Enter inspection details, findings or actions taken"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeModal('modal-add-note')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitAddNote()">Save Note</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal: Attach Photo -->
-  <div id="modal-attach-photo" class="modal-overlay hidden">
-    <div class="modal">
-      <h3>Attach Photo</h3>
-      <input type="hidden" id="photo-task-id">
-      <div class="form-group">
-        <label for="photo-file">Select Image / Take Photo</label>
-        <input id="photo-file" class="form-input" type="file" accept="image/*" capture="environment">
-      </div>
-      <div class="modal-actions">
-        <button class="btn btn-secondary" onclick="closeModal('modal-attach-photo')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitPhoto()">Upload Photo</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/app.js"></script>
+<header class="bar">
+  <h1>Offgrid</h1>
+  <span id="pill" class="pill" role="status">starting</span>
+</header>
+<main id="main" aria-live="polite"><p class="muted">Loading…</p></main>
+<div id="notices" class="notices" role="alert"></div>
+<script src="/app.js" defer></script>
 </body>
 </html>
