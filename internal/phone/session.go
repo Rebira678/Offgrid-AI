@@ -87,7 +87,7 @@ func (s signer) verify(token string, now time.Time) (claims, error) {
 	if err != nil {
 		return c, err
 	}
-	if json.Unmarshal(payload, &c) != nil || c.Device == "" {
+	if json.Unmarshal(payload, &c) != nil || c.Device == "" || strings.ContainsAny(c.Device, " \t\r\n\x00") {
 		return claims{}, errToken
 	}
 	if now.Unix() >= c.Expiry {
@@ -120,11 +120,20 @@ func (s signer) checkChallenge(nonce string, now time.Time) error {
 	return nil
 }
 
+const maxNonces = 8192
+
 // nonces remembers answered challenges for as long as they could still be answered, so a login that was
 // seen on the wire cannot be played again.
 type nonces struct {
 	mu   sync.Mutex
 	used map[string]time.Time
+}
+
+func (n *nonces) isUsed(nonce string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	_, dup := n.used[nonce]
+	return dup
 }
 
 func (n *nonces) claim(nonce string, now time.Time) bool {
@@ -133,10 +142,14 @@ func (n *nonces) claim(nonce string, now time.Time) bool {
 	if n.used == nil {
 		n.used = map[string]time.Time{}
 	}
+	cutoff := ChallengeTTL + clockSlack
 	for k, t := range n.used {
-		if now.Sub(t) > ChallengeTTL+clockSlack {
+		if now.Sub(t) > cutoff {
 			delete(n.used, k)
 		}
+	}
+	if len(n.used) >= maxNonces {
+		n.used = map[string]time.Time{}
 	}
 	if _, dup := n.used[nonce]; dup {
 		return false
@@ -180,7 +193,17 @@ func (l *limiter) fail(key string, now time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.fails) > 4096 { // a flood of addresses must not grow the table without bound
-		l.fails = map[string][]time.Time{}
+		for k, ts := range l.fails {
+			trimmed := trim(ts, now, l.window)
+			if len(trimmed) == 0 {
+				delete(l.fails, k)
+			} else {
+				l.fails[k] = trimmed
+			}
+		}
+		if len(l.fails) > 4096 {
+			l.fails = map[string][]time.Time{}
+		}
 	}
 	l.fails[key] = append(trim(l.fails[key], now, l.window), now)
 	l.all = append(trim(l.all, now, l.window), now)
