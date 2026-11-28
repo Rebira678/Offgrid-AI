@@ -296,13 +296,15 @@ function pairScreen() {
 }
 
 function taskCard(t) {
-  return h('button', { class: 'task card' + (t.status === 'done' ? ' done' : ''), 'data-task': t.id, onclick: () => { S.screen = 'task'; S.open = t.id; render(); } },
+  const statusTag = t.status === 'done' ? 'done-status' : t.status === 'in_progress' ? 'waiting' : '';
+  const photoCount = (t.files || []).length;
+  return h('button', { class: 'task' + (t.status === 'done' ? ' done' : ''), 'data-task': t.id, onclick: () => { S.screen = 'task'; S.open = t.id; render(); } },
     h('div', { class: 't' }, t.title),
     h('div', { class: 's' },
       t.priority === 'high' ? h('span', { class: 'tag high' }, 'high') : null,
-      h('span', { class: 'tag' }, t.status.replace('_', ' ')),
-      t.waiting ? h('span', { class: 'tag waiting' }, 'waiting to sync') : null,
-      t.site || '', (t.files || []).length ? ' · ' + t.files.length + ' photo' + (t.files.length > 1 ? 's' : '') : ''));
+      statusTag ? h('span', { class: 'tag ' + statusTag }, t.status.replace('_', ' ')) : h('span', { class: 'tag' }, t.status.replace('_', ' ')),
+      t.waiting ? h('span', { class: 'tag waiting' }, 'syncing…') : null,
+      photoCount ? h('span', { class: 'tag' }, photoCount + ' photo' + (photoCount > 1 ? 's' : '')) : null));
 }
 
 function listScreen() {
@@ -313,7 +315,7 @@ function listScreen() {
   const shown = v.tasks.filter((t) => S.filter === 'all' || t.status !== 'done');
   const out = [h('div', { class: 'row' }, h('div', { class: 'grow' }, title), h('button', { class: 'primary', id: 'add', onclick: add }, 'Add'))];
   if (v.suggestions.length) {
-    out.push(h('h2', {}, 'The AI suggests'));
+    out.push(h('h2', {}, 'Suggested'));
     for (const s of v.suggestions) {
       out.push(h('div', { class: 'card suggestion', 'data-sug': s.id },
         h('div', { class: 't' }, s.task_name),
@@ -331,8 +333,8 @@ function listScreen() {
   if (!shown.length) out.push(h('p', { class: 'muted' }, S.snap ? 'Nothing here.' : 'No data yet. Connect to the node once to load the list.'));
   for (const t of shown) out.push(taskCard(t));
   if (S.snap) out.push(h('p', { class: 'muted' }, 'Last read ' + ago(Date.now() - Date.parse(S.snap.now)) + (S.snap.tasks_total > S.snap.tasks.length ? ' · showing ' + S.snap.tasks.length + ' of ' + S.snap.tasks_total : '')));
-  out.push(h('p', {}, h('button', { class: 'danger', onclick: () => { if (confirm('Forget this phone? Waiting changes that have not reached the node are lost.')) unpair(); } }, 'Forget this phone')));
-  return h('section', {}, out);
+  out.push(h('div', { class: 'gap' }), h('button', { class: 'danger', onclick: () => { if (confirm('Forget this phone? Waiting changes that have not reached the node are lost.')) unpair(); } }, 'Forget this phone'));
+  return h('div', { class: 'container' }, h('section', {}, out));
 }
 
 function taskScreen() {
@@ -340,21 +342,28 @@ function taskScreen() {
   if (!t) { S.screen = 'list'; return listScreen(); }
   const seg = (items, cur, op, field) => h('div', { class: 'seg' }, items.map(([val, text]) =>
     h('button', { 'aria-pressed': String(cur === val), 'data-set': val, onclick: () => cur !== val && enqueue({ op, task: t.id, [field]: val, was: cur }) }, text)));
-  const note = h('textarea', { id: 'note', rows: '2', placeholder: 'Add a note…', maxlength: '1000' });
+  const note = h('textarea', { id: 'note', rows: '3', placeholder: 'Add a note…', maxlength: '1000' });
   const file = h('input', { type: 'file', accept: 'image/*', id: 'photo', hidden: true, onchange: (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) addPhoto(t.id, f); } });
   const imgs = (t.files || []).map((f) => f.pending
     ? h('img', { src: URL.createObjectURL(f.pending.blob), alt: 'waiting to upload' })
     : (S.online ? h('img', { src: '/api/tasks/' + encodeURIComponent(t.id) + '/attachments/' + encodeURIComponent(f.hash), alt: f.name || 'photo', loading: 'lazy' }) : null));
-  return h('section', {},
+  return h('div', { class: 'container' }, h('section', {},
     h('p', {}, h('button', { id: 'back', onclick: () => { S.screen = 'list'; render(); } }, '‹ Tasks')),
-    h('div', { class: 'card' }, h('div', { class: 't' }, t.title), h('div', { class: 'muted' }, t.site || ''), t.waiting ? h('span', { class: 'tag waiting' }, 'waiting to sync') : null),
+    h('div', { class: 'card' },
+      h('div', { class: 't' }, t.title),
+      t.site ? h('div', { class: 'muted' }, t.site) : null,
+      t.waiting ? h('span', { class: 'tag waiting' }, 'syncing…') : null),
     h('h2', {}, 'Status'), seg([['open', 'Open'], ['in_progress', 'In progress'], ['done', 'Done']], t.status, 'status', 'status'),
     h('h2', {}, 'Priority'), seg([['low', 'Low'], ['medium', 'Medium'], ['high', 'High']], t.priority, 'priority', 'priority'),
-    h('h2', {}, 'Photos'), h('div', { class: 'photos' }, imgs), file,
+    h('h2', {}, 'Photos'),
+    imgs.length ? h('div', { class: 'photos' }, imgs) : null,
+    file,
     h('button', { id: 'add-photo', onclick: () => file.click() }, 'Add a photo'),
-    !S.online && (t.files || []).some((f) => !f.pending) ? h('p', { class: 'muted' }, 'Photos already on the node show when you are connected.') : null,
-    h('h2', {}, 'Notes'), h('ul', { class: 'notes' }, (t.notes_list || []).map((n) => h('li', {}, n.replace(/\s*\[c:[^\]]+\]/g, '')))),
-    note, h('div', { class: 'gap' }), h('button', { class: 'primary', id: 'add-note', onclick: () => { const x = note.value.trim(); if (x) { enqueue({ op: 'note', task: t.id, text: x }); note.value = ''; } } }, 'Add note'));
+    !S.online && (t.files || []).some((f) => !f.pending) ? h('p', { class: 'muted' }, 'Photos show when connected.') : null,
+    h('h2', {}, 'Notes'),
+    (t.notes_list || []).length ? h('ul', { class: 'notes' }, (t.notes_list || []).map((n) => h('li', {}, n.replace(/\s*\[c:[^\]]+\]/g, '')))) : null,
+    note, h('div', { class: 'gap' }),
+    h('button', { class: 'primary', id: 'add-note', onclick: () => { const x = note.value.trim(); if (x) { enqueue({ op: 'note', task: t.id, text: x }); note.value = ''; } } }, 'Add note')));
 }
 
 function render() {
