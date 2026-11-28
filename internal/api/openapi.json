@@ -1,0 +1,1490 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Offgrid API",
+  "version": "1.0.0",
+  "description": "The contract for scripts, the phone app and a future native app. Everything under /v1 is stable: it only grows. Anything under /v0 is not yet proven and may change; webhook events (the Event schema) are v0. Unknown routes answer 404 not_found and wrong methods 405 method_not_allowed, with the Error body. Every POST and PATCH must carry the header X-Offgrid-Action: 1. The local API listens on this machine only; a paired phone reaches the same routes with its session cookie. See docs/api/versioning.md."
+ },
+ "servers": [
+  {
+   "url": "http://127.0.0.1:8090"
+  }
+ ],
+ "tags": [
+  {
+   "name": "meta"
+  },
+  {
+   "name": "tasks"
+  },
+  {
+   "name": "attachments"
+  },
+  {
+   "name": "suggestions"
+  },
+  {
+   "name": "csv"
+  }
+ ],
+ "paths": {
+  "/v1/info": {
+   "get": {
+    "summary": "Node and API version.",
+    "tags": [
+     "meta"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Info"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/openapi.json": {
+   "get": {
+    "summary": "This contract.",
+    "tags": [
+     "meta"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "The OpenAPI document.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object",
+         "additionalProperties": true
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks": {
+   "get": {
+    "summary": "List tasks, oldest first, a page at a time.",
+    "tags": [
+     "tasks"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "A page.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TaskList"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "status",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "open",
+        "in_progress",
+        "done"
+       ]
+      }
+     },
+     {
+      "name": "priority",
+      "in": "query",
+      "schema": {
+       "type": "string",
+       "enum": [
+        "low",
+        "medium",
+        "high"
+       ]
+      }
+     },
+     {
+      "name": "site",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "schema": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 500,
+       "default": 100
+      }
+     },
+     {
+      "name": "cursor",
+      "in": "query",
+      "description": "The next_cursor of the previous page. Opaque.",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   },
+   "post": {
+    "summary": "Create a task. If an unfinished task with the same title and site exists, nothing is made and that task comes back with created false.",
+    "tags": [
+     "tasks"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "Already there.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CreateReply"
+        }
+       }
+      }
+     },
+     "201": {
+      "description": "Created.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CreateReply"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Over a size limit.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Read, but not acceptable (an empty title, an unknown status...).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CreateRequest"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}": {
+   "get": {
+    "summary": "One task.",
+    "tags": [
+     "tasks"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Task"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   },
+   "patch": {
+    "summary": "Change a task's status, priority or both.",
+    "tags": [
+     "tasks"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "OK; changed says whether anything was different.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PatchReply"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Over a size limit.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Read, but not acceptable (an empty title, an unknown status...).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PatchRequest"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/notes": {
+   "post": {
+    "summary": "Add a note.",
+    "tags": [
+     "tasks"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "201": {
+      "description": "The task with the note.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Task"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Over a size limit.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Read, but not acceptable (an empty title, an unknown status...).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NoteRequest"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/attachments": {
+   "get": {
+    "summary": "A task's files.",
+    "tags": [
+     "attachments"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AttachmentList"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   },
+   "post": {
+    "summary": "Attach a file. The body is the file itself; send its Content-Type and, optionally, its name URL-escaped in X-Offgrid-Name.",
+    "tags": [
+     "attachments"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "201": {
+      "description": "Stored.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Attachment"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Over a size limit.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "415": {
+      "description": "Not a type the node accepts.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "X-Offgrid-Name",
+      "in": "header",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "image/jpeg": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "image/png": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "image/webp": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      },
+      "application/pdf": {
+       "schema": {
+        "type": "string",
+        "format": "binary"
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v1/tasks/{id}/attachments/{hash}": {
+   "get": {
+    "summary": "A file's bytes.",
+    "tags": [
+     "attachments"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "The file, with its stored type, sandboxed and never sniffed.",
+      "content": {
+       "*/*": {
+        "schema": {
+         "type": "string",
+         "format": "binary"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "name": "hash",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/suggestions": {
+   "get": {
+    "summary": "The AI's suggestions; pending ones unless all is true.",
+    "tags": [
+     "suggestions"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "OK",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SuggestionList"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "all",
+      "in": "query",
+      "schema": {
+       "type": "boolean",
+       "default": false
+      }
+     }
+    ]
+   }
+  },
+  "/v1/suggestions/{id}/accept": {
+   "post": {
+    "summary": "Accept a suggestion: apply it to its task. Refused (stale) if the task changed since.",
+    "tags": [
+     "suggestions"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "The changed task.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResolveReply"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "The suggestion is stale (its task changed since) or was already resolved.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/suggestions/{id}/dismiss": {
+   "post": {
+    "summary": "Dismiss a suggestion.",
+    "tags": [
+     "suggestions"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "The unchanged task.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResolveReply"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "No such task, suggestion or route.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "The suggestion is stale (its task changed since) or was already resolved.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/v1/export/tasks.csv": {
+   "get": {
+    "summary": "Every task as CSV. Cells that a spreadsheet would run as a formula start with a '.",
+    "tags": [
+     "csv"
+    ],
+    "x-stability": "stable",
+    "responses": {
+     "200": {
+      "description": "CSV with a header row: id,title,site,status,priority,created_at,updated_at,done_at,notes. notes is a JSON list of text.",
+      "content": {
+       "text/csv": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/v0/import/tasks.csv": {
+   "post": {
+    "summary": "v0: add the tasks in a CSV file. Only title is required. Never changes a task that exists. Not mounted on the phone server.",
+    "tags": [
+     "csv"
+    ],
+    "x-stability": "v0",
+    "responses": {
+     "200": {
+      "description": "What was (or with dry_run=true would be) done.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ImportReport"
+        }
+       }
+      }
+     },
+     "400": {
+      "description": "The request could not be read (bad JSON, unknown field, bad query value).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "413": {
+      "description": "Over a size limit.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Read, but not acceptable (an empty title, an unknown status...).",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "500": {
+      "description": "The node could not complete the request.",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "dry_run",
+      "in": "query",
+      "schema": {
+       "type": "boolean",
+       "default": false
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "text/csv": {
+       "schema": {
+        "type": "string"
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Error": {
+    "type": "object",
+    "properties": {
+     "code": {
+      "type": "string",
+      "enum": [
+       "bad_request",
+       "invalid",
+       "not_found",
+       "stale",
+       "already_resolved",
+       "too_large",
+       "unsupported_media_type",
+       "method_not_allowed",
+       "internal",
+       "forbidden",
+       "missing_header",
+       "bad_host",
+       "cross_origin",
+       "cross_site",
+       "unpaired",
+       "slow_down",
+       "empty"
+      ]
+     },
+     "message": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "code",
+     "message"
+    ]
+   },
+   "Note": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "text",
+     "at"
+    ]
+   },
+   "Task": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "site": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "in_progress",
+       "done"
+      ]
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high"
+      ]
+     },
+     "created_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "updated_at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "done_at": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+     },
+     "notes": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Note"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "title",
+     "site",
+     "status",
+     "priority",
+     "created_at",
+     "updated_at",
+     "done_at",
+     "notes"
+    ]
+   },
+   "TaskList": {
+    "type": "object",
+    "properties": {
+     "tasks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Task"
+      }
+     },
+     "next_cursor": {
+      "type": "string",
+      "nullable": true
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "tasks",
+     "next_cursor"
+    ]
+   },
+   "CreateRequest": {
+    "type": "object",
+    "properties": {
+     "title": {
+      "type": "string"
+     },
+     "site": {
+      "type": "string"
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "title"
+    ]
+   },
+   "CreateReply": {
+    "type": "object",
+    "properties": {
+     "task": {
+      "$ref": "#/components/schemas/Task"
+     },
+     "created": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "task",
+     "created"
+    ]
+   },
+   "PatchRequest": {
+    "type": "object",
+    "properties": {
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "in_progress",
+       "done"
+      ]
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high"
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "required": []
+   },
+   "PatchReply": {
+    "type": "object",
+    "properties": {
+     "task": {
+      "$ref": "#/components/schemas/Task"
+     },
+     "changed": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "task",
+     "changed"
+    ]
+   },
+   "NoteRequest": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "text"
+    ]
+   },
+   "Attachment": {
+    "type": "object",
+    "properties": {
+     "hash": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "type": {
+      "type": "string"
+     },
+     "size": {
+      "type": "integer"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "present": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "hash",
+     "name",
+     "type",
+     "size",
+     "at",
+     "present"
+    ]
+   },
+   "AttachmentList": {
+    "type": "object",
+    "properties": {
+     "attachments": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Attachment"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "attachments"
+    ]
+   },
+   "Suggestion": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "task": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "open",
+       "in_progress",
+       "done"
+      ],
+      "nullable": true
+     },
+     "priority": {
+      "type": "string",
+      "enum": [
+       "low",
+       "medium",
+       "high"
+      ],
+      "nullable": true
+     },
+     "note": {
+      "type": "string"
+     },
+     "by": {
+      "type": "string"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "pending",
+       "accepted",
+       "dismissed"
+      ]
+     },
+     "stale": {
+      "type": "boolean"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "task",
+     "status",
+     "priority",
+     "note",
+     "by",
+     "at",
+     "state",
+     "stale"
+    ]
+   },
+   "SuggestionList": {
+    "type": "object",
+    "properties": {
+     "suggestions": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Suggestion"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "suggestions"
+    ]
+   },
+   "ResolveReply": {
+    "type": "object",
+    "properties": {
+     "task": {
+      "$ref": "#/components/schemas/Task"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "task"
+    ]
+   },
+   "Info": {
+    "type": "object",
+    "properties": {
+     "api_version": {
+      "type": "string",
+      "enum": [
+       "v1"
+      ]
+     },
+     "node": {
+      "type": "string"
+     },
+     "tasks": {
+      "type": "integer"
+     },
+     "time": {
+      "type": "string",
+      "format": "date-time"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "api_version",
+     "node",
+     "tasks",
+     "time"
+    ]
+   },
+   "ImportProblem": {
+    "type": "object",
+    "properties": {
+     "row": {
+      "type": "integer"
+     },
+     "message": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "row",
+     "message"
+    ]
+   },
+   "ImportReport": {
+    "type": "object",
+    "properties": {
+     "dry_run": {
+      "type": "boolean"
+     },
+     "rows": {
+      "type": "integer"
+     },
+     "created": {
+      "type": "integer"
+     },
+     "skipped": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ImportProblem"
+      }
+     },
+     "failed": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/ImportProblem"
+      }
+     }
+    },
+    "additionalProperties": false,
+    "required": [
+     "dry_run",
+     "rows",
+     "created",
+     "skipped",
+     "failed"
+    ]
+   },
+   "Event": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "string"
+     },
+     "type": {
+      "type": "string",
+      "enum": [
+       "ping",
+       "task.created",
+       "task.updated",
+       "task.note_added",
+       "task.removed",
+       "suggestion.made",
+       "suggestion.resolved",
+       "attachment.added"
+      ]
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time"
+     },
+     "node": {
+      "type": "string"
+     },
+     "task": {
+      "type": "string"
+     },
+     "data": {
+      "type": "object"
+     }
+    },
+    "additionalProperties": true,
+    "required": [
+     "id",
+     "type",
+     "at",
+     "node"
+    ],
+    "x-stability": "v0"
+   }
+  },
+  "securitySchemes": {
+   "phoneSession": {
+    "type": "apiKey",
+    "in": "cookie",
+    "name": "__Host-offgrid",
+    "description": "Only on the phone server: the session cookie a paired phone holds. The local API (offgrid api serve) has no login and answers only to this machine."
+   }
+  }
+ }
+}
