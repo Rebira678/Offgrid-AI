@@ -1,74 +1,35 @@
-// Offgrid Service Worker - Day 52 PWA Offline Support
-const CACHE_NAME = 'offgrid-phone-v1';
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/app.js',
-  '/app.css',
-  '/sw.js',
-  '/manifest.webmanifest',
-  '/icon.svg'
-];
+'use strict';
+// The service worker keeps the app's own files so the app opens with the node unreachable. It never
+// touches /api/: tasks, photos and the queue live in the page's IndexedDB, behind the session.
+const CACHE = 'offgrid-phone-shell-v1';
+const SHELL = ['/', '/app.js', '/style.css', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_URLS);
-    }).then(() => self.skipWaiting())
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys()
+      .then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim()),
   );
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // For API task list requests, use network-first with cache fallback
-  if (url.pathname === '/api/phone/tasks' && event.request.method === 'GET') {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // Other API requests are dynamic and bypass ServiceWorker cache
-  if (url.pathname.startsWith('/api/')) {
-    return;
-  }
-
-  // Static assets: cache-first
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request).then((response) => {
-        if (response.ok && event.request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        }
-        return response;
+self.addEventListener('fetch', (e) => {
+  const r = e.request;
+  const u = new URL(r.url);
+  if (r.method !== 'GET' || u.origin !== self.location.origin || u.pathname.startsWith('/api/')) return;
+  e.respondWith(
+    caches.open(CACHE).then(async (c) => {
+      const hit = await c.match(r.mode === 'navigate' ? '/' : r, { ignoreSearch: true });
+      // Serve what we have at once and refresh it for next time; with no network, what we have is all there is.
+      const fresh = fetch(r).then((res) => {
+        if (res.ok && SHELL.includes(u.pathname)) c.put(r.mode === 'navigate' ? '/' : r, res.clone());
+        return res;
       });
-    })
+      if (hit) { fresh.catch(() => {}); return hit; }
+      return fresh;
+    }),
   );
 });
