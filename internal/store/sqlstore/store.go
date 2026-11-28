@@ -473,6 +473,9 @@ func (s *Store) NodeID() string { return s.node }
 // Signer returns the store's configured device key, or nil if none.
 func (s *Store) Signer() Signer { return s.signer }
 
+// DB returns the underlying database handle for store extensions (e.g. phone session storage).
+func (s *Store) DB() *sql.DB { return s.db }
+
 // ---- meta -------------------------------------------------------------------
 
 func getMeta(ctx context.Context, x execer, key string) (string, bool, error) {
