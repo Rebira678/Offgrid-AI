@@ -188,13 +188,22 @@ func hostOK(hosts []string, hostport string) bool {
 	if host == "" {
 		return false
 	}
-	ip := net.ParseIP(host)
+	cleanHost := host
+	if idx := strings.Index(cleanHost, "%"); idx != -1 {
+		cleanHost = cleanHost[:idx]
+	}
+	ip := net.ParseIP(cleanHost)
 	if len(hosts) > 0 {
 		for _, h := range hosts {
-			if strings.EqualFold(h, host) {
+			hh := h
+			if sh, _, err := net.SplitHostPort(h); err == nil {
+				hh = sh
+			}
+			hh = strings.TrimSuffix(strings.TrimPrefix(hh, "["), "]")
+			if strings.EqualFold(h, host) || strings.EqualFold(hh, host) {
 				return true
 			}
-			if hip := net.ParseIP(h); hip != nil && ip != nil && hip.Equal(ip) {
+			if hip := net.ParseIP(hh); hip != nil && ip != nil && hip.Equal(ip) {
 				return true
 			}
 		}
@@ -464,6 +473,10 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 		deny("this phone is not enrolled in this node")
 		return
 	}
+	if h.nc.isUsed(req.Nonce) {
+		deny("that sign-in was already used")
+		return
+	}
 	if err := identity.Verify(m.PublicKey, LoginMessage(req.Device, req.Nonce), sig); err != nil {
 		deny("the signature does not verify")
 		return
@@ -477,7 +490,7 @@ func (h *handler) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
+	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: "", Path: "/", Expires: time.Unix(1, 0), MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -607,12 +620,21 @@ func marker(id string) string { return "[c:" + id + "]" }
 
 // findMarker looks for a command's marker in the notes, so a late command that was applied before a
 // restart is still recognised when the phone sends it again.
-func (h *handler) findMarker(ctx context.Context, id string) (string, bool) {
+func (h *handler) findMarker(ctx context.Context, id, knownTask string) (string, bool) {
+	m := marker(id)
+	if knownTask != "" {
+		if tk, err := h.c.Store.Get(ctx, knownTask); err == nil {
+			for _, n := range tk.Notes {
+				if strings.Contains(n.Text, m) {
+					return tk.ID, true
+				}
+			}
+		}
+	}
 	ts, err := h.c.Store.List(ctx, task.Filter{})
 	if err != nil {
 		return "", false
 	}
-	m := marker(id)
 	for _, t := range ts {
 		for _, n := range t.Notes {
 			if strings.Contains(n.Text, m) {
@@ -684,8 +706,9 @@ func (h *handler) apply(ctx context.Context, s session, c Command, refs map[stri
 		res.Outcome, res.Task, res.Message = "duplicate", t, "this command was already applied"
 		return res
 	}
+	targetTask, _ := resolveRef(c.Task, refs)
 	if late {
-		if t, ok := h.findMarker(ctx, c.ID); ok {
+		if t, ok := h.findMarker(ctx, c.ID, targetTask); ok {
 			h.remember(c.ID, t)
 			res.Outcome, res.Task, res.Message = "duplicate", t, "this command was already applied"
 			return res
