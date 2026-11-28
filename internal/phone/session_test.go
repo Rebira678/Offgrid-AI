@@ -1,196 +1,133 @@
 package phone
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"sync"
+	"bytes"
+	"strings"
 	"testing"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
-func newTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	db, err := sql.Open("sqlite3", "file::memory:?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
+func sg() signer { return signer{key: bytes.Repeat([]byte{1}, 32)} }
 
-func TestSessionStorePairingAndRedemption(t *testing.T) {
-	ctx := context.Background()
-	now := time.Date(2026, 11, 28, 5, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-
-	db := newTestDB(t)
-	store, err := NewSessionStore(db, clock)
-	if err != nil {
-		t.Fatalf("new session store: %v", err)
-	}
-
-	// 1. Create pairing code
-	code, err := store.CreatePairingCode(ctx, "Field Tech Alice", 15*time.Minute)
-	if err != nil {
-		t.Fatalf("create pairing code: %v", err)
-	}
-	if len(code.Code) != 7 || code.Code[3] != '-' {
-		t.Fatalf("pairing code format mismatch: got %q, want XXX-XXX", code.Code)
-	}
-	if code.Label != "Field Tech Alice" {
-		t.Errorf("label mismatch: got %q", code.Label)
-	}
-
-	// 2. Validate unredeemed token fails
-	if _, err := store.ValidateSession(ctx, "nonexistent-token"); err != ErrSessionInvalid {
-		t.Errorf("expected ErrSessionInvalid, got %v", err)
-	}
-
-	// 3. Redeem pairing code (with or without dashes)
-	sess, err := store.RedeemPairingCode(ctx, code.Code, "Mobile Chrome")
-	if err != nil {
-		t.Fatalf("redeem pairing code: %v", err)
-	}
-	if len(sess.Token) != 64 {
-		t.Errorf("expected 64-hex char token, got length %d (%q)", len(sess.Token), sess.Token)
-	}
-	if sess.Revoked {
-		t.Errorf("new session should not be revoked")
-	}
-
-	// 4. Redeeming again fails with ErrCodeUsed
-	if _, err := store.RedeemPairingCode(ctx, code.Code, "Another Device"); err != ErrCodeUsed {
-		t.Errorf("expected ErrCodeUsed on second redemption, got %v", err)
-	}
-
-	// 5. Validate redeemed session succeeds
-	vSess, err := store.ValidateSession(ctx, sess.Token)
-	if err != nil {
-		t.Fatalf("validate session failed: %v", err)
-	}
-	if vSess.Token != sess.Token {
-		t.Errorf("token mismatch: got %q, want %q", vSess.Token, sess.Token)
-	}
-
-	// 6. List sessions
-	sessions, err := store.ListSessions(ctx)
-	if err != nil {
-		t.Fatalf("list sessions failed: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("expected 1 session, got %d", len(sessions))
-	}
-	if sessions[0].Token != sess.Token {
-		t.Errorf("session token mismatch")
-	}
-
-	// 7. Revoke session
-	n, err := store.RevokeSession(ctx, sess.Token[:12])
-	if err != nil {
-		t.Fatalf("revoke session failed: %v", err)
-	}
-	if n != 1 {
-		t.Errorf("expected 1 revoked row, got %d", n)
-	}
-
-	// 8. Validating revoked session returns ErrSessionInvalid
-	if _, err := store.ValidateSession(ctx, sess.Token); err != ErrSessionInvalid {
-		t.Errorf("expected ErrSessionInvalid for revoked session, got %v", err)
+func TestASessionRoundTripsAndCarriesItsDevice(t *testing.T) {
+	tok := sg().issue("dev_a", t0, time.Hour)
+	c, err := sg().verify(tok, t0.Add(time.Minute))
+	if err != nil || c.Device != "dev_a" || c.Expiry != t0.Add(time.Hour).Unix() {
+		t.Fatalf("%+v %v", c, err)
 	}
 }
 
-func TestSessionStoreExpiryAndCleanup(t *testing.T) {
-	ctx := context.Background()
-	current := time.Date(2026, 11, 28, 5, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return current }
-
-	db := newTestDB(t)
-	store, err := NewSessionStore(db, clock)
-	if err != nil {
-		t.Fatalf("new session store: %v", err)
+func TestASessionThatWasTamperedWithOrSignedByAnotherKeyIsRefused(t *testing.T) {
+	tok := sg().issue("dev_a", t0, time.Hour)
+	for i := 0; i < len(tok); i++ {
+		b := []byte(tok)
+		if b[i] == '.' {
+			continue
+		}
+		b[i] ^= 1
+		if _, err := sg().verify(string(b), t0); err == nil {
+			t.Fatalf("a change at byte %d was accepted", i)
+		}
 	}
-
-	// Create pairing code with 5m TTL
-	code, err := store.CreatePairingCode(ctx, "Test Phone", 5*time.Minute)
-	if err != nil {
-		t.Fatalf("create pairing code: %v", err)
+	if _, err := (signer{key: bytes.Repeat([]byte{2}, 32)}).verify(tok, t0); err == nil {
+		t.Fatal("another key verified it")
 	}
-
-	// Advance time by 6 minutes
-	current = current.Add(6 * time.Minute)
-
-	// Redemption should fail with ErrCodeExpired
-	if _, err := store.RedeemPairingCode(ctx, code.Code, "Late Phone"); err != ErrCodeExpired {
-		t.Errorf("expected ErrCodeExpired, got %v", err)
-	}
-
-	// Clean expired codes
-	cleaned, err := store.CleanExpired(ctx)
-	if err != nil {
-		t.Fatalf("clean expired failed: %v", err)
-	}
-	if cleaned != 1 {
-		t.Errorf("expected 1 cleaned pairing code, got %d", cleaned)
+	for _, bad := range []string{"", "v1", "v1..", "v2." + strings.Split(tok, ".")[1] + "." + strings.Split(tok, ".")[2], tok + ".x", strings.Repeat("a", maxTokenLen+1)} {
+		if _, err := sg().verify(bad, t0); err == nil {
+			t.Errorf("%.20q accepted", bad)
+		}
 	}
 }
 
-func TestSessionStoreConcurrency(t *testing.T) {
-	ctx := context.Background()
-	db := newTestDB(t)
-	store, err := NewSessionStore(db, time.Now)
-	if err != nil {
-		t.Fatalf("new session store: %v", err)
+func TestASessionIsNotAChallengeAndAChallengeIsNotASession(t *testing.T) {
+	s := sg()
+	if _, err := s.verify(s.challenge(t0), t0); err == nil {
+		t.Fatal("a challenge worked as a session")
 	}
-
-	const n = 30
-	var wg sync.WaitGroup
-	codes := make([]*PairingCode, n)
-
-	// Create pairing codes concurrently
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			c, err := store.CreatePairingCode(ctx, fmt.Sprintf("phone-%d", idx), 10*time.Minute)
-			if err != nil {
-				t.Errorf("concurrency create %d: %v", idx, err)
-				return
-			}
-			codes[idx] = c
-		}(i)
+	if err := s.checkChallenge(s.issue("dev_a", t0, time.Hour), t0); err == nil {
+		t.Fatal("a session worked as a challenge")
 	}
-	wg.Wait()
+}
 
-	// Redeem pairing codes concurrently
-	sessions := make([]*Session, n)
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			s, err := store.RedeemPairingCode(ctx, codes[idx].Code, fmt.Sprintf("client-%d", idx))
-			if err != nil {
-				t.Errorf("concurrency redeem %d: %v", idx, err)
-				return
-			}
-			sessions[idx] = s
-		}(i)
+func TestSessionTimeBoundaries(t *testing.T) {
+	tok := sg().issue("dev_a", t0, time.Hour)
+	if _, err := sg().verify(tok, t0.Add(time.Hour-time.Second)); err != nil {
+		t.Errorf("one second before expiry: %v", err)
 	}
-	wg.Wait()
+	if _, err := sg().verify(tok, t0.Add(time.Hour)); err != errExpired {
+		t.Errorf("at expiry: %v", err)
+	}
+	if _, err := sg().verify(tok, t0.Add(-clockSlack+time.Second)); err != nil {
+		t.Errorf("a clock a little behind: %v", err)
+	}
+	if _, err := sg().verify(tok, t0.Add(-clockSlack-time.Minute)); err == nil {
+		t.Error("a token issued far in the future was accepted")
+	}
+}
 
-	// Validate sessions concurrently
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			v, err := store.ValidateSession(ctx, sessions[idx].Token)
-			if err != nil || v == nil {
-				t.Errorf("concurrency validate %d: %v", idx, err)
-			}
-		}(i)
+func TestChallengeTimeBoundaries(t *testing.T) {
+	s := sg()
+	n := s.challenge(t0)
+	if err := s.checkChallenge(n, t0.Add(ChallengeTTL)); err != nil {
+		t.Errorf("at the limit: %v", err)
 	}
-	wg.Wait()
+	if err := s.checkChallenge(n, t0.Add(ChallengeTTL+time.Second)); err == nil {
+		t.Error("late")
+	}
+	if err := s.checkChallenge(n, t0.Add(-clockSlack-time.Second)); err == nil {
+		t.Error("from the future")
+	}
+	a, b := s.challenge(t0), s.challenge(t0)
+	if a == b {
+		t.Error("two challenges at the same instant are equal")
+	}
+}
+
+func TestNoncesAreSingleUseAndForgottenWhenTheyCouldNoLongerBeAnswered(t *testing.T) {
+	var n nonces
+	if !n.claim("a", t0) || n.claim("a", t0.Add(time.Second)) {
+		t.Fatal("single use")
+	}
+	n.claim("b", t0.Add(ChallengeTTL+clockSlack+time.Second))
+	n.mu.Lock()
+	_, kept := n.used["a"]
+	n.mu.Unlock()
+	if kept {
+		t.Fatal("an old nonce was kept forever")
+	}
+}
+
+func TestTheLimiterTableDoesNotGrowWithoutBound(t *testing.T) {
+	l := newLimiter()
+	for i := 0; i < 5000; i++ {
+		l.fail(strings.Repeat("x", 3)+string(rune(i+256)), t0)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.fails) > 4097 {
+		t.Fatalf("%d keys", len(l.fails))
+	}
+}
+
+func TestTheLimiterWindowIsExactAndPerKey(t *testing.T) {
+	l := newLimiter()
+	for i := 0; i < 5; i++ {
+		l.fail("a", t0)
+	}
+	if l.allowed("a", t0.Add(59*time.Second)) {
+		t.Error("allowed inside the window")
+	}
+	if !l.allowed("b", t0) {
+		t.Error("another address was locked out")
+	}
+	if !l.allowed("a", t0.Add(60*time.Second)) {
+		t.Error("still locked at the end of the window")
+	}
+	l2 := newLimiter()
+	for i := 0; i < 4; i++ {
+		l2.fail("a", t0)
+	}
+	if !l2.allowed("a", t0) {
+		t.Error("locked one failure early")
+	}
 }
