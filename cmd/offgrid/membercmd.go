@@ -23,6 +23,7 @@ import (
 
 // groupToken writes a token in groups of four so a person can read it out.
 func groupToken(t string) string {
+	t = sqlstore.NormalizeToken(t) // the store already groups its tokens; grouping the dashes again printed "TK2L--FME-P-4R-..."
 	var parts []string
 	for len(t) > 4 {
 		parts = append(parts, t[:4])
