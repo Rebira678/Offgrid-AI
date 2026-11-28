@@ -10,8 +10,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [004](004-authorization.md) | Authorization: admin-signed membership, grow-only revocation with a (sequence, hash) cutoff | Day 38: membership and enrollment done; Day 39: revocation and `Authorize` |
 | [005](005-trust-root.md) | Trust root: a founder key; a second admin before the pilot | Day 38 (founding and a second admin implemented; `store members` warns while there is one admin) |
 | [006](006-transport.md) | Transport: mutual TLS 1.3 pinned from the membership log; phones use tokens | Day 40 (node-to-node done; phone tokens not) |
-| [007](007-phone-pwa-offline-queued-writes.md) | Phone client PWA, pairing tokens, and offline queued writes | Day 52 (built; PWA, pairing tokens, offline queue and late replay verified) |
-| [008](008-sync-protocol.md) | Sync protocol v2: version header and "upgrade required", MAC-chained frames, gzip, JSON kept, a maintained summary table | Day 41 (done) |
+| [008](008-sync-protocol.md) | Sync protocol v2: version header and "upgrade required", MAC-chained frames, gzip, JSON kept, a maintained summary table | Day 41 (done; 007 is kept for the phone web client) |
 | [009](009-envelope-encryption.md) | Envelope encryption for a hosted relay: a key per op, wrapped to each member | Day 42 (proposed, design only, not reviewed) |
 | [010](010-compaction.md) | Compaction: snapshot plus signed checkpoint, with a maximum time away | Day 42 (proposed, design only, not reviewed) |
 | [011](011-relay.md) | Relay: a hub run by the site owner that hosts one replica per group and can read, not forge | Day 43 (built; one hub, no Pi test) |
@@ -21,6 +20,7 @@ One file per decision that is expensive to reverse: what was chosen, what was re
 | [015](015-measure-growth-before-compacting.md) | Measure growth first; compaction stays unbuilt, an alarm decides | Day 49 (built; projection uses synthetic ops until the pilot's own numbers exist) |
 | [016](016-providers-prompt-versions-and-the-eval-gate.md) | One provider setting (Ollama, llama.cpp, OpenAI-compatible, LAN), retry with jitter, pinned prompt, gate on the valid-command rate | Day 50 (built; no real model has been run through the gate yet) |
 | [017](017-resource-governor-and-node-profiles.md) | Light and full node profiles, model-call slots, battery and busy back-off, memory budget in the soak, loopback-only pprof | Day 51 (built; container numbers only, no Pi measured yet) |
+| [018](018-phone-client-pwa-and-queued-commands.md) | Phone PWA served by the site node; queued commands applied on arrival and marked late; pairing by invite; signed session cookie re-checked against membership | Day 52 (built; desktop Chromium only, no phone tested) |
 
 ## Decisions in the plan that have no record yet
 
