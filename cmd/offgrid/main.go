@@ -107,6 +107,8 @@ func runIn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return cmdPerf(args[1:], stdout, stderr)
 	case "web":
 		return cmdWeb(args[1:], stdout, stderr)
+	case "phone":
+		return cmdPhone(args[1:], stdout, stderr)
 	case "doctor":
 		return cmdDoctor(args[1:], stdout, stderr)
 	case "ca":
@@ -154,6 +156,7 @@ Usage:
   offgrid lww    demo                                                 how two replicas merge edits to the same task, per field
   offgrid top    -queue FILE                                          one screen: connection, queue, tiers (live)
   offgrid web    -db FILE [-queue FILE] [-listen 127.0.0.1:8787]     the dashboard in your browser, from this one binary (this machine only)
+  offgrid phone  pair|serve|list|revoke -db FILE                     field client PWA, pairing codes, and offline session management
   offgrid suggestions -db FILE [list|accept ID|dismiss ID]            what an AI proposed; only you apply it
   offgrid perf   [-quick] [-repeats N] [-md FILE] [-json FILE] [-svg FILE] [-readme FILE]   store, sync, queue and memory costs on this machine (no model)
   offgrid sim    [-seeds N] [-seed S] [-replay FILE] [-j W]         random partitions, clock skew and crashes; every seed replays exactly
